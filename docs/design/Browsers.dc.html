@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Browsers and proxies</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0;background:#F7F7F5}
+a{color:#1A1B1E;text-decoration:none}a:hover{color:#C2410C}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:9px;border:1px solid #E6E6E2;background:#fff;font:inherit;font-size:13px;font-weight:500;color:#1A1B1E;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#F2F2EF}
+.btn-primary{background:#C2410C;border-color:#C2410C;color:#fff}.btn-primary:hover{background:#A8360A}
+.btn-ghost{border-color:transparent;background:transparent;color:#5C5F66}.btn-ghost:hover{background:#F2F2EF;color:#1A1B1E}
+.panel{background:#fff;border:1px solid #E6E6E2;border-radius:16px}
+.chip{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:600;line-height:1;white-space:nowrap}
+.chip-hot{background:#FEF0E6;color:#C2410C}.chip-mid{background:#E9E9E5;color:#5C5F66}.chip-ok{background:#E3F4E8;color:#15803D}.chip-warn{background:#FDF3D7;color:#8A5A00}.chip-bad{background:#FDE8E8;color:#B91C1C}.chip-line{background:#fff;border:1px solid #E6E6E2;color:#3F4248;font-weight:500}
+.dot{width:6px;height:6px;border-radius:999px;display:inline-block}
+.muted{color:#6B6E75}.num{font-variant-numeric:tabular-nums}
+.av{display:grid;place-items:center;border-radius:999px;font-weight:600;color:#fff;flex:none}
+.table{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap}
+.table th{text-align:left;font-weight:500;color:#6B6E75;font-size:12px;padding:8px 12px;border-bottom:1px solid #E6E6E2}
+.table td{padding:11px 12px;border-bottom:1px solid #F0F0ED;vertical-align:middle}
+.table tr{cursor:pointer}.table tr:hover td{background:#FAFAF8}
+.sect-h{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid #EFEFEC}
+.sect-h h2{margin:0;font-size:14px;font-weight:600}
+.field{display:flex;flex-direction:column;gap:5px;font-size:12.5px}
+.field label{font-weight:600;font-size:12px}
+.in{width:100%;box-sizing:border-box;height:34px;padding:0 11px;border:1px solid #E6E6E2;border-radius:9px;font:inherit;font-size:13px;background:#fff;color:#1A1B1E}
+.seg{display:inline-flex;background:#EFEFEC;border-radius:9px;padding:3px;gap:2px}
+.seg label{display:flex;align-items:center;justify-content:center;height:26px;padding:0 10px;border-radius:7px;font-size:12px;font-weight:500;color:#5C5F66;cursor:pointer;flex:1}
+.seg input{position:absolute;opacity:0;width:0;height:0}
+.seg label:has(input:checked){background:#fff;color:#1A1B1E;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.tog{width:34px;height:20px;border-radius:999px;background:#1A1B1E;position:relative;display:inline-block;flex:none;border:0;cursor:pointer}
+.tog::after{content:"";position:absolute;top:2px;left:16px;width:16px;height:16px;border-radius:999px;background:#fff}
+.kv{display:grid;grid-template-columns:110px minmax(0,1fr);gap:6px 10px;font-size:12.5px;align-items:center}
+.kv dt{color:#6B6E75;margin:0}.kv dd{margin:0;font-weight:500}
+</style>
+</helmet>
+<div style="display:flex;flex-wrap:wrap;width:100%;min-height:1040px;background:#F7F7F5;color:#1A1B1E;font-family:Inter,system-ui,sans-serif">
+  <dc-import name="Sidebar" active="browsers" hint-size="232px,1040px"></dc-import>
+  <div style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
+    <dc-import name="Topbar" hint-size="100%,64px"></dc-import>
+    <main style="padding:24px;display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:240px"><h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.01em">Browsers and proxies</h1><div class="muted" style="font-size:13px;margin-top:4px">One dedicated browser profile per connected account. Agents draft and post only inside that profile, so each account always logs in from the same device and place.</div></div>
+        <button class="btn">Proxy pool</button>
+        <button class="btn btn-primary">New browser profile</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px">
+        <div class="panel" style="padding:14px 16px;display:flex;flex-direction:column;gap:4px"><span class="muted" style="font-size:12px">Profiles</span><span class="num" style="font-size:22px;font-weight:600;letter-spacing:-0.02em">3 <span class="muted" style="font-size:12px;font-weight:400">of 5 on Pro</span></span></div>
+        <div class="panel" style="padding:14px 16px;display:flex;flex-direction:column;gap:4px"><span class="muted" style="font-size:12px">Running now</span><span class="num" style="font-size:22px;font-weight:600;letter-spacing:-0.02em;display:flex;align-items:center;gap:8px">2 <span class="chip chip-ok"><span class="dot" style="background:#15803D"></span>Maya, Leo</span></span></div>
+        <div class="panel" style="padding:14px 16px;display:flex;flex-direction:column;gap:4px"><span class="muted" style="font-size:12px">Proxy health · 24h</span><span class="num" style="font-size:22px;font-weight:600;letter-spacing:-0.02em">99.2% <span class="muted" style="font-size:12px;font-weight:400">uptime · 180 ms median</span></span></div>
+        <div class="panel" style="padding:14px 16px;display:flex;flex-direction:column;gap:4px"><span class="muted" style="font-size:12px">Needs attention</span><span class="num" style="font-size:22px;font-weight:600;letter-spacing:-0.02em;display:flex;align-items:center;gap:8px">1 <span class="chip chip-warn">Sam · proxy region mismatch</span></span></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1.55fr) 420px;gap:20px;align-items:start">
+        <section class="panel">
+          <div class="sect-h"><h2>Browser profiles</h2><span class="muted" style="font-size:12px">Each profile is bound to exactly one account and one agent</span></div>
+          <div style="overflow-x:auto">
+            <table class="table">
+              <thead><tr><th>Profile</th><th>Account · owner</th><th>Agent</th><th>Proxy</th><th>Region</th><th>Status</th><th>Last session</th><th></th></tr></thead>
+              <tbody>
+                <sc-for list="{{ profiles }}" as="p" hint-placeholder-count="3">
+                  <tr style="background:{{ p.bg }}" onClick="{{ p.pick }}">
+                    <td><div style="display:flex;align-items:center;gap:8px"><span style="width:26px;height:26px;border-radius:8px;background:#F2F2EF;display:grid;place-items:center"><svg aria-hidden="true" viewBox="0 0 16 16" style="width:14px;height:14px;stroke:#3F4248;fill:none;stroke-width:1.75;stroke-linecap:round"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M2 6h12M4.5 4.5h.01M6.5 4.5h.01"/></svg></span><div style="line-height:1.2"><div style="font-weight:600">{{ p.name }}</div><div class="muted" style="font-size:11.5px">{{ p.fp }}</div></div></div></td>
+                    <td><div style="line-height:1.2"><div style="font-weight:500">{{ p.acct }}</div><div class="muted" style="font-size:11.5px">{{ p.owner }}</div></div></td>
+                    <td><span style="display:inline-flex;align-items:center;gap:6px"><span class="av" style="width:20px;height:20px;font-size:8px;background:{{ p.avBg }}">{{ p.ini }}</span>{{ p.agent }}</span></td>
+                    <td><div style="line-height:1.2"><div style="font-weight:500">{{ p.proxy }}</div><div class="muted" style="font-size:11.5px">{{ p.proxyType }}</div></div></td>
+                    <td><span class="{{ p.regionChip }}">{{ p.region }}</span></td>
+                    <td><span class="{{ p.statusChip }}"><span class="dot" style="background:{{ p.statusDot }}"></span>{{ p.status }}</span></td>
+                    <td class="muted">{{ p.last }}</td>
+                    <td style="text-align:right"><button class="btn btn-ghost" style="height:26px;padding:0 8px">{{ p.action }}</button></td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+          <div style="padding:12px 18px;border-top:1px solid #EFEFEC;display:flex;gap:16px;flex-wrap:wrap;font-size:12px" class="muted">
+            <span><span class="dot" style="background:#15803D;margin-right:5px"></span>Running — agent has the browser open</span>
+            <span><span class="dot" style="background:#9A9DA4;margin-right:5px"></span>Idle — session saved, nothing open</span>
+            <span><span class="dot" style="background:#B9700A;margin-right:5px"></span>Check — a setting no longer matches the account owner</span>
+          </div>
+        </section>
+
+        <aside class="panel" style="display:flex;flex-direction:column">
+          <div class="sect-h"><h2>{{ sel.name }}</h2><span class="muted" style="font-size:12px">{{ sel.acct }}</span><div style="flex:1"></div><button class="btn btn-primary" style="height:28px">Save</button></div>
+          <div style="padding:16px 18px;display:flex;flex-direction:column;gap:16px">
+
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px">Proxy<span class="{{ sel.testChip }}">{{ sel.testLabel }}</span></div>
+              <div class="seg"><label><input type="radio" name="pt" checked="">HTTP</label><label><input type="radio" name="pt">SOCKS5</label><label><input type="radio" name="pt">None</label></div>
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) 88px;gap:8px">
+                <div class="field"><label for="host">Host</label><input id="host" class="in" value="{{ sel.host }}"></div>
+                <div class="field"><label for="port">Port</label><input id="port" class="in" value="{{ sel.port }}"></div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <div class="field"><label for="pu">Username</label><input id="pu" class="in" value="{{ sel.user }}"></div>
+                <div class="field"><label for="pp">Password</label><input id="pp" class="in" type="password" value="••••••••••"></div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <div class="field"><label for="prov">Provider</label><select id="prov" class="in"><option>Bright Data · residential</option><option>Oxylabs</option><option>Own server</option></select></div>
+                <div class="field"><label for="sess">Session</label><select id="sess" class="in"><option>Sticky · same IP 30 days</option><option>Rotate per login</option></select></div>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;font-size:12.5px;background:#FAFAF8;border-radius:10px;padding:10px 12px">
+                <div style="flex:1;line-height:1.4"><div style="font-weight:500">Keep region where {{ sel.ownerFirst }} actually is</div><div class="muted" style="font-size:12px">{{ sel.ownerPlace }} · from their account settings</div></div>
+                <button class="tog" aria-label="Match owner region" role="switch" aria-checked="true"></button>
+              </div>
+            </div>
+
+            <div style="border:1px solid #EFEFEC;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;gap:8px;font-size:12.5px"><span style="font-weight:600">Last connection test</span><span class="muted">{{ sel.testedAt }}</span><div style="flex:1"></div><button class="btn btn-ghost" style="height:26px;padding:0 8px">Test now</button></div>
+              <dl class="kv" style="margin:0">
+                <dt>Exit IP</dt><dd class="num">{{ sel.ip }}</dd>
+                <dt>Location</dt><dd>{{ sel.loc }} <span class="{{ sel.locChip }}">{{ sel.locLabel }}</span></dd>
+                <dt>Latency</dt><dd class="num">{{ sel.lat }}</dd>
+                <dt>Reddit reachable</dt><dd><span class="chip chip-ok">Yes · 200</span></dd>
+              </dl>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="font-size:12.5px;font-weight:600">Browser fingerprint</div>
+              <dl class="kv" style="margin:0">
+                <dt>Device</dt><dd>{{ sel.fp }}</dd>
+                <dt>Timezone</dt><dd>{{ sel.tz }}</dd>
+                <dt>Language</dt><dd>{{ sel.lang }}</dd>
+                <dt>Cookies</dt><dd>Kept between sessions · logged in since {{ sel.since }}</dd>
+              </dl>
+              <div class="muted" style="font-size:12px;line-height:1.5">Copied from {{ sel.ownerFirst }}’s own device when they connected the account. Threadline keeps it stable; it doesn’t invent a new identity.</div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="font-size:12.5px;font-weight:600">What the agent may do here</div>
+              <label style="display:flex;align-items:center;gap:10px;font-size:12.5px"><input type="checkbox" checked="" style="width:15px;height:15px;margin:0;accent-color:#1A1B1E"><span style="flex:1">Read threads and DMs</span></label>
+              <label style="display:flex;align-items:center;gap:10px;font-size:12.5px"><input type="checkbox" checked="" style="width:15px;height:15px;margin:0;accent-color:#1A1B1E"><span style="flex:1">Post approved items</span><span class="muted" style="font-size:11.5px">after approval only</span></label>
+              <label style="display:flex;align-items:center;gap:10px;font-size:12.5px"><input type="checkbox" style="width:15px;height:15px;margin:0;accent-color:#1A1B1E"><span style="flex:1">Vote or join subreddits</span></label>
+              <label style="display:flex;align-items:center;gap:10px;font-size:12.5px"><input type="checkbox" style="width:15px;height:15px;margin:0;accent-color:#1A1B1E"><span style="flex:1">Change account settings</span><span class="chip chip-mid">Owner only</span></label>
+            </div>
+
+            <div style="display:flex;gap:8px;border-top:1px solid #EFEFEC;padding-top:14px">
+              <a class="btn" href="BrowserSession.dc.html">Take over browser</a>
+              <button class="btn btn-ghost">Clear session</button>
+              <div style="flex:1"></div>
+              <button class="btn btn-ghost" style="color:#B91C1C">Delete profile</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1040}}'>
+const P = [
+  { id: 1, name: 'Jane · Chrome', fp: 'macOS 15 · 1512×982', acct: 'u/jane_from_acme', owner: 'Jane Park · Founder', ownerFirst: 'Jane', ownerPlace: 'Boston, US', agent: 'Maya', ini: 'M', avBg: '#6D5BD0', proxy: 'us-ma-0417', proxyType: 'Residential · sticky', region: 'Boston, US', regionOk: true, status: 'Running', last: 'Now · 14 min', action: 'View', host: 'brd.superproxy.io', port: '22225', user: 'tl-acme-jane', ip: '73.218.44.19', loc: 'Boston, MA', lat: '142 ms', tz: 'America/New_York', lang: 'en-US', since: 'Sep 12', testedAt: '8 min ago' },
+  { id: 2, name: 'Leo · Chrome', fp: 'Windows 11 · 1920×1080', acct: 'u/leo_acme_founder', owner: 'Leo Martins · Founder', ownerFirst: 'Leo', ownerPlace: 'Lisbon, PT', agent: 'Leo', ini: 'L', avBg: '#0F766E', proxy: 'pt-lis-0088', proxyType: 'Residential · sticky', region: 'Lisbon, PT', regionOk: true, status: 'Running', last: 'Now · 3 min', action: 'View', host: 'brd.superproxy.io', port: '22225', user: 'tl-acme-leo', ip: '85.246.102.7', loc: 'Lisbon, PT', lat: '96 ms', tz: 'Europe/Lisbon', lang: 'pt-PT, en', since: 'Oct 2', testedAt: '1 h ago' },
+  { id: 3, name: 'Sam · Chrome', fp: 'macOS 14 · 1440×900', acct: 'u/sam_acme_support', owner: 'Sam Okafor · Support', ownerFirst: 'Sam', ownerPlace: 'Austin, US', agent: 'Sam', ini: 'S', avBg: '#475569', proxy: 'us-ny-0912', proxyType: 'Datacenter · rotating', region: 'New York, US', regionOk: false, status: 'Check', last: 'Yesterday · 41 min', action: 'Fix', host: 'proxy.oxylabs.io', port: '7777', user: 'tl-acme-sam', ip: '104.21.8.230', loc: 'New York, NY', lat: '210 ms', tz: 'America/Chicago', lang: 'en-US', since: 'Oct 20', testedAt: '2 d ago' }
+];
+class Component extends DCLogic {
+  state = { sel: 1 };
+  renderVals() {
+    const profiles = P.map(p => ({
+      ...p,
+      regionChip: p.regionOk ? 'chip chip-ok' : 'chip chip-warn',
+      statusChip: p.status === 'Running' ? 'chip chip-ok' : (p.status === 'Check' ? 'chip chip-warn' : 'chip chip-mid'),
+      statusDot: p.status === 'Running' ? '#15803D' : (p.status === 'Check' ? '#B9700A' : '#9A9DA4'),
+      bg: p.id === this.state.sel ? '#F2F2EF' : 'transparent',
+      pick: () => this.setState({ sel: p.id })
+    }));
+    const s = P.find(p => p.id === this.state.sel) || P[0];
+    const sel = { ...s, testChip: s.regionOk ? 'chip chip-ok' : 'chip chip-warn', testLabel: s.regionOk ? 'Healthy' : 'Region mismatch', locChip: s.regionOk ? 'chip chip-ok' : 'chip chip-warn', locLabel: s.regionOk ? 'matches owner' : 'owner is in ' + s.ownerPlace };
+    return { profiles, sel };
+  }
+}
+</script>
+</body>
+</html>

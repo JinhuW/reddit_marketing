@@ -1,0 +1,35 @@
+{
+  "cookies": [
+    {
+      "name": "authjs.callback-url",
+      "value": "http%3A%2F%2Flocalhost%3A3000%2F",
+      "domain": "localhost",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "authjs.csrf-token",
+      "value": "6b2748612d3203375327f0e06e5438105451d21044a020fd22a99b51fd403c77%7C290f30ef80ebe749beb5e37061554192977fd6cb275756a5b40f86bb06e384ad",
+      "domain": "localhost",
+      "path": "/",
+      "expires": -1,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "authjs.session-token",
+      "value": "5b5ca02a-2b6c-4fb2-a6bc-70db87a9bd79",
+      "domain": "localhost",
+      "path": "/",
+      "expires": 1796626258.996609,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": []
+}

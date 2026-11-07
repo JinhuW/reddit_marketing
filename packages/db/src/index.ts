@@ -1,0 +1,15 @@
+export { prisma } from './client';
+export * as members from './repos/members';
+export * as audit from './repos/audit';
+export * as shell from './repos/shell';
+export * as dashboard from './repos/dashboard';
+export * as opportunities from './repos/opportunities';
+export * as drafts from './repos/drafts';
+export * as conversations from './repos/conversations';
+export * as leads from './repos/leads';
+export * as agents from './repos/agents';
+export * as accounts from './repos/accounts';
+export * as analytics from './repos/analytics';
+export * as tracking from './repos/tracking';
+export * as browsers from './repos/browsers';
+export * as settings from './repos/settings';

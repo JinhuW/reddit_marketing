@@ -1,0 +1,97 @@
+/* Threadline design tokens — docs/PLAN.md §7. Light is the default; dark via
+   [data-theme="dark"] on <html>, or prefers-color-scheme when no explicit choice. */
+:root {
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --surface-2: #fafaf8;
+  --surface-3: #f2f2ef; /* hover / input ground */
+  --line: #e6e6e2;
+  --line-soft: #f0f0ed;
+  --line-strong: #cfcfc9;
+  --ink: #1a1b1e;
+  --ink-2: #3f4248;
+  --ink-3: #5c5f66;
+  --muted: #6b6e75;
+  --faint: #8a8d94;
+  --neutral-soft: #e9e9e5;
+  --accent: #c2410c;
+  --accent-hover: #a8360a;
+  --accent-soft: #fef0e6;
+  --ok: #15803d;
+  --ok-soft: #e3f4e8;
+  --warn: #8a5a00;
+  --warn-soft: #fdf3d7;
+  --bad: #b91c1c;
+  --bad-soft: #fde8e8;
+  --inverse: #1a1b1e;
+  --inverse-ink: #ffffff;
+  --avatar-me: #d7dce8;
+  --agent-maya: #6d5bd0;
+  --agent-leo: #0f766e;
+  --agent-sam: #475569;
+  --radius-panel: 16px;
+  --radius-card: 12px;
+  --radius-control: 9px;
+  --radius-pill: 999px;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg: #121315;
+  --surface: #1b1c1f;
+  --surface-2: #212327;
+  --surface-3: #26282c;
+  --line: #2c2e33;
+  --line-soft: #26282c;
+  --line-strong: #3a3d43;
+  --ink: #f2f2ef;
+  --ink-2: #c9cbd0;
+  --ink-3: #b0b3b9;
+  --muted: #9a9da4;
+  --faint: #80838a;
+  --neutral-soft: #2c2e33;
+  --accent: #f0703a;
+  --accent-hover: #f48a5c;
+  --accent-soft: #3a2217;
+  --ok: #4ade80;
+  --ok-soft: #16321f;
+  --warn: #fbbf24;
+  --warn-soft: #3a2e0f;
+  --bad: #f87171;
+  --bad-soft: #3b1a1a;
+  --inverse: #f2f2ef;
+  --inverse-ink: #121315;
+  --avatar-me: #3a4252;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    --bg: #121315;
+    --surface: #1b1c1f;
+    --surface-2: #212327;
+    --surface-3: #26282c;
+    --line: #2c2e33;
+    --line-soft: #26282c;
+    --line-strong: #3a3d43;
+    --ink: #f2f2ef;
+    --ink-2: #c9cbd0;
+    --ink-3: #b0b3b9;
+    --muted: #9a9da4;
+    --faint: #80838a;
+    --neutral-soft: #2c2e33;
+    --accent: #f0703a;
+    --accent-hover: #f48a5c;
+    --accent-soft: #3a2217;
+    --ok: #4ade80;
+    --ok-soft: #16321f;
+    --warn: #fbbf24;
+    --warn-soft: #3a2e0f;
+    --bad: #f87171;
+    --bad-soft: #3b1a1a;
+    --inverse: #f2f2ef;
+    --inverse-ink: #121315;
+    --avatar-me: #3a4252;
+    color-scheme: dark;
+  }
+}

@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Approvals</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0;background:#F7F7F5}
+a{color:#1A1B1E;text-decoration:none}a:hover{color:#C2410C}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:9px;border:1px solid #E6E6E2;background:#fff;font:inherit;font-size:13px;font-weight:500;color:#1A1B1E;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#F2F2EF}
+.btn-primary{background:#C2410C;border-color:#C2410C;color:#fff}.btn-primary:hover{background:#A8360A}
+.btn-ghost{border-color:transparent;background:transparent;color:#5C5F66}.btn-ghost:hover{background:#F2F2EF;color:#1A1B1E}
+.panel{background:#fff;border:1px solid #E6E6E2;border-radius:16px}
+.chip{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:600;line-height:1;white-space:nowrap}
+.chip-hot{background:#FEF0E6;color:#C2410C}.chip-mid{background:#E9E9E5;color:#5C5F66}.chip-ok{background:#E3F4E8;color:#15803D}.chip-warn{background:#FDF3D7;color:#8A5A00}.chip-line{background:#fff;border:1px solid #E6E6E2;color:#3F4248;font-weight:500}
+.muted{color:#6B6E75}.num{font-variant-numeric:tabular-nums}
+.av{display:grid;place-items:center;border-radius:999px;font-weight:600;color:#fff;flex:none}
+kbd{font:500 11px Inter,sans-serif;color:#5C5F66;border:1px solid #E6E6E2;border-radius:6px;padding:1px 5px;background:#fff;line-height:1.4}
+.seg{display:inline-flex;background:#EFEFEC;border-radius:10px;padding:3px;gap:2px}
+.seg label{display:flex;align-items:center;justify-content:center;gap:6px;height:28px;padding:0 10px;border-radius:8px;font-size:12.5px;font-weight:500;color:#5C5F66;cursor:pointer}
+.seg input{position:absolute;opacity:0;width:0;height:0}
+.seg label:has(input:checked){background:#fff;color:#1A1B1E;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.drow{display:grid;grid-template-columns:30px minmax(0,1fr);gap:10px;padding:12px 16px;border-bottom:1px solid #F0F0ED;cursor:pointer}
+.drow:hover{background:#FAFAF8}
+textarea{font:inherit}
+</style>
+</helmet>
+<div style="display:flex;flex-wrap:wrap;width:100%;min-height:1040px;background:#F7F7F5;color:#1A1B1E;font-family:Inter,system-ui,sans-serif">
+  <dc-import name="Sidebar" active="approvals" hint-size="232px,1040px"></dc-import>
+  <div style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
+    <dc-import name="Topbar" hint-size="100%,64px"></dc-import>
+    <main style="padding:24px;display:grid;grid-template-columns:380px minmax(0,1fr);gap:20px;align-items:start">
+
+      <section class="panel" style="display:flex;flex-direction:column;min-width:0">
+        <div style="padding:16px 16px 12px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:baseline;gap:8px"><h1 style="margin:0;font-size:18px;font-weight:600">Approvals</h1><span class="num" style="font-size:14px;font-weight:600;color:#C2410C">12</span><div style="flex:1"></div><span class="muted" style="font-size:12px">Oldest waiting 3h</span></div>
+          <div class="seg" style="width:100%"><label style="flex:1"><input type="radio" name="ty" checked="">All 12</label><label style="flex:1"><input type="radio" name="ty">Comments 8</label><label style="flex:1"><input type="radio" name="ty">Posts 1</label><label style="flex:1"><input type="radio" name="ty">DMs 3</label></div>
+        </div>
+        <div style="border-top:1px solid #EFEFEC">
+          <sc-for list="{{ drafts }}" as="d" hint-placeholder-count="7">
+            <div class="drow" style="background:{{ d.bg }}" onClick="{{ d.pick }}">
+              <span class="av" style="width:30px;height:30px;font-size:11px;background:{{ d.avBg }}">{{ d.ini }}</span>
+              <div style="min-width:0;display:flex;flex-direction:column;gap:3px">
+                <div style="display:flex;gap:8px;align-items:center;font-size:12px"><span class="chip chip-line">{{ d.type }}</span><span class="muted">{{ d.sub }}</span><div style="flex:1"></div><span class="num" style="color:{{ d.waitColor }};font-weight:500">{{ d.wait }}</span></div>
+                <div style="font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ d.title }}</div>
+                <div class="muted" style="font-size:12px">{{ d.agent }} drafted · posts from {{ d.acct }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="padding:12px 16px;font-size:12px;display:flex;gap:14px;flex-wrap:wrap" class="muted"><span><kbd>J</kbd> <kbd>K</kbd> move</span><span><kbd>A</kbd> approve</span><span><kbd>E</kbd> edit</span><span><kbd>R</kbd> regenerate</span></div>
+      </section>
+
+      <section class="panel" style="display:flex;flex-direction:column;gap:18px;padding:18px 22px 22px;min-width:0">
+        <div style="display:flex;align-items:center;gap:10px;font-size:13px;flex-wrap:wrap"><span class="chip chip-line">Comment reply</span><span class="muted">Drafted by Maya 41 min ago · 1 of 12</span><div style="flex:1"></div><button class="btn" style="width:32px;padding:0;justify-content:center" aria-label="Previous draft">↑</button><button class="btn" style="width:32px;padding:0;justify-content:center" aria-label="Next draft">↓</button></div>
+
+        <div style="background:#FAFAF8;border:1px solid #EFEFEC;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px">
+          <div class="muted" style="font-size:12px">r/projectmanagement · u/ops_tom · 3h · 42 upvotes · 31 comments</div>
+          <div style="font-size:15px;font-weight:600;line-height:1.35">Looking for a simple Asana alternative for a 6-person team</div>
+          <div style="font-size:13px;line-height:1.5;color:#3F4248">We’re a 6-person agency and Asana pricing jumped when we added two contractors. Need boards, due dates and client guest access. Budget is maybe $50/mo total…</div>
+          <div class="muted" style="font-size:12px;margin-top:4px">Replying to the post as a top-level comment</div>
+        </div>
+
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px"><span style="font-weight:600">Draft</span><span class="muted">editable</span><div style="flex:1"></div><span class="muted num">612 characters · 1 link</span></div>
+          <textarea aria-label="Draft reply" style="width:100%;box-sizing:border-box;min-height:188px;padding:14px 16px;border:1px solid #1A1B1E;border-radius:12px;background:#fff;font-size:14.5px;line-height:1.6;color:#1A1B1E;resize:vertical">We hit the same wall at 6 people — Asana felt built for a 60-person org. What mattered for us: one board per project instead of nested workspaces, free guests for clients, and no per-seat jump past 5 users.
+
+Disclosure: I work on Acme, so I’m biased. Here’s an honest comparison against Asana and ClickUp for small teams: acme.so/r/pm-6team
+
+Happy to answer anything, even if you end up going with something else.</textarea>
+        </div>
+
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px">
+          <div style="border:1px solid #EFEFEC;border-radius:12px;overflow:hidden">
+            <div style="padding:10px 14px;border-bottom:1px solid #EFEFEC;display:flex;align-items:center;gap:8px;font-size:12.5px"><span style="font-weight:600">Rule check</span><span class="chip chip-ok">4 pass</span><span class="chip chip-warn">1 warn</span></div>
+            <sc-for list="{{ rules }}" as="r" hint-placeholder-count="5">
+              <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;padding:9px 14px;border-bottom:1px solid #F0F0ED;font-size:13px;line-height:1.4;align-items:start">
+                <span class="{{ r.chip }}" style="margin-top:1px">{{ r.s }}</span>
+                <div><div style="font-weight:500">{{ r.t }}</div><div class="muted" style="font-size:12px">{{ r.d }}</div></div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div style="border:1px solid #EFEFEC;border-radius:12px;padding:12px 14px">
+              <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:6px"><span class="av" style="width:20px;height:20px;font-size:9px;background:#6D5BD0">M</span><span style="font-weight:600">Why this reply</span></div>
+              <div style="font-size:13px;line-height:1.55;color:#3F4248">OP named three needs (boards, due dates, guests) and a budget. I answered those first, disclosed up front, and linked the small-team comparison because the sub allows one relevant link. I avoided pricing claims about Asana.</div>
+            </div>
+            <div style="border:1px solid #EFEFEC;border-radius:12px;padding:12px 14px">
+              <div style="font-size:12.5px;font-weight:600;margin-bottom:4px">Tracked link <span class="muted" style="font-weight:400">· inserted automatically</span></div>
+              <div style="font-size:14px;font-weight:600">acme.so/r/pm-6team</div>
+              <div style="font-size:12px;line-height:1.6;color:#5C5F66;word-break:break-all;margin-top:4px">acme.so/compare/asana?<b style="color:#1A1B1E;font-weight:500">utm_source</b>=reddit&amp;<b style="color:#1A1B1E;font-weight:500">utm_medium</b>=comment&amp;<b style="color:#1A1B1E;font-weight:500">utm_campaign</b>=projectmanagement&amp;<b style="color:#1A1B1E;font-weight:500">utm_content</b>=t3_1h8k2q&amp;<b style="color:#1A1B1E;font-weight:500">utm_term</b>=maya</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid #EFEFEC;padding-top:16px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#FAFAF8;border-radius:12px;padding:10px 14px">
+            <span class="av" style="width:34px;height:34px;font-size:12px;background:#D7DCE8;color:#1A1B1E">JP</span>
+            <div style="line-height:1.3;flex:1;min-width:240px"><div style="font-size:14px">Posting as <b style="font-weight:600">u/jane_from_acme</b> <span class="muted">· Founder</span></div><div class="muted" style="font-size:12px">Approver: Jane Park · logged to the audit trail with timestamp</div></div>
+            <span class="chip chip-ok">Disclosed</span>
+            <span class="chip chip-line">Own account · Reddit OAuth</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input aria-label="Regenerate instruction" placeholder="Regenerate with an instruction, e.g. “shorter, skip the link”" style="flex:1;min-width:240px;height:36px;box-sizing:border-box;padding:0 12px;border:1px solid #E6E6E2;border-radius:10px;font:inherit;font-size:13px;background:#fff">
+            <button class="btn" style="height:36px">Regenerate <kbd>R</kbd></button>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-ghost">Reject with reason</button>
+            <button class="btn">Schedule</button>
+            <button class="btn">Edit <kbd>E</kbd></button>
+            <div style="flex:1"></div>
+            <button class="btn btn-primary" style="height:40px;padding:0 18px;font-size:14px;border-radius:12px">Approve and post <kbd style="color:#fff;border-color:rgba(255,255,255,.4);background:transparent">A</kbd></button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1040}}'>
+const AV = { Maya: '#6D5BD0', Leo: '#0F766E', Sam: '#475569' };
+const DRAFTS = [
+  { id: 1, agent: 'Maya', type: 'Comment', sub: 'r/projectmanagement', wait: '41m', hot: false, title: 'We hit the same wall at 6 people — Asana felt built for…', acct: 'u/jane_from_acme' },
+  { id: 2, agent: 'Leo', type: 'Post', sub: 'r/SaaS', wait: '3h', hot: true, title: 'We rebuilt our PM tool around teams under 10. Ask me anything', acct: 'u/leo_acme_founder' },
+  { id: 3, agent: 'Leo', type: 'Comment', sub: 'r/SaaS', wait: '1h', hot: false, title: 'Speed was the reason we left ClickUp too. Two things helped…', acct: 'u/leo_acme_founder' },
+  { id: 4, agent: 'Sam', type: 'DM follow-up', sub: 'u/ops_kat', wait: '26m', hot: false, title: 'Yes — guests are free and can only see shared boards…', acct: 'u/sam_acme_support' },
+  { id: 5, agent: 'Maya', type: 'Comment', sub: 'r/startups', wait: '18m', hot: false, title: 'For 8 people I’d keep it to one board per squad and…', acct: 'u/jane_from_acme' },
+  { id: 6, agent: 'Maya', type: 'Comment', sub: 'r/productivity', wait: '2h', hot: true, title: 'If you love Notion docs, keep them — move just the tasks…', acct: 'u/jane_from_acme' },
+  { id: 7, agent: 'Sam', type: 'DM follow-up', sub: 'u/devon_builds', wait: '9m', hot: false, title: 'Thanks for trying the trial! The import from Trello…', acct: 'u/sam_acme_support' }
+];
+class Component extends DCLogic {
+  state = { sel: 1 };
+  renderVals() {
+    const drafts = DRAFTS.map(d => ({ ...d, ini: d.agent[0], avBg: AV[d.agent], waitColor: d.hot ? '#C2410C' : '#6B6E75', bg: d.id === this.state.sel ? '#F2F2EF' : 'transparent', pick: () => this.setState({ sel: d.id }) }));
+    const pass = { s: 'Pass', chip: 'chip chip-ok' }, warn = { s: 'Warn', chip: 'chip chip-warn' };
+    return {
+      drafts,
+      rules: [
+        { ...pass, t: 'Disclosure present', d: '“I work on Acme” found in paragraph 2' },
+        { ...pass, t: 'Subreddit link rule', d: 'r/projectmanagement allows 1 relevant link · draft has 1' },
+        { ...warn, t: 'Self-promo ratio this week', d: 'u/jane_from_acme at 9% (1 of 11). This reply makes it 17% · guideline 10%' },
+        { ...pass, t: 'Daily posting limit', d: '3 of 5 used today' },
+        { ...pass, t: 'Account eligible here', d: 'Karma 2,410 · 3 years old · meets sub minimums' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

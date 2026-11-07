@@ -1,0 +1,25 @@
+{
+  "name": "threadline",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "test": "turbo run test",
+    "test:e2e": "pnpm --filter @threadline/web test:e2e",
+    "db:migrate": "pnpm --filter @threadline/db migrate",
+    "db:migrate:deploy": "pnpm --filter @threadline/db migrate:deploy",
+    "db:seed": "pnpm --filter @threadline/db seed",
+    "db:studio": "pnpm --filter @threadline/db studio",
+    "browser:build": "docker build -t threadline/browser-profile:latest apps/browser-profile"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "turbo": "2.5.8",
+    "typescript": "5.9.3"
+  }
+}

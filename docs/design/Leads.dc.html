@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Leads</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0;background:#F7F7F5}
+a{color:#1A1B1E;text-decoration:none}a:hover{color:#C2410C}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:9px;border:1px solid #E6E6E2;background:#fff;font:inherit;font-size:13px;font-weight:500;color:#1A1B1E;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#F2F2EF}
+.btn-primary{background:#C2410C;border-color:#C2410C;color:#fff}.btn-primary:hover{background:#A8360A}
+.panel{background:#fff;border:1px solid #E6E6E2;border-radius:16px}
+.chip{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:600;line-height:1;white-space:nowrap}
+.chip-hot{background:#FEF0E6;color:#C2410C}.chip-mid{background:#E9E9E5;color:#5C5F66}.chip-ok{background:#E3F4E8;color:#15803D}.chip-line{background:#fff;border:1px solid #E6E6E2;color:#3F4248;font-weight:500}
+.muted{color:#6B6E75}.num{font-variant-numeric:tabular-nums}
+.av{display:grid;place-items:center;border-radius:999px;font-weight:600;color:#fff;flex:none}
+.seg{display:inline-flex;background:#EFEFEC;border-radius:10px;padding:3px;gap:2px}
+.seg label{display:flex;align-items:center;justify-content:center;height:28px;padding:0 12px;border-radius:8px;font-size:12.5px;font-weight:500;color:#5C5F66;cursor:pointer}
+.seg input{position:absolute;opacity:0;width:0;height:0}
+.seg label:has(input:checked){background:#fff;color:#1A1B1E;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.lcard{background:#fff;border:1px solid #E6E6E2;border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;cursor:grab}
+.lcard:hover{border-color:#CFCFC9}
+.table{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap}
+.table th{text-align:left;font-weight:500;color:#6B6E75;font-size:12px;padding:10px 12px;border-bottom:1px solid #E6E6E2}
+.table td{padding:11px 12px;border-bottom:1px solid #F0F0ED;vertical-align:middle}
+.table tr:hover td{background:#FAFAF8}
+</style>
+</helmet>
+<div style="display:flex;flex-wrap:wrap;width:100%;min-height:1040px;background:#F7F7F5;color:#1A1B1E;font-family:Inter,system-ui,sans-serif">
+  <dc-import name="Sidebar" active="leads" hint-size="232px,1040px"></dc-import>
+  <div style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
+    <dc-import name="Topbar" hint-size="100%,64px"></dc-import>
+    <main style="padding:24px;display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:240px"><h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.01em">Leads</h1><div class="muted" style="font-size:13px;margin-top:4px">214 people who engaged · $3,960 open pipeline · synced to HubSpot 4 min ago</div></div>
+        <div class="seg">
+          <label onClick="{{ setKanban }}"><input type="radio" name="lv" checked="{{ isKanban }}" readOnly="">Kanban</label>
+          <label onClick="{{ setTable }}"><input type="radio" name="lv" checked="{{ isTable }}" readOnly="">Table</label>
+        </div>
+        <button class="btn">Filters</button>
+        <button class="btn">Export CSV</button>
+      </div>
+
+      <sc-if value="{{ isKanban }}" hint-placeholder-val="{{ true }}">
+        <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px;align-items:start">
+          <sc-for list="{{ cols }}" as="col" hint-placeholder-count="7">
+            <div style="display:flex;flex-direction:column;gap:8px;min-width:0;background:#EFEFEC;border-radius:14px;padding:8px">
+              <div style="padding:4px 6px;display:flex;align-items:center;gap:6px"><span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ col.name }}</span><span class="num muted" style="font-size:12px">{{ col.n }}</span><div style="flex:1"></div><span class="num" style="font-size:11.5px;font-weight:500;color:{{ col.vColor }}">{{ col.v }}</span></div>
+              <sc-for list="{{ col.cards }}" as="c" hint-placeholder-count="3">
+                <a class="lcard" href="LeadDetail.dc.html">
+                  <div style="display:flex;align-items:center;gap:6px"><span style="font-size:13px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.u }}</span><span class="{{ c.chip }}" style="height:18px;padding:0 6px">{{ c.score }}</span></div>
+                  <div class="muted" style="font-size:12px">{{ c.sub }}</div>
+                  <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;border-top:1px solid #F0F0ED;padding-top:7px" class="muted"><span class="av" style="width:18px;height:18px;font-size:8px;background:#D7DCE8;color:#1A1B1E">{{ c.o }}</span><span style="flex:1">{{ c.t }}</span><span class="num" style="font-weight:600;color:#1A1B1E">{{ c.val }}</span></div>
+                </a>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isTable }}" hint-placeholder-val="{{ false }}">
+        <div class="panel" style="overflow-x:auto">
+          <table class="table">
+            <thead><tr><th>Username</th><th>First seen thread</th><th>Subreddits</th><th>Stage</th><th style="text-align:right">Intent</th><th>Agent</th><th>Owner</th><th>Last touch</th><th style="text-align:right">Clicks</th><th>Signup email</th><th style="text-align:right">Revenue</th><th>Tags</th></tr></thead>
+            <tbody>
+              <sc-for list="{{ rows }}" as="r" hint-placeholder-count="10">
+                <tr><td style="font-weight:600">{{ r.u }}</td><td style="max-width:240px;overflow:hidden;text-overflow:ellipsis" class="muted">{{ r.thread }}</td><td>{{ r.subs }}</td><td><span class="chip chip-line">{{ r.stage }}</span></td><td class="num" style="text-align:right;font-weight:600">{{ r.score }}</td><td>{{ r.agent }}</td><td>{{ r.o }}</td><td class="muted">{{ r.t }}</td><td class="num" style="text-align:right">{{ r.clicks }}</td><td class="muted">{{ r.email }}</td><td class="num" style="text-align:right;font-weight:600">{{ r.rev }}</td><td class="muted">{{ r.tags }}</td></tr>
+              </sc-for>
+            </tbody>
+          </table>
+          <div style="display:flex;justify-content:space-between;font-size:12px;padding:12px 14px" class="muted"><span>Showing 10 of 214</span><span>Saved view: Hot this week</span></div>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"view":{"editor":"enum","options":["kanban","table"],"default":"kanban","tsType":"string"},"$preview":{"width":1440,"height":1040}}'>
+const L = [
+  ['u/quiet_lists','r/productivity',58,'2d','JP','','New','Notion for task tracking feels like overkill','Maya',0,'','—','notion'],
+  ['u/pm_lena','r/projectmanagement',52,'3d','SO','','New','Looking for a simple Asana alternative','Maya',0,'','—',''],
+  ['u/remote_raj','r/startups',87,'1h','JP','','Engaged','What do you use to run sprints…','Maya',2,'','—','remote'],
+  ['u/agency_ines','r/Entrepreneur',70,'5h','LM','','Engaged','Keeping client projects on track','Leo',1,'','—','agency'],
+  ['u/bootstrapped_ben','r/SaaS',91,'26m','LM','$180','Replied','ClickUp is getting too bloated','Leo',3,'','—','clickup'],
+  ['u/ops_kat','r/projectmanagement',88,'10m','JP','$49','Interested','Looking for a simple Asana alternative','Sam',4,'','—','agency, asana'],
+  ['u/tara_ships','r/SaaS',79,'1d','LM','$98','Interested','Per-seat pricing is killing us','Leo',2,'','—',''],
+  ['u/devon_builds','r/projectmanagement',84,'1h','SO','$147','Trial / Demo','Trello is fine until it isn’t','Sam',6,'devon@tinyhq.co','—','trial'],
+  ['u/mkt_rhea','r/startups',81,'3h','JP','$98','Trial / Demo','Best tool for a 5-person marketing team?','Maya',5,'rhea@brightloop.io','—','trial'],
+  ['u/fernhill_ops','r/SaaS',90,'Nov 2','LM','$490','Customer','Moving off Asana — lessons?','Leo',9,'ops@fernhill.io','$490','annual'],
+  ['u/kito_pm','r/projectmanagement',76,'Oct 29','JP','$147','Customer','Guest access in PM tools','Maya',4,'kito@studiokito.com','$147',''],
+  ['u/solo_sana','r/productivity',40,'Oct 27','SO','','Lost','Free alternatives to Notion?','Maya',1,'','—','price']
+];
+const STAGES = [['New','12','—'],['Engaged','64','—'],['Replied','58','$180'],['Interested','31','$1,470'],['Trial / Demo','18','$2,310'],['Customer','9','$4,320'],['Lost','22','—']];
+class Component extends DCLogic {
+  state = { view: null };
+  renderVals() {
+    const v = this.state.view ?? this.props.view ?? 'kanban';
+    const cols = STAGES.map(([name, n, val]) => ({ name, n, v: val, vColor: name === 'Customer' ? '#C2410C' : '#6B6E75', cards: L.filter(l => l[6] === name).map(l => ({ u: l[0], sub: l[1], score: l[2], chip: l[2] >= 80 ? 'chip chip-hot' : 'chip chip-mid', t: l[3], o: l[4], val: l[5] })) }));
+    const rows = L.slice(2).map(l => ({ u: l[0], subs: l[1], score: l[2], t: l[3], o: l[4], stage: l[6], thread: l[7], agent: l[8], clicks: l[9], email: l[10] || '—', rev: l[11], tags: l[12] || '—' }));
+    return { cols, rows, isKanban: v === 'kanban', isTable: v === 'table', setKanban: () => this.setState({ view: 'kanban' }), setTable: () => this.setState({ view: 'table' }) };
+  }
+}
+</script>
+</body>
+</html>

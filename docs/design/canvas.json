@@ -1,0 +1,30 @@
+{
+  "v": 3,
+  "createdOnFiles": {"v": 1, "at": "2026-11-07T06:10:00Z"},
+  "title": "Threadline — Rounded Inter",
+  "launch": {"view": "canvas"},
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {"x": 0, "y": 0, "w": 1440, "h": 1040, "title": "1 · Home", "expand": "fill", "is_interactive": true, "radius": 16},
+    "Opportunities.dc.html": {"x": 1520, "y": 0, "w": 1440, "h": 1040, "title": "2 · Opportunities", "expand": "fill", "is_interactive": true, "radius": 16},
+    "Approvals.dc.html": {"x": 3040, "y": 0, "w": 1440, "h": 1040, "title": "3 · Approvals", "expand": "fill", "is_interactive": true, "radius": 16},
+    "Conversations.dc.html": {"x": 4560, "y": 0, "w": 1440, "h": 1040, "title": "4 · Conversations", "expand": "fill", "is_interactive": true, "radius": 16},
+    "Leads.dc.html": {"x": 0, "y": 1160, "w": 1440, "h": 1040, "title": "5 · Leads", "expand": "fill", "is_interactive": true, "radius": 16},
+    "LeadDetail.dc.html": {"x": 1520, "y": 1160, "w": 1440, "h": 1040, "title": "5b · Lead detail", "expand": "fill", "is_interactive": true, "radius": 16},
+    "Agents.dc.html": {"x": 3040, "y": 1160, "w": 1440, "h": 1040, "title": "6 · Agents", "expand": "fill", "is_interactive": true, "radius": 16},
+    "Analytics.dc.html": {"x": 4560, "y": 1160, "w": 1440, "h": 1040, "title": "7 · Analytics", "expand": "fill", "is_interactive": true, "radius": 16},
+    "Tracking.dc.html": {"x": 0, "y": 2320, "w": 1440, "h": 1040, "title": "8 · Tracking", "expand": "fill", "is_interactive": true, "radius": 16},
+    "Accounts.dc.html": {"x": 1520, "y": 2320, "w": 1440, "h": 1040, "title": "9 · Accounts", "expand": "fill", "is_interactive": true, "radius": 16},
+    "Settings.dc.html": {"x": 3040, "y": 2320, "w": 1440, "h": 1040, "title": "10 · Settings", "expand": "fill", "is_interactive": true, "radius": 16},
+    "Browsers.dc.html": {"x": 4560, "y": 2320, "w": 1440, "h": 1040, "title": "9b · Browsers and proxies", "expand": "fill", "is_interactive": true, "radius": 16},
+    "BrowserSession.dc.html": {"x": 6080, "y": 2320, "w": 1440, "h": 1040, "title": "9c · Remote session (VNC)", "expand": "fill", "is_interactive": true, "radius": 16},
+    "Sidebar.dc.html": {"x": 0, "y": 3480, "w": 232, "h": 900, "title": "Sidebar (component)", "radius": 16},
+    "Topbar.dc.html": {"x": 312, "y": 3480, "w": 1208, "h": 64, "title": "Topbar (component)", "radius": 16}
+  },
+  "order": ["Main.dc.html", "Opportunities.dc.html", "Approvals.dc.html", "Conversations.dc.html", "Leads.dc.html", "LeadDetail.dc.html", "Agents.dc.html", "Analytics.dc.html", "Tracking.dc.html", "Accounts.dc.html", "Settings.dc.html", "Browsers.dc.html", "BrowserSession.dc.html", "Sidebar.dc.html", "Topbar.dc.html"],
+  "notes": {
+    "t1": {"x": 0, "y": -300, "text": "Threadline — light mode screens", "kind": "title1", "maxW": 6000},
+    "t2": {"x": 0, "y": 3220, "text": "Shared shell components", "kind": "title1", "maxW": 1520}
+  },
+  "designSystems": []
+}

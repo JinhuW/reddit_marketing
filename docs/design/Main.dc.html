@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Home</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0;background:#F7F7F5}
+a{color:#1A1B1E;text-decoration:none}a:hover{color:#C2410C}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:9px;border:1px solid #E6E6E2;background:#fff;font:inherit;font-size:13px;font-weight:500;color:#1A1B1E;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#F2F2EF}
+.btn-primary{background:#C2410C;border-color:#C2410C;color:#fff}.btn-primary:hover{background:#A8360A}
+.btn-ghost{border-color:transparent;background:transparent;color:#5C5F66}.btn-ghost:hover{background:#F2F2EF;color:#1A1B1E}
+.panel{background:#fff;border:1px solid #E6E6E2;border-radius:16px}
+.chip{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:600;line-height:1;white-space:nowrap}
+.chip-hot{background:#FEF0E6;color:#C2410C}.chip-mid{background:#E9E9E5;color:#5C5F66}.chip-ok{background:#E3F4E8;color:#15803D}.chip-line{background:#fff;border:1px solid #E6E6E2;color:#3F4248}
+.muted{color:#6B6E75}.num{font-variant-numeric:tabular-nums}
+.av{display:grid;place-items:center;border-radius:999px;font-weight:600;color:#fff;flex:none}
+.table{width:100%;border-collapse:collapse;font-size:13px}
+.table th{text-align:left;font-weight:500;color:#6B6E75;font-size:12px;padding:8px 10px;border-bottom:1px solid #E6E6E2;white-space:nowrap}
+.table td{padding:10px;border-bottom:1px solid #F0F0ED;vertical-align:middle}
+.table tr:last-child td{border-bottom:0}
+.sect-h{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid #EFEFEC}
+.sect-h h2{margin:0;font-size:14px;font-weight:600}
+.row:hover{background:#FAFAF8}
+</style>
+</helmet>
+<div style="display:flex;flex-wrap:wrap;width:100%;min-height:1040px;background:#F7F7F5;color:#1A1B1E;font-family:Inter,system-ui,sans-serif">
+  <dc-import name="Sidebar" active="home" hint-size="232px,1040px"></dc-import>
+  <div style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
+    <dc-import name="Topbar" hint-size="100%,64px"></dc-import>
+    <main style="padding:24px;display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap">
+        <div style="flex:1;min-width:240px"><h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.01em">Good morning, Jane</h1><div class="muted" style="font-size:13px;margin-top:4px">Saturday, November 7 · 12 drafts are waiting for you</div></div>
+        <a class="btn btn-primary" href="Approvals.dc.html">Review approvals</a>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px">
+        <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="6">
+          <div class="panel" style="padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-width:0">
+            <div class="muted" style="font-size:12px;line-height:1.3">{{ k.label }}</div>
+            <div style="display:flex;align-items:baseline;gap:8px"><span class="num" style="font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1">{{ k.value }}</span><span class="chip" style="background:{{ k.deltaBg }};color:{{ k.deltaFg }}">{{ k.delta }}</span></div>
+            <svg viewBox="0 0 120 28" preserveAspectRatio="none" aria-hidden="true" style="width:100%;height:28px;display:block"><polyline points="{{ k.pts }}" fill="none" stroke="{{ k.stroke }}" stroke-width="1.75" stroke-linejoin="round" vector-effect="non-scaling-stroke"></polyline></svg>
+            <div class="muted" style="font-size:11.5px">{{ k.period }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:20px;align-items:start">
+        <div style="display:flex;flex-direction:column;gap:20px;min-width:0">
+          <section class="panel">
+            <div class="sect-h"><h2>Hot opportunities</h2><span class="muted" style="font-size:12px">Top 5 by intent score · 38 new today</span><div style="flex:1"></div><a class="btn btn-ghost" href="Opportunities.dc.html" style="height:28px">View all</a></div>
+            <sc-for list="{{ opps }}" as="o" hint-placeholder-count="5">
+              <div class="row" style="display:grid;grid-template-columns:56px minmax(0,1fr) auto auto;gap:14px;align-items:center;padding:12px 18px;border-bottom:1px solid #F0F0ED">
+                <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-start"><span class="num" style="font-size:20px;font-weight:600;line-height:1;letter-spacing:-0.02em">{{ o.score }}</span><span class="{{ o.chip }}">{{ o.level }}</span></div>
+                <div style="min-width:0">
+                  <div style="font-size:14px;font-weight:500;line-height:1.35;text-wrap:pretty">{{ o.title }}</div>
+                  <div class="muted" style="font-size:12px;margin-top:3px;display:flex;gap:10px;flex-wrap:wrap"><span style="color:#3F4248;font-weight:500">{{ o.sub }}</span><span>{{ o.age }}</span><span>{{ o.up }} upvotes</span><span>{{ o.com }} comments</span></div>
+                </div>
+                <span class="av" title="{{ o.agent }}" style="width:28px;height:28px;font-size:11px;background:{{ o.avBg }}">{{ o.ini }}</span>
+                <button class="btn">Draft reply</button>
+              </div>
+            </sc-for>
+          </section>
+
+          <section class="panel">
+            <div class="sect-h"><h2>Funnel</h2><span class="muted" style="font-size:12px">Unique people, last 30 days</span></div>
+            <div style="padding:16px 18px 18px;display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{ funnel }}" as="f" hint-placeholder-count="6">
+                <div style="display:grid;grid-template-columns:120px minmax(0,1fr) 92px;gap:12px;align-items:center;font-size:13px">
+                  <span style="font-weight:500">{{ f.stage }}</span>
+                  <div style="height:22px;border-radius:999px;background:#F2F2EF;overflow:hidden"><div style="height:100%;width:{{ f.w }};border-radius:999px;background:{{ f.fill }}"></div></div>
+                  <span class="num" style="text-align:right"><b style="font-weight:600">{{ f.n }}</b> <span class="muted">{{ f.rate }}</span></span>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:20px;min-width:0">
+          <section class="panel">
+            <div class="sect-h"><h2>Agent leaderboard</h2><span class="muted" style="font-size:12px">30 days</span></div>
+            <div style="padding:4px 8px 6px">
+              <table class="table">
+                <thead><tr><th>Agent</th><th style="text-align:right">Approved</th><th style="text-align:right">Replies</th><th style="text-align:right">Leads</th><th style="text-align:right">Revenue</th></tr></thead>
+                <tbody>
+                  <sc-for list="{{ agents }}" as="a" hint-placeholder-count="3">
+                    <tr><td><div style="display:flex;align-items:center;gap:8px"><span class="av" style="width:24px;height:24px;font-size:10px;background:{{ a.avBg }}">{{ a.ini }}</span><div style="line-height:1.2"><div style="font-weight:500">{{ a.name }}</div><div class="muted" style="font-size:11.5px">{{ a.role }}</div></div></div></td><td class="num" style="text-align:right">{{ a.rate }}</td><td class="num" style="text-align:right">{{ a.replies }}</td><td class="num" style="text-align:right">{{ a.leads }}</td><td class="num" style="text-align:right;font-weight:600">{{ a.rev }}</td></tr>
+                  </sc-for>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="sect-h"><h2>Activity</h2><div style="flex:1"></div><a class="btn btn-ghost" href="Settings.dc.html" style="height:28px">Audit log</a></div>
+            <sc-for list="{{ feed }}" as="f" hint-placeholder-count="6">
+              <div style="display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;padding:10px 18px;border-bottom:1px solid #F0F0ED;font-size:13px;line-height:1.4;align-items:start">
+                <span class="chip" style="background:{{ f.bg }};color:{{ f.fg }};margin-top:1px">{{ f.kind }}</span>
+                <span style="text-wrap:pretty">{{ f.text }}</span>
+                <span class="muted num" style="font-size:12px">{{ f.t }}</span>
+              </div>
+            </sc-for>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1040}}'>
+const spark = a => { const mx = Math.max(...a), mn = Math.min(...a); return a.map((v, i) => `${(i / (a.length - 1) * 120).toFixed(1)},${(26 - (v - mn) / ((mx - mn) || 1) * 24).toFixed(1)}`).join(' '); };
+const AV = { Maya: '#6D5BD0', Leo: '#0F766E', Sam: '#475569' };
+const up = { deltaBg: '#E3F4E8', deltaFg: '#15803D' };
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      kpis: [
+        { label: 'New opportunities', period: 'Last 24h vs prior day', value: '38', delta: '+12%', ...up, stroke: '#C2410C', pts: spark([22, 25, 21, 30, 28, 34, 38]) },
+        { label: 'Drafts awaiting approval', period: 'Right now', value: '12', delta: '+4', deltaBg: '#E9E9E5', deltaFg: '#5C5F66', stroke: '#1A1B1E', pts: spark([6, 9, 7, 8, 11, 10, 12]) },
+        { label: 'Replies posted', period: 'Last 7 days', value: '86', delta: '+9%', ...up, stroke: '#1A1B1E', pts: spark([9, 12, 11, 14, 10, 15, 15]) },
+        { label: 'New leads', period: 'Last 7 days', value: '41', delta: '+23%', ...up, stroke: '#1A1B1E', pts: spark([3, 5, 4, 7, 6, 8, 8]) },
+        { label: 'Clicks to site', period: 'Last 7 days', value: '1,284', delta: '+31%', ...up, stroke: '#1A1B1E', pts: spark([140, 152, 171, 160, 198, 221, 242]) },
+        { label: 'Attributed revenue', period: 'Last 30 days', value: '$4,320', delta: '+18%', ...up, stroke: '#1A1B1E', pts: spark([2100, 2400, 2650, 2900, 3300, 3800, 4320]) }
+      ],
+      opps: [
+        { score: 94, level: 'High', chip: 'chip chip-hot', sub: 'r/projectmanagement', age: '3h', up: 42, com: 31, title: 'Looking for a simple Asana alternative for a 6-person team', ini: 'M', agent: 'Maya', avBg: AV.Maya },
+        { score: 91, level: 'High', chip: 'chip chip-hot', sub: 'r/SaaS', age: '5h', up: 118, com: 64, title: 'ClickUp is getting too bloated for us — what are you moving to?', ini: 'L', agent: 'Leo', avBg: AV.Leo },
+        { score: 87, level: 'High', chip: 'chip chip-hot', sub: 'r/startups', age: '2h', up: 27, com: 19, title: 'What do you use to run sprints with a remote team of 8?', ini: 'M', agent: 'Maya', avBg: AV.Maya },
+        { score: 72, level: 'Medium', chip: 'chip chip-mid', sub: 'r/productivity', age: '7h', up: 63, com: 40, title: 'Notion for task tracking feels like overkill. Lighter options?', ini: 'M', agent: 'Maya', avBg: AV.Maya },
+        { score: 64, level: 'Medium', chip: 'chip chip-mid', sub: 'r/Entrepreneur', age: '9h', up: 15, com: 22, title: 'How do you keep client projects from slipping through the cracks?', ini: 'L', agent: 'Leo', avBg: AV.Leo }
+      ],
+      funnel: [
+        { stage: 'Opportunities', n: '1,140', rate: '', w: '100%', fill: '#1A1B1E' },
+        { stage: 'Replies', n: '362', rate: '32%', w: '32%', fill: '#1A1B1E' },
+        { stage: 'Engaged users', n: '241', rate: '67%', w: '21%', fill: '#1A1B1E' },
+        { stage: 'Clicks', n: '198', rate: '82%', w: '17%', fill: '#1A1B1E' },
+        { stage: 'Signups', n: '57', rate: '29%', w: '5%', fill: '#1A1B1E' },
+        { stage: 'Customers', n: '9', rate: '16%', w: '1.5%', fill: '#C2410C' }
+      ],
+      agents: [
+        { ini: 'M', name: 'Maya', role: 'Product Expert', rate: '91%', replies: 184, leads: 112, rev: '$2,140', avBg: AV.Maya },
+        { ini: 'L', name: 'Leo', role: 'Founder Voice', rate: '84%', replies: 121, leads: 78, rev: '$1,780', avBg: AV.Leo },
+        { ini: 'S', name: 'Sam', role: 'Support Follow-ups', rate: '76%', replies: 57, leads: 24, rev: '$400', avBg: AV.Sam }
+      ],
+      feed: [
+        { kind: 'Approved', bg: '#E3F4E8', fg: '#15803D', text: 'Jane approved Maya’s reply in r/projectmanagement · posted as u/jane_from_acme', t: '12m' },
+        { kind: 'New DM', bg: '#1A1B1E', fg: '#fff', text: 'u/ops_kat: “Does it support guest access for clients?”', t: '26m' },
+        { kind: 'Stage', bg: '#E9E9E5', fg: '#5C5F66', text: 'u/devon_builds moved Interested → Trial / Demo', t: '1h' },
+        { kind: 'Draft', bg: '#FEF0E6', fg: '#C2410C', text: 'Leo drafted a launch post for r/SaaS · waiting on Jane', t: '2h' },
+        { kind: 'Signup', bg: '#E3F4E8', fg: '#15803D', text: 'u/mkt_rhea signed up as rhea@brightloop.io from r/startups', t: '3h' },
+        { kind: 'Rejected', bg: '#FDE8E8', fg: '#B91C1C', text: 'Jane rejected Sam’s DM follow-up: “Too salesy for a first touch”', t: '4h' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

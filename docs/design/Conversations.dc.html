@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Conversations</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0;background:#F7F7F5}
+a{color:#1A1B1E;text-decoration:none}a:hover{color:#C2410C}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:9px;border:1px solid #E6E6E2;background:#fff;font:inherit;font-size:13px;font-weight:500;color:#1A1B1E;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#F2F2EF}
+.btn-primary{background:#C2410C;border-color:#C2410C;color:#fff}.btn-primary:hover{background:#A8360A}
+.btn-ghost{border-color:transparent;background:transparent;color:#5C5F66}.btn-ghost:hover{background:#F2F2EF;color:#1A1B1E}
+.panel{background:#fff;border:1px solid #E6E6E2;border-radius:16px}
+.chip{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:600;line-height:1;white-space:nowrap}
+.chip-hot{background:#FEF0E6;color:#C2410C}.chip-mid{background:#E9E9E5;color:#5C5F66}.chip-ok{background:#E3F4E8;color:#15803D}.chip-line{background:#fff;border:1px solid #E6E6E2;color:#3F4248;font-weight:500}
+.muted{color:#6B6E75}.num{font-variant-numeric:tabular-nums}
+.av{display:grid;place-items:center;border-radius:999px;font-weight:600;color:#fff;flex:none}
+.seg{display:inline-flex;background:#EFEFEC;border-radius:10px;padding:3px;gap:2px}
+.seg label{display:flex;align-items:center;justify-content:center;height:28px;padding:0 10px;border-radius:8px;font-size:12.5px;font-weight:500;color:#5C5F66;cursor:pointer}
+.seg input{position:absolute;opacity:0;width:0;height:0}
+.seg label:has(input:checked){background:#fff;color:#1A1B1E;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.crow{display:grid;grid-template-columns:32px minmax(0,1fr);gap:10px;padding:12px 16px;border-bottom:1px solid #F0F0ED;cursor:pointer}
+.crow:hover{background:#FAFAF8}
+.msg{max-width:78%;padding:10px 14px;border-radius:14px;font-size:13.5px;line-height:1.55}
+.msg-them{background:#F2F2EF;color:#1A1B1E;border-top-left-radius:4px;align-self:flex-start}
+.msg-us{background:#1A1B1E;color:#fff;border-top-right-radius:4px;align-self:flex-end}
+.kv{display:grid;grid-template-columns:92px minmax(0,1fr);gap:8px;font-size:13px;align-items:center}
+.kv dt{color:#6B6E75;margin:0}.kv dd{margin:0;font-weight:500}
+.sect-h{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid #EFEFEC}
+.sect-h h2{margin:0;font-size:14px;font-weight:600}
+textarea{font:inherit}
+</style>
+</helmet>
+<div style="display:flex;flex-wrap:wrap;width:100%;min-height:1040px;background:#F7F7F5;color:#1A1B1E;font-family:Inter,system-ui,sans-serif">
+  <dc-import name="Sidebar" active="conversations" hint-size="232px,1040px"></dc-import>
+  <div style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
+    <dc-import name="Topbar" hint-size="100%,64px"></dc-import>
+    <main style="padding:24px;display:grid;grid-template-columns:320px minmax(0,1fr) 300px;gap:20px;align-items:stretch;min-height:0">
+
+      <section class="panel" style="display:flex;flex-direction:column;min-width:0">
+        <div style="padding:16px 16px 12px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;align-items:baseline;gap:8px"><h1 style="margin:0;font-size:18px;font-weight:600">Conversations</h1><span class="num" style="font-size:13px;font-weight:600;color:#C2410C">3 unread</span></div>
+          <div class="seg" style="width:100%"><label style="flex:1"><input type="radio" name="cf" checked="">All</label><label style="flex:1"><input type="radio" name="cf">Unread</label><label style="flex:1"><input type="radio" name="cf">Needs reply</label><label style="flex:1"><input type="radio" name="cf">Mine</label></div>
+        </div>
+        <div style="border-top:1px solid #EFEFEC">
+          <sc-for list="{{ convos }}" as="c" hint-placeholder-count="7">
+            <div class="crow" style="background:{{ c.bg }}" onClick="{{ c.pick }}">
+              <span class="av" style="width:32px;height:32px;font-size:11px;background:#D7DCE8;color:#1A1B1E">{{ c.ini }}</span>
+              <div style="min-width:0;display:flex;flex-direction:column;gap:3px">
+                <div style="display:flex;gap:8px;align-items:center"><span style="font-size:13.5px;font-weight:{{ c.fw }}">{{ c.user }}</span><span class="chip chip-line" style="height:18px;font-size:10.5px">{{ c.kind }}</span><div style="flex:1"></div><span class="muted num" style="font-size:11.5px">{{ c.t }}</span></div>
+                <div style="font-size:12.5px;color:#3F4248;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.preview }}</div>
+                <div class="muted" style="font-size:11.5px;display:flex;align-items:center;gap:6px"><sc-if value="{{ c.unread }}" hint-placeholder-val="{{ false }}"><span style="width:6px;height:6px;border-radius:999px;background:#C2410C"></span></sc-if>{{ c.where }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+
+      <section class="panel" style="display:flex;flex-direction:column;min-width:0">
+        <div class="sect-h">
+          <span class="av" style="width:28px;height:28px;font-size:10px;background:#D7DCE8;color:#1A1B1E">OK</span>
+          <div style="line-height:1.2"><h2>u/ops_kat</h2><div class="muted" style="font-size:12px">DM · started after they replied to our comment in r/projectmanagement</div></div>
+          <div style="flex:1"></div>
+          <span class="chip chip-hot">Interested</span>
+          <a class="btn btn-ghost" href="LeadDetail.dc.html" style="height:28px">Open lead</a>
+        </div>
+        <div style="flex:1;padding:18px 20px;display:flex;flex-direction:column;gap:12px;overflow:auto">
+          <div class="muted" style="font-size:11.5px;text-align:center">Comment thread · r/projectmanagement · Nov 5</div>
+          <div class="msg msg-us" style="background:#fff;color:#1A1B1E;border:1px solid #E6E6E2"><div class="muted" style="font-size:11px;margin-bottom:4px">u/jane_from_acme · Founder, disclosed · approved by Jane</div>We hit the same wall at 6 people — Asana felt built for a 60-person org. One board per project, free guests for clients…</div>
+          <div class="msg msg-them"><div class="muted" style="font-size:11px;margin-bottom:4px">u/ops_kat · reply</div>This is exactly our setup. Does it support guest access for clients, or is that a paid add-on?</div>
+          <div class="muted" style="font-size:11.5px;text-align:center;margin-top:6px">Direct messages · Nov 6</div>
+          <div class="msg msg-us"><div style="font-size:11px;opacity:.7;margin-bottom:4px">u/sam_acme_support · Support, disclosed · approved by Jane</div>Yes — guests are free and can only see boards you share with them. If you want, I can send the one-page guest permissions sheet.</div>
+          <div class="msg msg-them"><div class="muted" style="font-size:11px;margin-bottom:4px">u/ops_kat · 26m</div>Please do. Also, is there a Trello import? We have ~40 boards.</div>
+        </div>
+        <div style="border-top:1px solid #EFEFEC;padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+          <textarea aria-label="Reply" placeholder="Write a reply as u/sam_acme_support…" style="width:100%;box-sizing:border-box;min-height:72px;padding:10px 12px;border:1px solid #E6E6E2;border-radius:12px;font-size:13.5px;line-height:1.5;resize:vertical;background:#fff"></textarea>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span class="muted" style="font-size:12px">Sends as <b style="color:#1A1B1E;font-weight:500">u/sam_acme_support</b> · goes to Approvals first</span>
+            <div style="flex:1"></div>
+            <button class="btn"><span class="av" style="width:16px;height:16px;font-size:8px;background:#475569">S</span>Ask Sam to draft</button>
+            <button class="btn btn-primary">Send for approval</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel" style="display:flex;flex-direction:column;min-width:0">
+        <div class="sect-h"><h2>Lead</h2><div style="flex:1"></div><span class="chip chip-line">Synced to HubSpot</span></div>
+        <div style="padding:16px;display:flex;flex-direction:column;gap:16px;font-size:13px">
+          <div style="display:flex;align-items:center;gap:10px"><span class="av" style="width:40px;height:40px;font-size:13px;background:#D7DCE8;color:#1A1B1E">OK</span><div style="line-height:1.25"><div style="font-size:15px;font-weight:600">u/ops_kat</div><div class="muted" style="font-size:12px">Ops lead at a 6-person agency · first seen Nov 5</div></div></div>
+          <dl class="kv" style="margin:0;row-gap:10px">
+            <dt>Stage</dt><dd><button class="btn" style="height:28px;padding:0 10px;font-size:12.5px">Interested ▾</button></dd>
+            <dt>Intent</dt><dd class="num">88 <span class="chip chip-hot" style="margin-left:4px">High</span></dd>
+            <dt>Owner</dt><dd style="display:flex;align-items:center;gap:6px"><span class="av" style="width:18px;height:18px;font-size:8px;background:#D7DCE8;color:#1A1B1E">JP</span>Jane Park</dd>
+            <dt>Agent</dt><dd style="display:flex;align-items:center;gap:6px"><span class="av" style="width:18px;height:18px;font-size:8px;background:#475569">S</span>Sam</dd>
+            <dt>Deal value</dt><dd class="num">$49 / mo est.</dd>
+            <dt>Clicks</dt><dd class="num">4 · last 2h ago</dd>
+          </dl>
+          <div>
+            <div style="font-weight:600;font-size:12.5px;margin-bottom:6px">Previous threads</div>
+            <div style="display:flex;flex-direction:column;gap:6px;color:#3F4248">
+              <div style="display:flex;gap:8px"><span class="muted" style="flex:none">Nov 5</span><span>Replied to our comment in r/projectmanagement</span></div>
+              <div style="display:flex;gap:8px"><span class="muted" style="flex:none">Oct 28</span><span>Upvoted Maya’s answer in r/productivity</span></div>
+            </div>
+          </div>
+          <div>
+            <div style="font-weight:600;font-size:12.5px;margin-bottom:6px">Notes</div>
+            <div style="background:#FAFAF8;border-radius:10px;padding:10px 12px;color:#3F4248;line-height:1.5">Budget ~$50/mo. Needs guest access and Trello import. Decision maker.</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px"><input type="checkbox" aria-label="Follow up Thursday" style="width:15px;height:15px;margin:0;accent-color:#1A1B1E"><span>Follow up Thursday</span><span class="muted" style="margin-left:auto;font-size:12px">Nov 13</span></div>
+        </div>
+      </aside>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1040}}'>
+const C = [
+  { id: 1, user: 'u/ops_kat', ini: 'OK', kind: 'DM', t: '26m', unread: true, preview: 'Please do. Also, is there a Trello import? We have ~40 boards.', where: 'Replied to our comment in r/projectmanagement' },
+  { id: 2, user: 'u/bootstrapped_ben', ini: 'BB', kind: 'Comment', t: '1h', unread: true, preview: 'Fair. How does it handle 12 people on one board without turning into…', where: 'r/SaaS · thread with Leo' },
+  { id: 3, user: 'u/devon_builds', ini: 'DB', kind: 'DM', t: '3h', unread: true, preview: 'Import worked, but due dates came in as text. Known issue?', where: 'Started a trial from r/projectmanagement' },
+  { id: 4, user: 'u/mkt_rhea', ini: 'MR', kind: 'Comment', t: '5h', unread: false, preview: 'Thanks! Signed up to try it with the team this week.', where: 'r/startups · thread with Maya' },
+  { id: 5, user: 'u/remote_raj', ini: 'RR', kind: 'Comment', t: '1d', unread: false, preview: 'Appreciate the honest take on Jira. Will look.', where: 'r/startups · thread with Maya' },
+  { id: 6, user: 'u/fernhill_ops', ini: 'FO', kind: 'DM', t: '2d', unread: false, preview: 'We went annual. Can you add two more seats to the invoice?', where: 'Customer · replied to Leo in r/SaaS' },
+  { id: 7, user: 'u/pm_lena', ini: 'PL', kind: 'Comment', t: '3d', unread: false, preview: 'Not for us right now, but bookmarking.', where: 'r/projectmanagement · thread with Maya' }
+];
+class Component extends DCLogic {
+  state = { sel: 1 };
+  renderVals() {
+    return { convos: C.map(c => ({ ...c, fw: c.unread ? 600 : 500, bg: c.id === this.state.sel ? '#F2F2EF' : 'transparent', pick: () => this.setState({ sel: c.id }) })) };
+  }
+}
+</script>
+</body>
+</html>

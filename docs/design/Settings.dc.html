@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0;background:#F7F7F5}
+a{color:#1A1B1E;text-decoration:none}a:hover{color:#C2410C}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:9px;border:1px solid #E6E6E2;background:#fff;font:inherit;font-size:13px;font-weight:500;color:#1A1B1E;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#F2F2EF}
+.btn-primary{background:#C2410C;border-color:#C2410C;color:#fff}.btn-primary:hover{background:#A8360A}
+.btn-ghost{border-color:transparent;background:transparent;color:#5C5F66}.btn-ghost:hover{background:#F2F2EF;color:#1A1B1E}
+.panel{background:#fff;border:1px solid #E6E6E2;border-radius:16px}
+.chip{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:600;line-height:1;white-space:nowrap}
+.chip-hot{background:#FEF0E6;color:#C2410C}.chip-mid{background:#E9E9E5;color:#5C5F66}.chip-ok{background:#E3F4E8;color:#15803D}.chip-line{background:#fff;border:1px solid #E6E6E2;color:#3F4248;font-weight:500}
+.muted{color:#6B6E75}.num{font-variant-numeric:tabular-nums}
+.av{display:grid;place-items:center;border-radius:999px;font-weight:600;color:#fff;flex:none}
+.snav a{display:flex;align-items:center;height:34px;padding:0 12px;border-radius:9px;font-size:13px;font-weight:500;color:#3F4248}
+.snav a:hover{background:#F2F2EF;color:#1A1B1E}
+.snav .on{background:#E9E9E5;color:#1A1B1E;font-weight:600}
+.table{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap}
+.table th{text-align:left;font-weight:500;color:#6B6E75;font-size:12px;padding:8px 10px;border-bottom:1px solid #E6E6E2}
+.table td{padding:10px;border-bottom:1px solid #F0F0ED;vertical-align:middle}
+.table tr:last-child td{border-bottom:0}
+.sect-h{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid #EFEFEC}
+.sect-h h2{margin:0;font-size:14px;font-weight:600}
+.plan{border:1px solid #E6E6E2;border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.plan ul{margin:0;padding-left:16px;font-size:12.5px;line-height:1.6;color:#3F4248}
+</style>
+</helmet>
+<div style="display:flex;flex-wrap:wrap;width:100%;min-height:1040px;background:#F7F7F5;color:#1A1B1E;font-family:Inter,system-ui,sans-serif">
+  <dc-import name="Sidebar" active="settings" hint-size="232px,1040px"></dc-import>
+  <div style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
+    <dc-import name="Topbar" hint-size="100%,64px"></dc-import>
+    <main style="padding:24px;display:grid;grid-template-columns:200px minmax(0,1fr);gap:24px;align-items:start">
+      <nav class="snav" aria-label="Settings sections" style="display:flex;flex-direction:column;gap:2px;position:sticky;top:16px">
+        <h1 style="margin:0 0 10px;padding:0 12px;font-size:18px;font-weight:600">Settings</h1>
+        <a class="on" href="#team">Team and roles</a><a href="#audit">Audit log</a><a href="#billing">Billing</a><a href="#workspaces">Client workspaces</a><a href="#reports">Weekly report</a><a href="#notifications">Notifications</a>
+      </nav>
+
+      <div style="display:flex;flex-direction:column;gap:20px;min-width:0">
+        <section class="panel" id="team">
+          <div class="sect-h"><h2>Team and roles</h2><span class="muted" style="font-size:12px">5 members · Approver is required to post anything</span><div style="flex:1"></div><button class="btn">Invite member</button></div>
+          <div style="padding:4px 8px 6px;overflow-x:auto">
+            <table class="table">
+              <thead><tr><th>Member</th><th>Role</th><th>Can approve</th><th>Reddit account</th><th>Last active</th><th></th></tr></thead>
+              <tbody>
+                <sc-for list="{{ team }}" as="m" hint-placeholder-count="5">
+                  <tr><td><div style="display:flex;align-items:center;gap:8px"><span class="av" style="width:24px;height:24px;font-size:9px;background:#D7DCE8;color:#1A1B1E">{{ m.ini }}</span><div style="line-height:1.2"><div style="font-weight:500">{{ m.name }}</div><div class="muted" style="font-size:11.5px">{{ m.email }}</div></div></div></td><td><span class="chip chip-line">{{ m.role }}</span></td><td><span class="{{ m.appChip }}">{{ m.app }}</span></td><td class="muted">{{ m.acct }}</td><td class="muted">{{ m.last }}</td><td style="text-align:right"><button class="btn btn-ghost" style="height:26px;padding:0 8px">Edit</button></td></tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel" id="audit">
+          <div class="sect-h"><h2>Audit log</h2><span class="muted" style="font-size:12px">Every posted item, with who approved it and from which account</span><div style="flex:1"></div><button class="btn btn-ghost" style="height:28px">Export CSV</button></div>
+          <div style="padding:4px 8px 6px;overflow-x:auto">
+            <table class="table">
+              <thead><tr><th>When</th><th>Action</th><th>Item</th><th>Agent</th><th>Approved by</th><th>Posted from</th></tr></thead>
+              <tbody>
+                <sc-for list="{{ audit }}" as="a" hint-placeholder-count="5">
+                  <tr><td class="muted num">{{ a.when }}</td><td><span class="{{ a.chip }}">{{ a.action }}</span></td><td style="max-width:300px;overflow:hidden;text-overflow:ellipsis">{{ a.item }}</td><td>{{ a.agent }}</td><td style="font-weight:500">{{ a.by }}</td><td class="muted">{{ a.from }}</td></tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <div style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:20px;align-items:start">
+          <section class="panel" id="billing">
+            <div class="sect-h"><h2>Billing</h2><span class="muted" style="font-size:12px">Current plan: Pro · renews Dec 1</span></div>
+            <div style="padding:16px 18px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
+              <div class="plan"><div style="font-weight:600">Starter</div><div class="num" style="font-size:20px;font-weight:600">$69<span class="muted" style="font-size:12px;font-weight:400"> /mo</span></div><ul><li>1 agent, 1 account</li><li>5 keyword groups</li><li>Lead CRM</li></ul><button class="btn" style="margin-top:auto">Downgrade</button></div>
+              <div class="plan" style="border-color:#1A1B1E"><div style="font-weight:600;display:flex;gap:8px;align-items:center">Pro <span class="chip chip-ok">Current</span></div><div class="num" style="font-size:20px;font-weight:600">$200<span class="muted" style="font-size:12px;font-weight:400"> /mo</span></div><ul><li>5 agents, 5 accounts</li><li>DM inbox and follow-ups</li><li>Revenue attribution</li></ul><button class="btn btn-ghost" style="margin-top:auto">Manage</button></div>
+              <div class="plan"><div style="font-weight:600">Agency</div><div class="num" style="font-size:20px;font-weight:600">$499<span class="muted" style="font-size:12px;font-weight:400"> /mo</span></div><ul><li>Unlimited client workspaces</li><li>Roles per workspace</li><li>White-label weekly report</li></ul><button class="btn btn-primary" style="margin-top:auto">Upgrade</button></div>
+            </div>
+          </section>
+          <div style="display:flex;flex-direction:column;gap:20px">
+            <section class="panel" id="workspaces">
+              <div class="sect-h"><h2>Client workspaces</h2><div style="flex:1"></div><button class="btn btn-ghost" style="height:28px">Add</button></div>
+              <div style="padding:8px 18px 14px;display:flex;flex-direction:column;gap:8px;font-size:13px">
+                <div style="display:flex;align-items:center;gap:10px"><span class="av" style="width:24px;height:24px;font-size:10px;background:#1A1B1E;border-radius:7px">A</span><span style="font-weight:500;flex:1">Acme</span><span class="chip chip-ok">Active</span></div>
+                <div style="display:flex;align-items:center;gap:10px"><span class="av" style="width:24px;height:24px;font-size:10px;background:#6D5BD0;border-radius:7px">B</span><span style="font-weight:500;flex:1">Brightloop</span><span class="chip chip-ok">Active</span></div>
+                <div style="display:flex;align-items:center;gap:10px"><span class="av" style="width:24px;height:24px;font-size:10px;background:#0F766E;border-radius:7px">F</span><span style="font-weight:500;flex:1">Fernhill</span><span class="chip chip-mid">Paused</span></div>
+              </div>
+            </section>
+            <section class="panel" id="reports">
+              <div class="sect-h"><h2>Weekly report</h2></div>
+              <div style="padding:12px 18px 14px;display:flex;flex-direction:column;gap:10px;font-size:13px">
+                <div class="muted" style="line-height:1.5">Sent Mondays 8:00 to Jane and Leo. Covers replies, leads, clicks and revenue for the week.</div>
+                <div style="display:flex;gap:8px"><button class="btn">Send now</button><button class="btn btn-ghost">Edit recipients</button></div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1040}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      team: [
+        { ini: 'JP', name: 'Jane Park', email: 'jane@acme.so', role: 'Admin', app: 'Yes', appChip: 'chip chip-ok', acct: 'u/jane_from_acme', last: '2 min ago' },
+        { ini: 'LM', name: 'Leo Martins', email: 'leo@acme.so', role: 'Approver', app: 'Yes', appChip: 'chip chip-ok', acct: 'u/leo_acme_founder', last: '1 hour ago' },
+        { ini: 'SO', name: 'Sam Okafor', email: 'sam@acme.so', role: 'Editor', app: 'No', appChip: 'chip chip-mid', acct: 'u/sam_acme_support', last: 'Yesterday' },
+        { ini: 'MC', name: 'Mira Chen', email: 'mira@acme.so', role: 'Editor', app: 'No', appChip: 'chip chip-mid', acct: 'Connecting…', last: 'Today' },
+        { ini: 'RK', name: 'Rhea Kapoor', email: 'rhea@brightloop.io', role: 'Viewer', app: 'No', appChip: 'chip chip-mid', acct: '—', last: '3 days ago' }
+      ],
+      audit: [
+        { when: 'Nov 7 · 09:14', action: 'Posted', chip: 'chip chip-ok', item: 'Comment in r/projectmanagement · “We hit the same wall at 6 people…”', agent: 'Maya', by: 'Jane Park', from: 'u/jane_from_acme' },
+        { when: 'Nov 7 · 08:51', action: 'Rejected', chip: 'chip chip-mid', item: 'DM follow-up to u/quiet_lists · “Too salesy for a first touch”', agent: 'Sam', by: 'Jane Park', from: '—' },
+        { when: 'Nov 6 · 17:02', action: 'Posted', chip: 'chip chip-ok', item: 'DM to u/ops_kat · guest access answer', agent: 'Sam', by: 'Jane Park', from: 'u/sam_acme_support' },
+        { when: 'Nov 6 · 11:30', action: 'Edited, posted', chip: 'chip chip-ok', item: 'Comment in r/SaaS · ClickUp speed thread (2 edits)', agent: 'Leo', by: 'Leo Martins', from: 'u/leo_acme_founder' },
+        { when: 'Nov 5 · 14:20', action: 'Scheduled', chip: 'chip chip-hot', item: 'Launch post in r/SaaS · Sat 10:00', agent: 'Leo', by: 'Jane Park', from: 'u/leo_acme_founder' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

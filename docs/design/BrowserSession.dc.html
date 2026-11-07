@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Remote browser session</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0;background:#F7F7F5}
+a{color:#1A1B1E;text-decoration:none}a:hover{color:#C2410C}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:9px;border:1px solid #E6E6E2;background:#fff;font:inherit;font-size:13px;font-weight:500;color:#1A1B1E;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#F2F2EF}
+.btn-primary{background:#C2410C;border-color:#C2410C;color:#fff}.btn-primary:hover{background:#A8360A}
+.btn-ghost{border-color:transparent;background:transparent;color:#5C5F66}.btn-ghost:hover{background:#F2F2EF;color:#1A1B1E}
+.btn-dark{background:#2C2E33;border-color:#2C2E33;color:#fff}.btn-dark:hover{background:#3F4248}
+.panel{background:#fff;border:1px solid #E6E6E2;border-radius:16px}
+.chip{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:600;line-height:1;white-space:nowrap}
+.chip-hot{background:#FEF0E6;color:#C2410C}.chip-mid{background:#E9E9E5;color:#5C5F66}.chip-ok{background:#E3F4E8;color:#15803D}.chip-warn{background:#FDF3D7;color:#8A5A00}.chip-line{background:#fff;border:1px solid #E6E6E2;color:#3F4248;font-weight:500}
+.dot{width:6px;height:6px;border-radius:999px;display:inline-block}
+.muted{color:#6B6E75}.num{font-variant-numeric:tabular-nums}
+.av{display:grid;place-items:center;border-radius:999px;font-weight:600;color:#fff;flex:none}
+.sect-h{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid #EFEFEC}
+.sect-h h2{margin:0;font-size:14px;font-weight:600}
+.tool{height:30px;width:30px;padding:0;display:inline-grid;place-items:center;border-radius:8px;border:1px solid #3F4248;background:#2C2E33;color:#E6E6E2;cursor:pointer}
+.tool:hover{background:#3F4248}
+.tool svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.log{display:grid;grid-template-columns:48px minmax(0,1fr);gap:10px;padding:8px 18px;font-size:12.5px;line-height:1.4;border-bottom:1px solid #F0F0ED}
+.ph{background:#E9E9E5;border-radius:4px;height:10px}
+</style>
+</helmet>
+<div style="display:flex;flex-wrap:wrap;width:100%;min-height:1040px;background:#F7F7F5;color:#1A1B1E;font-family:Inter,system-ui,sans-serif">
+  <dc-import name="Sidebar" active="browsers" hint-size="232px,1040px"></dc-import>
+  <div style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
+    <dc-import name="Topbar" hint-size="100%,64px"></dc-import>
+    <main style="padding:20px 24px 24px;display:flex;flex-direction:column;gap:16px;flex:1">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div class="muted" style="font-size:12.5px;display:flex;gap:6px;align-items:center"><a href="Browsers.dc.html">Browsers</a><span>/</span><span style="color:#1A1B1E">Jane · Chrome</span></div>
+        <div style="flex:1"></div>
+        <span class="chip chip-hot"><span class="dot" style="background:#C2410C"></span>You have control · 04:12</span>
+        <span class="chip chip-line"><span class="av" style="width:14px;height:14px;font-size:7px;background:#6D5BD0">M</span>Maya paused</span>
+        <button class="btn btn-primary">Hand back to Maya</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px;align-items:stretch;flex:1;min-height:0">
+
+        <section style="background:#1A1B1E;border-radius:16px;display:flex;flex-direction:column;overflow:hidden;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid #2C2E33;color:#E6E6E2;font-size:12.5px">
+            <span class="chip" style="background:#2C2E33;color:#E6E6E2"><span class="dot" style="background:#4ADE80"></span>Live · 1512×982 · 24 fps</span>
+            <span style="color:#9A9DA4">Exit IP 73.218.44.19 · Boston, MA · 142 ms</span>
+            <div style="flex:1"></div>
+            <button class="tool" aria-label="Send keyboard shortcut"><svg aria-hidden="true" viewBox="0 0 16 16"><rect x="1.5" y="4" width="13" height="8" rx="2"/><path d="M4 7h.01M6.5 7h.01M9 7h.01M11.5 7h.01M5 9.5h6"/></svg></button>
+            <button class="tool" aria-label="Paste from clipboard"><svg aria-hidden="true" viewBox="0 0 16 16"><rect x="3.5" y="3" width="9" height="11" rx="1.5"/><path d="M6 3V2h4v1"/></svg></button>
+            <button class="tool" aria-label="Take screenshot"><svg aria-hidden="true" viewBox="0 0 16 16"><rect x="2" y="4.5" width="12" height="9" rx="2"/><path d="M6 4.5l1-2h2l1 2"/><circle cx="8" cy="9" r="2.3"/></svg></button>
+            <button class="tool" aria-label="Quality settings"><svg aria-hidden="true" viewBox="0 0 16 16"><path d="M2.5 12.5h11M4 10V7.5M8 10V4M12 10V6"/></svg></button>
+            <button class="tool" aria-label="Full screen"><svg aria-hidden="true" viewBox="0 0 16 16"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg></button>
+          </div>
+
+          <div style="flex:1;padding:18px;display:flex;align-items:flex-start;justify-content:center;background:#141518">
+            <div aria-label="Remote browser view" role="img" style="width:100%;max-width:1040px;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.45);display:flex;flex-direction:column;min-height:620px">
+              <div style="height:38px;background:#F2F2EF;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid #E6E6E2">
+                <span style="display:flex;gap:5px"><i style="width:10px;height:10px;border-radius:999px;background:#D7D7D2;display:block"></i><i style="width:10px;height:10px;border-radius:999px;background:#D7D7D2;display:block"></i><i style="width:10px;height:10px;border-radius:999px;background:#D7D7D2;display:block"></i></span>
+                <span style="margin-left:8px;height:24px;flex:1;max-width:520px;background:#fff;border:1px solid #E6E6E2;border-radius:999px;display:flex;align-items:center;padding:0 10px;font-size:11.5px;color:#3F4248">reddit.com/r/projectmanagement/comments/1h8k2q/…</span>
+                <span class="chip chip-line" style="height:18px;font-size:10.5px">u/jane_from_acme</span>
+              </div>
+              <div style="display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:24px;padding:22px 28px">
+                <div style="display:flex;flex-direction:column;gap:12px">
+                  <div class="muted" style="font-size:11.5px">r/projectmanagement · Posted by u/ops_tom · 3h</div>
+                  <div style="font-size:19px;font-weight:600;line-height:1.3;letter-spacing:-0.01em">Looking for a simple Asana alternative for a 6-person team</div>
+                  <div style="font-size:13px;line-height:1.6;color:#3F4248">We’re a 6-person agency and Asana pricing jumped when we added two contractors. Need boards, due dates and client guest access. Budget is maybe $50/mo total. Tried ClickUp — too much. What are small teams actually using?</div>
+                  <div class="muted" style="font-size:12px;display:flex;gap:14px">↑ 42 · 31 comments · share · save</div>
+                  <div style="border:1px solid #E6E6E2;border-radius:10px;padding:10px 12px;margin-top:6px;background:#FAFAF8">
+                    <div style="font-size:12px;font-weight:600;margin-bottom:6px">Comment as u/jane_from_acme</div>
+                    <div style="font-size:13px;line-height:1.6;color:#1A1B1E;min-height:74px">We hit the same wall at 6 people — Asana felt built for a 60-person org. What mattered for us: one board per project instead of nested workspaces, free guests for clients, and no per-seat jump past 5 users.<span style="display:inline-block;width:1.5px;height:14px;background:#1A1B1E;vertical-align:-2px;margin-left:1px"></span></div>
+                    <div style="display:flex;justify-content:flex-end;margin-top:8px"><span style="height:26px;padding:0 12px;border-radius:999px;background:#1A1B1E;color:#fff;font-size:12px;font-weight:600;display:inline-flex;align-items:center">Comment</span></div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px">
+                    <div style="display:flex;gap:10px"><span class="av" style="width:22px;height:22px;font-size:9px;background:#D7DCE8;color:#1A1B1E">PL</span><div style="flex:1"><div class="muted" style="font-size:11.5px">u/pm_lena · 2h</div><div style="font-size:12.5px;line-height:1.5;color:#3F4248">We moved to Linear but it’s dev-first. For an agency I’d look at something lighter.</div></div></div>
+                    <div style="display:flex;gap:10px"><span class="av" style="width:22px;height:22px;font-size:9px;background:#D7DCE8;color:#1A1B1E">AI</span><div style="flex:1"><div class="muted" style="font-size:11.5px">u/agency_ines · 1h</div><div style="font-size:12.5px;line-height:1.5;color:#3F4248">Guest access is the dealbreaker for us too. Most tools charge per guest.</div></div></div>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:10px;padding-top:4px" aria-hidden="true">
+                  <div class="ph" style="width:60%;height:12px"></div><div class="ph" style="width:90%"></div><div class="ph" style="width:75%"></div><div class="ph" style="width:85%"></div>
+                  <div class="ph" style="width:50%;height:12px;margin-top:10px"></div><div class="ph" style="width:80%"></div><div class="ph" style="width:70%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid #2C2E33;color:#9A9DA4;font-size:12px">
+            <span style="width:18px;height:18px;border-radius:999px;background:#C2410C;display:inline-block;position:relative"><span style="position:absolute;inset:4px;border-radius:999px;background:#fff"></span></span>
+            <span>Recording for the audit log · everything you post here still counts toward u/jane_from_acme’s daily limit</span>
+            <div style="flex:1"></div>
+            <span>Session ends after 15 min idle</span>
+          </div>
+        </section>
+
+        <aside style="display:flex;flex-direction:column;gap:16px;min-width:0">
+          <section class="panel">
+            <div class="sect-h"><h2>Session</h2></div>
+            <dl style="margin:0;padding:12px 18px 14px;display:grid;grid-template-columns:86px minmax(0,1fr);row-gap:8px;column-gap:10px;font-size:12.5px;align-items:center">
+              <dt class="muted">Profile</dt><dd style="margin:0;font-weight:500">Jane · Chrome</dd>
+              <dt class="muted">Account</dt><dd style="margin:0;font-weight:500">u/jane_from_acme</dd>
+              <dt class="muted">Driver</dt><dd style="margin:0;display:flex;align-items:center;gap:6px"><span class="av" style="width:18px;height:18px;font-size:8px;background:#D7DCE8;color:#1A1B1E">JP</span>Jane Park <span class="muted">(you)</span></dd>
+              <dt class="muted">Agent</dt><dd style="margin:0;display:flex;align-items:center;gap:6px"><span class="av" style="width:18px;height:18px;font-size:8px;background:#6D5BD0">M</span>Maya · paused</dd>
+              <dt class="muted">Proxy</dt><dd style="margin:0;font-weight:500">us-ma-0417 <span class="chip chip-ok" style="margin-left:4px">Healthy</span></dd>
+              <dt class="muted">Started</dt><dd style="margin:0" class="num">11:52 · by you</dd>
+            </dl>
+          </section>
+
+          <section class="panel" style="background:#FAFAF8">
+            <div style="padding:14px 18px;display:flex;flex-direction:column;gap:8px;font-size:12.5px;line-height:1.5">
+              <div style="font-weight:600">Why you took over</div>
+              <div style="color:#3F4248">Maya hit a “verify it’s you” prompt from Reddit. She can’t answer it — only the account owner can.</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip chip-line">Reddit verification</span><span class="chip chip-line">11:51</span></div>
+            </div>
+          </section>
+
+          <section class="panel" style="flex:1;display:flex;flex-direction:column">
+            <div class="sect-h"><h2>Session log</h2><div style="flex:1"></div><span class="muted" style="font-size:12px">Saved to audit</span></div>
+            <div style="overflow:auto">
+              <sc-for list="{{ log }}" as="l" hint-placeholder-count="7">
+                <div class="log"><span class="muted num">{{ l.t }}</span><span><b style="font-weight:600">{{ l.who }}</b> <span style="color:#3F4248">{{ l.text }}</span></span></div>
+              </sc-for>
+            </div>
+          </section>
+
+          <div style="display:flex;gap:8px">
+            <button class="btn" style="flex:1;justify-content:center">Pause session</button>
+            <button class="btn btn-ghost" style="color:#B91C1C">End session</button>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1040}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      log: [
+        { t: '11:56', who: 'You', text: 'typing in the comment box' },
+        { t: '11:54', who: 'You', text: 'completed Reddit verification' },
+        { t: '11:52', who: 'You', text: 'took control · Maya paused' },
+        { t: '11:51', who: 'Maya', text: 'stopped: verification prompt, asked for a human' },
+        { t: '11:50', who: 'Maya', text: 'opened thread t3_1h8k2q to post approved reply #4,790' },
+        { t: '11:49', who: 'Maya', text: 'proxy check passed · 73.218.44.19' },
+        { t: '11:49', who: 'System', text: 'profile launched from saved session' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
