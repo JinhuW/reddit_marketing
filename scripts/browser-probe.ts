@@ -2,7 +2,7 @@
 // CloakBrowser fingerprint probe (plan §4 T13). Runs on a browser node (Node 22.18+, Docker), never in CI.
 //
 //   Full run, the T13 "Done when" (seed A twice across a restart, seed B once, license host blocked):
-//     CLOAKBROWSER_LICENSE_KEY=… node scripts/browser-probe.ts --image threadline/browser-profile:<build>
+//     CLOAKBROWSER_LICENSE_KEY=… node scripts/browser-probe.ts --image tl.invalid/browser-profile:<build>
 //   One reading from a CDP endpoint that is already up:
 //     node scripts/browser-probe.ts --cdp http://127.0.0.1:9222
 //

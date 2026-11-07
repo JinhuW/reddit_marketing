@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Fake `uname` for deploy/node/test/node.test.mjs: `uname -m` reports $FAKE_ARCH.
+set -euo pipefail
+if [ "${1:-}" == -m ]; then echo "${FAKE_ARCH:-x86_64}"; else echo Linux; fi

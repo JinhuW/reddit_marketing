@@ -7,11 +7,11 @@
 #     CLOAKBROWSER_LICENSE_KEY=… docker buildx build --platform linux/amd64 \
 #       --secret id=cloak_key,env=CLOAKBROWSER_LICENSE_KEY \
 #       --build-arg CLOAK_VERSION=<build> --build-arg CLOAK_URL='https://…/{version}/…tar.gz' \
-#       --build-arg CLOAK_SHA256=<sha256> -t threadline/browser-profile:<build> apps/browser-profile
+#       --build-arg CLOAK_SHA256=<sha256> -t tl.invalid/browser-profile:<build> apps/browser-profile
 #     (or drop the archive in vendor/cloakbrowser-<build>-linux-x64.tar.gz and leave CLOAK_URL empty)
 #
 #   Stock Chromium, for local work on the supervisor and the probe (any arch, no key, no fingerprinting):
-#     docker buildx build --build-arg ENGINE=chromium -t threadline/browser-profile:chromium apps/browser-profile
+#     docker buildx build --build-arg ENGINE=chromium -t tl.invalid/browser-profile:chromium apps/browser-profile
 ARG ENGINE=cloak
 
 # ---- shared runtime: X, VNC, Node for the supervisor, Chromium runtime libraries, fonts ---------------------------

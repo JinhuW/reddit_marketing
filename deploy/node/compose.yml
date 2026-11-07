@@ -1,0 +1,67 @@
+# Threadline browser node: the node agent only. Browser containers (tl-profile-<id>) are started by the agent
+# through the Docker socket, not by compose (apps/node-agent/src/docker.ts).
+#
+# install.sh copies this file to /opt/threadline-node/compose.yml and runs it with the generated, secret-free
+# /opt/threadline-node/compose.env:
+#   docker compose -f /opt/threadline-node/compose.yml --env-file /opt/threadline-node/compose.env ps
+#
+# Shared-host rules: project `threadline-node`, one container `tl-node-agent`, the external network
+# `tl-browsers` and no published ports. Nothing here names another project's containers, networks or ports.
+name: threadline-node
+
+services:
+  agent:
+    # TL_AGENT_IMAGE: a registry image (ideally pinned by digest) or the tag install.sh builds from `build`.
+    # Local builds live under tl.invalid/, a registry host that never resolves, so `missing` can only ever pull
+    # an explicitly configured registry image, never a squatted docker.io/threadline/* name.
+    image: ${TL_AGENT_IMAGE:-tl.invalid/node-agent:local}
+    pull_policy: missing
+    build:
+      context: ${TL_REPO_DIR:-../..}
+      dockerfile: apps/node-agent/Dockerfile
+    container_name: tl-node-agent
+    restart: unless-stopped
+    # GATEWAY_URL, NODE_NAME, NODE_TOKEN, CLOAKBROWSER_LICENSE_KEY, … (mode 600, outside the repo).
+    env_file:
+      - path: ${TL_NODE_ENV:-/opt/threadline-node/node.env}
+        required: true
+    # Set by install.sh; these win over node.env so the namespace and the resolved image cannot drift.
+    environment:
+      BROWSER_IMAGE: ${TL_BROWSER_IMAGE:?TL_BROWSER_IMAGE is set by install.sh in compose.env}
+      BROWSER_NETWORK: tl-browsers
+      BROWSER_SECCOMP_PROFILE: /etc/threadline/seccomp-browser.json
+    volumes:
+      # The agent creates, starts and stops tl-profile-* containers and volumes through the host daemon.
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+      - type: bind
+        source: ${TL_SECCOMP_FILE:-/opt/threadline-node/seccomp-browser.json}
+        target: /etc/threadline/seccomp-browser.json
+        read_only: true
+    # The image runs as `node`; the socket's group (host gid, not the name) grants it access.
+    group_add:
+      - "${TL_DOCKER_GID:?TL_DOCKER_GID is set by install.sh in compose.env}"
+    networks:
+      - tl-browsers
+    # No `ports:` on purpose: the agent only dials out (WSS to the gateway) and reaches browsers by name.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 15s
+    labels:
+      dev.threadline.role: node-agent
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+networks:
+  tl-browsers:
+    external: true
+    name: tl-browsers

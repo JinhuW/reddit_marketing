@@ -1,5 +1,5 @@
 # Node agent image (linux/amd64). Build from the repo root:
-#   docker build --platform linux/amd64 -f apps/node-agent/Dockerfile -t threadline/node-agent .
+#   docker build --platform linux/amd64 -f apps/node-agent/Dockerfile -t tl.invalid/node-agent .
 # Run with the Docker socket mounted and the socket's group added, e.g. in compose:
 #   volumes: ["/var/run/docker.sock:/var/run/docker.sock"]
 #   group_add: ["<gid of /var/run/docker.sock on the host>"]

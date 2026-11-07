@@ -25,8 +25,11 @@ export const EnvSchema = z.object({
   NODE_TOKEN: z.string().min(16, 'NODE_TOKEN must be at least 16 characters'),
   /** Passed to profile containers only; never logged. Optional so the agent can connect before G2. */
   CLOAKBROWSER_LICENSE_KEY: z.string().min(1).optional(),
-  /** Pinned browser-profile image, ideally `repo@sha256:…`. */
-  BROWSER_IMAGE: z.string().min(1).default('threadline/browser-profile:latest'),
+  /**
+   * Pinned browser-profile image, ideally `repo@sha256:…`. The default is a local-build tag under the
+   * unresolvable `tl.invalid` host: a missing image fails to pull instead of fetching docker.io/threadline/*.
+   */
+  BROWSER_IMAGE: z.string().min(1).default('tl.invalid/browser-profile:latest'),
   BROWSER_NETWORK: z.string().min(1).default('tl-browsers'),
   NODE_MAX_PROFILES: z.coerce.number().int().positive().default(8),
   LOG_LEVEL: LogLevel.default('info'),

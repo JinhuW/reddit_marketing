@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Fake `docker` for deploy/node/test/node.test.mjs. Records each call's argv (one line per call) in
+# $FAKE_STATE/calls and keeps just enough state (images, network) for install.sh and backup.sh to run.
+set -euo pipefail
+state="${FAKE_STATE:?}"
+touch "$state/images" "$state/calls"
+printf '%s\n' "$*" >>"$state/calls"
+has_image() { grep -qxF -- "$1" "$state/images"; }
+add_image() { printf '%s\n' "$1" >>"$state/images"; }
+last() { local a; for a in "$@"; do :; done; printf '%s' "$a"; }
+
+case "${1:-}" in
+  info | run | rm | stop) exit 0 ;;
+  version) echo 29.0.0 ;;
+  network)
+    case "$2" in
+      inspect) [ -f "$state/network" ] ;;
+      create) touch "$state/network" ;;
+    esac
+    ;;
+  image)
+    [ "$2" == inspect ] || exit 0
+    has_image "$(last "$@")" || exit 1
+    echo '[{}]'
+    ;;
+  pull) add_image "$(last "$@")" ;;
+  tag) add_image "$3" ;;
+  build)
+    shift
+    while [ "$#" -gt 0 ]; do
+      [ "$1" == -t ] && add_image "$2"
+      shift
+    done
+    if [ -n "${CLOAKBROWSER_LICENSE_KEY:-}" ]; then echo build-secret-env >>"$state/calls"; fi
+    ;;
+  history) echo 'RUN /bin/sh -c true' ;;
+  save) tar -cf "$(last "$@")" -C "$state" images ;;
+  inspect) echo 2026-11-07T00:00:00.000000000Z ;;
+  logs)
+    default_log='{"level":30,"msg":"connected to gateway"}'
+    printf '%s\n' "${FAKE_AGENT_LOG:-$default_log}"
+    ;;
+  volume)
+    # shellcheck disable=SC2086 # word splitting is the point: a space-separated volume list
+    printf '%s\n' ${FAKE_VOLUMES:-}
+    ;;
+  compose)
+    case "$*" in
+      'compose version') exit 0 ;;
+      *' build '*) add_image "${TL_AGENT_IMAGE:?}" ;;
+    esac
+    ;;
+esac
+exit 0
