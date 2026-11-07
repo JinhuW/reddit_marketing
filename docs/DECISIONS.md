@@ -3,6 +3,34 @@
 Running log of choices made while building that docs/PLAN.md left open or that differ from it.
 Newest first.
 
+## 2026-11-07 — browser node contracts (infra plan T00)
+
+- **Contracts live in `packages/shared`**: `enums.ts` (BrowserNodeStatus, PauseReason, BrowserOutcome, CloakPersona,
+  CloakGpu, NodeEventKind, new AuditActions), `queues.ts` (`browserQueue`, `BrowserJob`, `BrowserJobSchema`,
+  `browserJobId`) and `node-protocol.ts` (zod schemas for every frame). BrowserOutcome, CloakPersona and CloakGpu
+  are not Prisma enums: the outcome is never stored, and the plan stores persona/GPU as text.
+- **The fingerprint salt is kept in `BrowserProfile.fingerprint.cloakSalt`**, not a new column: §3.1 lists no salt
+  column. `cloakSeed = sha256("<profileId>:<salt>")[0..4] >>> 1`, so it fits Postgres `int` and can be re-derived.
+  The first `ensureCloakFingerprint` wins through a conditional update; later calls return the stored values.
+- **`deadlineMs` in `command` is a duration** (ms from receipt), not an epoch time, so clock skew between Railway and
+  a home VM cannot expire a command early. `ProfileRef = { profileId, startedAt }` (epoch ms, agent clock).
+  `Hello.imageDigest` may be null before the image is pulled.
+- **Protocol parse errors never echo the frame**: a `profile.start` carries decrypted proxy credentials, and Node's
+  JSON parse errors quote the input. Errors carry only paths and messages.
+- **Browser job ids**: `bj-<kind>-<draftId|profileId>`; `health.check` uses the workspace id plus an optional suffix
+  (a time bucket) so a repeating job is not deduplicated against the last one. `BrowserJobSchema` is `.strict()`
+  so no extra field (e.g. a credential) can ride in a payload.
+- **Node token auth**: `nodes.verifyToken(name, token)` matches by name across workspaces and compares sha256
+  hashes in constant time; rows returned by the nodes repo never include `tokenHash`. Tokens shorter than 16 chars
+  are refused. The dev seed's `browser-1` uses `NODE_TOKEN_BROWSER_1` or `dev-node-token-browser-1`.
+- **Pauses: the first reason wins.** Pausing an already-paused account is a no-op without an audit row, so a later
+  `node_offline` cannot hide a `needs_human`. `resumeAccount({ onlyReasons })` lets the gateway clear only
+  `node_offline` pauses when a node returns.
+- **Node status audits on transitions only**: `node.online` when the node was not online, `node.offline` when it
+  was not offline; heartbeats write no audit rows.
+- **Postgres is 18 on Railway, 16 locally and in PLAN.** pgvector and both earlier migrations work on 18; the
+  `browser_nodes` migration uses only enum, column, table and FK DDL, which behave the same on both.
+
 ## 2026-11-07 — M0 and first pass at every screen
 
 - **Embedding dimension is 512, not 1536.** The plan's default provider (Voyage `voyage-3-lite`) returns 512-d
