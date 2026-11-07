@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agents</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0;background:#F7F7F5}
+a{color:#1A1B1E;text-decoration:none}a:hover{color:#C2410C}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:9px;border:1px solid #E6E6E2;background:#fff;font:inherit;font-size:13px;font-weight:500;color:#1A1B1E;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#F2F2EF}
+.btn-primary{background:#C2410C;border-color:#C2410C;color:#fff}.btn-primary:hover{background:#A8360A}
+.btn-ghost{border-color:transparent;background:transparent;color:#5C5F66}.btn-ghost:hover{background:#F2F2EF;color:#1A1B1E}
+.panel{background:#fff;border:1px solid #E6E6E2;border-radius:16px}
+.chip{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:600;line-height:1;white-space:nowrap}
+.chip-hot{background:#FEF0E6;color:#C2410C}.chip-mid{background:#E9E9E5;color:#5C5F66}.chip-ok{background:#E3F4E8;color:#15803D}.chip-warn{background:#FDF3D7;color:#8A5A00}.chip-line{background:#fff;border:1px solid #E6E6E2;color:#3F4248;font-weight:500}
+.muted{color:#6B6E75}.num{font-variant-numeric:tabular-nums}
+.av{display:grid;place-items:center;border-radius:999px;font-weight:600;color:#fff;flex:none}
+.acard{border:1px solid #E6E6E2;border-radius:16px;background:#fff;padding:16px;display:flex;flex-direction:column;gap:12px;cursor:pointer;text-align:left;font:inherit;color:inherit}
+.acard:hover{border-color:#CFCFC9}
+.stat{display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat b{font-size:16px;font-weight:600;letter-spacing:-0.01em}
+.stat span{font-size:11.5px;color:#6B6E75}
+.tabs{display:flex;gap:2px;border-bottom:1px solid #EFEFEC;padding:0 18px}
+.tabs button{height:42px;padding:0 10px;border:0;background:transparent;font:inherit;font-size:13px;font-weight:500;color:#6B6E75;border-bottom:2px solid transparent;margin-bottom:-1px;cursor:pointer}
+.tabs button:hover{color:#1A1B1E}
+.tabs .on{color:#1A1B1E;border-bottom-color:#1A1B1E;font-weight:600}
+.field{display:flex;flex-direction:column;gap:6px;font-size:13px}
+.field label{font-weight:600;font-size:12.5px}
+.in{width:100%;box-sizing:border-box;height:36px;padding:0 12px;border:1px solid #E6E6E2;border-radius:10px;font:inherit;font-size:13px;background:#fff}
+.slider{display:grid;grid-template-columns:90px minmax(0,1fr) 90px;gap:10px;align-items:center;font-size:12px;color:#6B6E75}
+.slider input{width:100%;accent-color:#1A1B1E;margin:0}
+textarea{font:inherit}
+</style>
+</helmet>
+<div style="display:flex;flex-wrap:wrap;width:100%;min-height:1040px;background:#F7F7F5;color:#1A1B1E;font-family:Inter,system-ui,sans-serif">
+  <dc-import name="Sidebar" active="agents" hint-size="232px,1040px"></dc-import>
+  <div style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
+    <dc-import name="Topbar" hint-size="100%,64px"></dc-import>
+    <main style="padding:24px;display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:240px"><h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.01em">Agents</h1><div class="muted" style="font-size:13px;margin-top:4px">3 agent employees · every draft goes to a human approver before it posts</div></div>
+        <button class="btn btn-primary">New agent</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+        <sc-for list="{{ agents }}" as="a" hint-placeholder-count="3">
+          <button class="acard" style="border-color:{{ a.border }}" onClick="{{ a.pick }}">
+            <div style="display:flex;align-items:center;gap:12px">
+              <span class="av" style="width:40px;height:40px;font-size:14px;background:{{ a.avBg }}">{{ a.ini }}</span>
+              <div style="line-height:1.25;flex:1;min-width:0"><div style="font-size:15px;font-weight:600">{{ a.name }}</div><div class="muted" style="font-size:12.5px">{{ a.role }}</div></div>
+              <span class="{{ a.statusChip }}">{{ a.status }}</span>
+            </div>
+            <div class="muted" style="font-size:12.5px;line-height:1.5">Drafts for <b style="color:#1A1B1E;font-weight:500">{{ a.acct }}</b> · {{ a.subs }}</div>
+            <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;border-top:1px solid #F0F0ED;padding-top:12px">
+              <div class="stat"><b class="num">{{ a.drafts }}</b><span>Drafts this week</span></div>
+              <div class="stat"><b class="num">{{ a.rate }}</b><span>Approved</span></div>
+              <div class="stat"><b class="num">{{ a.leads }}</b><span>Leads</span></div>
+              <div class="stat"><b class="num">{{ a.rev }}</b><span>Revenue</span></div>
+            </div>
+          </button>
+        </sc-for>
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:20px;align-items:start">
+        <section class="panel">
+          <div style="display:flex;align-items:center;gap:12px;padding:16px 18px 8px"><span class="av" style="width:32px;height:32px;font-size:12px;background:#6D5BD0">M</span><div style="line-height:1.2;flex:1"><h2 style="margin:0;font-size:15px;font-weight:600">Maya</h2><div class="muted" style="font-size:12px">Product Expert for project-management subs</div></div><button class="btn">Pause</button><button class="btn btn-primary">Save changes</button></div>
+          <div class="tabs" role="tablist">
+            <button class="on" role="tab">Persona</button><button role="tab">Skills</button><button role="tab">Context</button><button role="tab">Connectors</button><button role="tab">Assignment</button><button role="tab">Performance</button>
+          </div>
+          <div style="padding:18px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px 24px">
+            <div class="field" style="grid-column:1 / -1"><label for="role">Role</label><input id="role" class="in" value="Product expert who answers comparison questions for teams under 10. Honest about trade-offs; never trashes competitors."></div>
+            <div class="field"><label>Voice and tone</label>
+              <div class="slider"><span>Casual</span><input type="range" min="0" max="100" value="38" aria-label="Casual to formal"><span style="text-align:right">Formal</span></div>
+              <div class="slider"><span>Concise</span><input type="range" min="0" max="100" value="55" aria-label="Concise to detailed"><span style="text-align:right">Detailed</span></div>
+            </div>
+            <div class="field"><label for="disc">Disclosure line</label><input id="disc" class="in" value="Disclosure: I work on Acme, so I’m biased."><span class="muted" style="font-size:12px">Added to every reply · rule check fails without it</span></div>
+            <div class="field"><label>Do</label>
+              <div style="display:flex;flex-direction:column;gap:6px;color:#3F4248">
+                <div style="display:flex;gap:8px"><span class="chip chip-ok" style="height:18px;padding:0 6px;margin-top:2px">Do</span>Answer the exact needs OP listed, in their order</div>
+                <div style="display:flex;gap:8px"><span class="chip chip-ok" style="height:18px;padding:0 6px;margin-top:2px">Do</span>Name a competitor’s real strength before ours</div>
+                <div style="display:flex;gap:8px"><span class="chip chip-ok" style="height:18px;padding:0 6px;margin-top:2px">Do</span>Offer to help even if they pick something else</div>
+              </div>
+            </div>
+            <div class="field"><label>Don’t</label>
+              <div style="display:flex;flex-direction:column;gap:6px;color:#3F4248">
+                <div style="display:flex;gap:8px"><span class="chip" style="height:18px;padding:0 6px;margin-top:2px;background:#FDE8E8;color:#B91C1C">Don’t</span>Make pricing claims about competitors</div>
+                <div style="display:flex;gap:8px"><span class="chip" style="height:18px;padding:0 6px;margin-top:2px;background:#FDE8E8;color:#B91C1C">Don’t</span>Add a link where the subreddit forbids one</div>
+                <div style="display:flex;gap:8px"><span class="chip" style="height:18px;padding:0 6px;margin-top:2px;background:#FDE8E8;color:#B91C1C">Don’t</span>Reply to threads older than 48 hours</div>
+              </div>
+            </div>
+            <div class="field" style="grid-column:1 / -1"><label>Sample replies <span class="muted" style="font-weight:400">· learned from 184 approved replies</span></label>
+              <div style="background:#FAFAF8;border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.55;color:#3F4248">“We hit the same wall at 6 people — Asana felt built for a 60-person org. What mattered for us: one board per project, free guests for clients, and no per-seat jump past 5 users…” <span class="muted">— r/projectmanagement, approved with 0 edits</span></div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="panel" style="display:flex;flex-direction:column">
+          <div style="padding:14px 18px;border-bottom:1px solid #EFEFEC;display:flex;align-items:center;gap:8px"><h2 style="margin:0;font-size:14px;font-weight:600">Test the agent</h2><span class="muted" style="font-size:12px">Nothing here is posted</span></div>
+          <div style="padding:16px 18px;display:flex;flex-direction:column;gap:12px;font-size:13px">
+            <div class="field"><label for="tp">Paste a Reddit post</label><textarea id="tp" style="width:100%;box-sizing:border-box;min-height:84px;padding:10px 12px;border:1px solid #E6E6E2;border-radius:10px;font-size:13px;line-height:1.5;resize:vertical;background:#fff">We’re a 6-person agency and Asana pricing jumped when we added two contractors. Need boards, due dates and client guest access. Budget ~$50/mo.</textarea></div>
+            <button class="btn" style="align-self:flex-start">Draft as Maya</button>
+            <div style="border:1px solid #EFEFEC;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+              <div style="font-size:12px;font-weight:600">Draft</div>
+              <div style="line-height:1.55;color:#3F4248">We hit the same wall at 6 people. One board per project, free client guests, and no per-seat jump past 5 users were the things that mattered. Disclosure: I work on Acme, so I’m biased…</div>
+              <div style="font-size:12px;font-weight:600;margin-top:4px">Reasoning</div>
+              <div class="muted" style="line-height:1.5;font-size:12.5px">Three needs plus a budget → answered in order. Sub allows one link, so the small-team comparison goes in. Skipped Asana pricing per the don’t list.</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px"><span class="chip chip-ok">Disclosure</span><span class="chip chip-ok">Link rule</span><span class="chip chip-ok">Tone 0.4</span></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1040}}'>
+const A = [
+  { id: 1, name: 'Maya', ini: 'M', avBg: '#6D5BD0', role: 'Product Expert · project-management subs', acct: 'u/jane_from_acme', subs: 'r/projectmanagement, r/productivity, r/startups', status: 'Active', drafts: 41, rate: '91%', leads: 112, rev: '$2,140' },
+  { id: 2, name: 'Leo', ini: 'L', avBg: '#0F766E', role: 'Founder Voice · launches and AMAs', acct: 'u/leo_acme_founder', subs: 'r/SaaS, r/Entrepreneur', status: 'Active', drafts: 23, rate: '84%', leads: 78, rev: '$1,780' },
+  { id: 3, name: 'Sam', ini: 'S', avBg: '#475569', role: 'Support Follow-ups · DMs after engagement', acct: 'u/sam_acme_support', subs: 'DMs only', status: 'Paused', drafts: 9, rate: '76%', leads: 24, rev: '$400' }
+];
+class Component extends DCLogic {
+  state = { sel: 1 };
+  renderVals() {
+    return { agents: A.map(a => ({ ...a, statusChip: a.status === 'Active' ? 'chip chip-ok' : 'chip chip-mid', border: a.id === this.state.sel ? '#1A1B1E' : '#E6E6E2', pick: () => this.setState({ sel: a.id }) })) };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Opportunities</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0;background:#F7F7F5}
+a{color:#1A1B1E;text-decoration:none}a:hover{color:#C2410C}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:9px;border:1px solid #E6E6E2;background:#fff;font:inherit;font-size:13px;font-weight:500;color:#1A1B1E;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#F2F2EF}
+.btn-primary{background:#C2410C;border-color:#C2410C;color:#fff}.btn-primary:hover{background:#A8360A}
+.btn-ghost{border-color:transparent;background:transparent;color:#5C5F66}.btn-ghost:hover{background:#F2F2EF;color:#1A1B1E}
+.panel{background:#fff;border:1px solid #E6E6E2;border-radius:16px}
+.chip{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:600;line-height:1;white-space:nowrap}
+.chip-hot{background:#FEF0E6;color:#C2410C}.chip-mid{background:#E9E9E5;color:#5C5F66}.chip-ok{background:#E3F4E8;color:#15803D}.chip-warn{background:#FDF3D7;color:#8A5A00}.chip-line{background:#fff;border:1px solid #E6E6E2;color:#3F4248;font-weight:500}
+.muted{color:#6B6E75}.num{font-variant-numeric:tabular-nums}
+.av{display:grid;place-items:center;border-radius:999px;font-weight:600;color:#fff;flex:none}
+.filter{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:999px;border:1px solid #E6E6E2;background:#fff;font:inherit;font-size:12.5px;font-weight:500;color:#1A1B1E;cursor:pointer}
+.filter:hover{background:#F2F2EF}
+.filter b{font-weight:400;color:#6B6E75}
+.mark{background:#FEF0E6;color:#C2410C;border-radius:4px;padding:0 3px}
+.card{border:1px solid #E6E6E2;border-radius:14px;background:#fff;padding:14px 16px;display:flex;flex-direction:column;gap:8px;cursor:pointer}
+.card:hover{border-color:#CFCFC9}
+.sect-h{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid #EFEFEC}
+.sect-h h2{margin:0;font-size:14px;font-weight:600}
+</style>
+</helmet>
+<div style="display:flex;flex-wrap:wrap;width:100%;min-height:1040px;background:#F7F7F5;color:#1A1B1E;font-family:Inter,system-ui,sans-serif">
+  <dc-import name="Sidebar" active="opportunities" hint-size="232px,1040px"></dc-import>
+  <div style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
+    <dc-import name="Topbar" hint-size="100%,64px"></dc-import>
+    <main style="padding:24px;display:flex;flex-direction:column;gap:16px">
+      <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap">
+        <div style="flex:1;min-width:240px"><h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.01em">Opportunities</h1><div class="muted" style="font-size:13px;margin-top:4px">38 new today across 5 subreddits · 14 keyword groups watching</div></div>
+        <button class="btn">Mark all as watched</button>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="filter">Keyword group <b>All</b></button>
+        <button class="filter">Subreddit <b>5 selected</b></button>
+        <button class="filter" style="border-color:#1A1B1E">Intent <b style="color:#1A1B1E">Looking for tool, Competitor complaint</b></button>
+        <button class="filter">Score <b>≥ 60</b></button>
+        <button class="filter">Date <b>Last 7 days</b></button>
+        <button class="filter">Status <b>New</b></button>
+        <div style="flex:1"></div>
+        <span class="muted" style="font-size:12.5px">3 selected</span>
+        <button class="btn" style="height:30px">Assign to agent</button>
+        <button class="btn" style="height:30px">Skip</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:20px;align-items:start">
+        <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+          <sc-for list="{{ posts }}" as="p" hint-placeholder-count="5">
+            <article class="card" style="border-color:{{ p.border }};background:{{ p.bg }}" onClick="{{ p.pick }}">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px">
+                <input type="checkbox" aria-label="Select" checked="{{ p.checked }}" readOnly="" style="width:15px;height:15px;margin:0;accent-color:#1A1B1E">
+                <span style="font-weight:600">{{ p.sub }}</span>
+                <span class="chip chip-line">{{ p.rule }}</span>
+                <div style="flex:1"></div>
+                <span class="{{ p.chip }}">{{ p.level }} · {{ p.score }}</span>
+                <span class="chip chip-line" style="color:#6B6E75">{{ p.status }}</span>
+              </div>
+              <div style="font-size:15px;font-weight:600;line-height:1.35;letter-spacing:-0.005em;text-wrap:pretty">{{ p.title }}</div>
+              <div style="font-size:13px;line-height:1.5;color:#3F4248">{{ p.ex1 }}<span class="mark">{{ p.kw }}</span>{{ p.ex2 }}</div>
+              <div style="display:flex;align-items:center;gap:12px;font-size:12px;flex-wrap:wrap" class="muted">
+                <span>{{ p.author }}</span><span class="num">{{ p.up }} upvotes</span><span class="num">{{ p.com }} comments</span><span>{{ p.age }}</span>
+                <div style="flex:1"></div>
+                <span style="display:inline-flex;align-items:center;gap:6px;color:#1A1B1E"><span style="width:6px;height:6px;border-radius:999px;background:#C2410C"></span>{{ p.intent }}</span>
+              </div>
+              <div style="font-size:12.5px;line-height:1.45;color:#5C5F66;border-top:1px dashed #E6E6E2;padding-top:8px">{{ p.why }}</div>
+            </article>
+          </sc-for>
+          <button class="btn btn-ghost" style="align-self:center">Show 33 more</button>
+        </div>
+
+        <aside class="panel" style="position:sticky;top:16px;display:flex;flex-direction:column;min-width:0">
+          <div class="sect-h"><h2>Selected post</h2><div style="flex:1"></div><button class="btn btn-ghost" style="height:28px;padding:0 8px" aria-label="Open on Reddit">Open on Reddit</button></div>
+          <div style="padding:16px 18px;display:flex;flex-direction:column;gap:14px;font-size:13px;line-height:1.5">
+            <div>
+              <div class="muted" style="font-size:12px">r/projectmanagement · u/ops_tom · 3h · 42 upvotes · 31 comments</div>
+              <div style="font-size:15px;font-weight:600;line-height:1.35;margin-top:4px">Looking for a simple Asana alternative for a 6-person team</div>
+              <p style="margin:8px 0 0;color:#3F4248">We’re a 6-person agency and Asana pricing jumped when we added two contractors. Need boards, due dates and client guest access. Budget is maybe $50/mo total. Tried ClickUp — too much. What are small teams actually using?</p>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <div style="font-size:12px;font-weight:600">Competitors mentioned</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip chip-line">Asana · pricing</span><span class="chip chip-line">ClickUp · bloat</span></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="font-size:12px;font-weight:600">Top comments</div>
+              <div style="border-left:2px solid #E6E6E2;padding-left:10px;color:#3F4248"><span style="font-weight:500;color:#1A1B1E">u/pm_lena</span> · We moved to Linear but it’s dev-first. For an agency I’d look at something lighter. <span class="muted">↑ 18</span></div>
+              <div style="border-left:2px solid #E6E6E2;padding-left:10px;color:#3F4248"><span style="font-weight:500;color:#1A1B1E">u/agency_ines</span> · Guest access is the dealbreaker for us too. Most tools charge per guest. <span class="muted">↑ 11</span></div>
+            </div>
+            <div class="panel" style="border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:10px;background:#FAFAF8">
+              <span class="av" style="width:30px;height:30px;font-size:11px;background:#6D5BD0">M</span>
+              <div style="line-height:1.3;flex:1;min-width:0"><div style="font-weight:600">Suggested agent: Maya</div><div class="muted" style="font-size:12px">Product Expert · covers r/projectmanagement · 91% approved</div></div>
+              <button class="btn btn-ghost" style="height:28px;padding:0 8px">Change</button>
+            </div>
+            <div class="muted" style="font-size:12px">Draft will post from <b style="color:#1A1B1E;font-weight:500">u/jane_from_acme</b> (Founder, disclosed) after Jane approves it.</div>
+            <a class="btn btn-primary" href="Approvals.dc.html" style="height:38px;justify-content:center;font-size:14px">Generate draft</a>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1040}}'>
+const POSTS = [
+  { id: 1, sub: 'r/projectmanagement', rule: '1 link allowed', score: 94, level: 'High', status: 'New', title: 'Looking for a simple Asana alternative for a 6-person team', ex1: 'We’re a 6-person agency and ', kw: 'Asana pricing', ex2: ' jumped when we added two contractors. Need boards, due dates and client guest access…', author: 'u/ops_tom', up: 42, com: 31, age: '3h', intent: 'Looking for tool', why: 'Asks for an Asana alternative for a team under 10 with a stated budget and three concrete needs.', checked: true },
+  { id: 2, sub: 'r/SaaS', rule: 'No links in comments', score: 91, level: 'High', status: 'Drafting', title: 'ClickUp is getting too bloated for us — what are you moving to?', ex1: 'Every release adds a view nobody asked for. ', kw: 'ClickUp alternative', ex2: ' that stays fast for a 12-person team?', author: 'u/bootstrapped_ben', up: 118, com: 64, age: '5h', intent: 'Competitor complaint', why: 'Complains about ClickUp speed and bloat; team size fits our ICP. No links allowed — Leo will answer without one.', checked: true },
+  { id: 3, sub: 'r/startups', rule: 'Self-promo Saturdays only', score: 87, level: 'High', status: 'New', title: 'What do you use to run sprints with a remote team of 8?', ex1: 'We tried Jira and it’s overkill. Looking for ', kw: 'sprint planning', ex2: ' that doesn’t need a Jira admin.', author: 'u/remote_raj', up: 27, com: 19, age: '2h', intent: 'Asking recommendation', why: 'Open recommendation request; rejects Jira as too heavy. Today is Saturday, so a disclosed answer is within sub rules.', checked: true },
+  { id: 4, sub: 'r/productivity', rule: '1 link allowed', score: 72, level: 'Medium', status: 'New', title: 'Notion for task tracking feels like overkill. Lighter options?', ex1: 'I love Notion for docs but ', kw: 'task tracking', ex2: ' in databases is slow and my team ignores it.', author: 'u/quiet_lists', up: 63, com: 40, age: '7h', intent: 'Looking for tool', why: 'Wants a lighter tasks layer next to Notion docs; mixed personal/team use so score is medium.', checked: false },
+  { id: 5, sub: 'r/Entrepreneur', rule: 'No self-promo', score: 64, level: 'Medium', status: 'Skipped', title: 'How do you keep client projects from slipping through the cracks?', ex1: 'Three clients, ', kw: 'missed deadlines', ex2: ' twice this month. Is it a tool problem or a me problem?', author: 'u/agency_ines', up: 15, com: 22, age: '9h', intent: 'Discussion', why: 'Discussion about process more than tools; sub bans self-promo, so advice-only reply if any.', checked: false }
+];
+class Component extends DCLogic {
+  state = { sel: 1 };
+  renderVals() {
+    const posts = POSTS.map(p => ({ ...p, chip: p.level === 'High' ? 'chip chip-hot' : 'chip chip-mid', border: p.id === this.state.sel ? '#1A1B1E' : '#E6E6E2', bg: p.id === this.state.sel ? '#FAFAF8' : '#fff', pick: () => this.setState({ sel: p.id }) }));
+    return { posts };
+  }
+}
+</script>
+</body>
+</html>

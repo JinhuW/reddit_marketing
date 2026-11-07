@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Accounts</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0;background:#F7F7F5}
+a{color:#1A1B1E;text-decoration:none}a:hover{color:#C2410C}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:9px;border:1px solid #E6E6E2;background:#fff;font:inherit;font-size:13px;font-weight:500;color:#1A1B1E;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#F2F2EF}
+.btn-primary{background:#C2410C;border-color:#C2410C;color:#fff}.btn-primary:hover{background:#A8360A}
+.btn-ghost{border-color:transparent;background:transparent;color:#5C5F66}.btn-ghost:hover{background:#F2F2EF;color:#1A1B1E}
+.panel{background:#fff;border:1px solid #E6E6E2;border-radius:16px}
+.chip{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:600;line-height:1;white-space:nowrap}
+.chip-hot{background:#FEF0E6;color:#C2410C}.chip-mid{background:#E9E9E5;color:#5C5F66}.chip-ok{background:#E3F4E8;color:#15803D}.chip-warn{background:#FDF3D7;color:#8A5A00}.chip-line{background:#fff;border:1px solid #E6E6E2;color:#3F4248;font-weight:500}
+.muted{color:#6B6E75}.num{font-variant-numeric:tabular-nums}
+.av{display:grid;place-items:center;border-radius:999px;font-weight:600;color:#fff;flex:none}
+.stat{display:flex;flex-direction:column;gap:3px;min-width:0}
+.stat b{font-size:15px;font-weight:600}
+.stat span{font-size:11.5px;color:#6B6E75}
+.meter{height:6px;border-radius:999px;background:#EFEFEC;overflow:hidden}
+.meter i{display:block;height:100%;border-radius:999px}
+.step{display:grid;grid-template-columns:26px minmax(0,1fr);gap:12px;align-items:start;font-size:13px}
+.step .n{width:26px;height:26px;border-radius:999px;display:grid;place-items:center;font-size:12px;font-weight:600;background:#F2F2EF;color:#1A1B1E}
+.in{width:100%;box-sizing:border-box;height:36px;padding:0 12px;border:1px solid #E6E6E2;border-radius:10px;font:inherit;font-size:13px;background:#fff}
+</style>
+</helmet>
+<div style="display:flex;flex-wrap:wrap;width:100%;min-height:1040px;background:#F7F7F5;color:#1A1B1E;font-family:Inter,system-ui,sans-serif">
+  <dc-import name="Sidebar" active="accounts" hint-size="232px,1040px"></dc-import>
+  <div style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
+    <dc-import name="Topbar" hint-size="100%,64px"></dc-import>
+    <main style="padding:24px;display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:240px"><h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.01em">Accounts</h1><div class="muted" style="font-size:13px;margin-top:4px">Connected through Reddit’s official sign-in. One account per real person — Threadline never posts from accounts it owns.</div></div>
+        <button class="btn btn-primary">Connect account</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:20px;align-items:start">
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
+          <sc-for list="{{ accts }}" as="a" hint-placeholder-count="3">
+            <div class="panel" style="padding:16px;display:flex;flex-direction:column;gap:12px">
+              <div style="display:flex;align-items:center;gap:12px">
+                <span class="av" style="width:40px;height:40px;font-size:13px;background:#D7DCE8;color:#1A1B1E">{{ a.ini }}</span>
+                <div style="line-height:1.25;flex:1;min-width:0"><div style="font-size:15px;font-weight:600">{{ a.user }}</div><div class="muted" style="font-size:12.5px">{{ a.owner }} · {{ a.role }}</div></div>
+                <span class="{{ a.healthChip }}">{{ a.health }}</span>
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip chip-ok">Disclosed · “{{ a.disc }}”</span><span class="chip chip-line">Reddit OAuth</span></div>
+              <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;border-top:1px solid #F0F0ED;padding-top:12px">
+                <div class="stat"><b class="num">{{ a.karma }}</b><span>Karma</span></div>
+                <div class="stat"><b class="num">{{ a.age }}</b><span>Account age</span></div>
+                <div class="stat"><b class="num">{{ a.posts }}</b><span>Posts this week</span></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:5px;font-size:12px">
+                <div style="display:flex;justify-content:space-between"><span class="muted">Today vs daily limit</span><span class="num" style="font-weight:500">{{ a.today }}</span></div>
+                <div class="meter"><i style="width:{{ a.todayW }};background:#1A1B1E"></i></div>
+                <div style="display:flex;justify-content:space-between;margin-top:4px"><span class="muted">Self-promo ratio · 7d</span><span class="num" style="font-weight:500;color:{{ a.ratioColor }}">{{ a.ratio }}</span></div>
+                <div class="meter"><i style="width:{{ a.ratioW }};background:{{ a.ratioColor }}"></i></div>
+              </div>
+              <div style="display:flex;gap:8px"><button class="btn btn-ghost" style="height:28px;padding:0 8px">Edit limits</button><button class="btn btn-ghost" style="height:28px;padding:0 8px">Disconnect</button></div>
+            </div>
+          </sc-for>
+          <div class="panel" style="padding:16px;border-style:dashed;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:8px;text-align:center;min-height:200px;background:transparent">
+            <div style="font-size:14px;font-weight:600">Add a teammate’s account</div>
+            <div class="muted" style="font-size:12.5px;line-height:1.5;max-width:260px">They sign in to Reddit themselves. Threadline only drafts; they or an approver still press post.</div>
+            <button class="btn" style="margin-top:4px">Connect account</button>
+          </div>
+        </div>
+
+        <aside class="panel">
+          <div style="padding:14px 18px;border-bottom:1px solid #EFEFEC"><h2 style="margin:0;font-size:14px;font-weight:600">Connect an account</h2><div class="muted" style="font-size:12px;margin-top:2px">Four steps · about two minutes</div></div>
+          <div style="padding:16px 18px;display:flex;flex-direction:column;gap:16px">
+            <div class="step"><span class="n" style="background:#1A1B1E;color:#fff">✓</span><div><div style="font-weight:600">Sign in with Reddit</div><div class="muted" style="font-size:12.5px;margin-top:2px">Authorized u/mira_acme_cs · read, submit, privatemessages</div></div></div>
+            <div class="step"><span class="n">2</span><div style="display:flex;flex-direction:column;gap:8px;width:100%"><div style="font-weight:600">Who owns this account?</div><select class="in" aria-label="Owner"><option>Mira Chen · Customer success</option><option>Jane Park · Founder</option></select><div class="muted" style="font-size:12px">One account per real person. Mira has no other account connected.</div></div></div>
+            <div class="step"><span class="n">3</span><div style="display:flex;flex-direction:column;gap:8px;width:100%"><div style="font-weight:600">Role and disclosure line</div><div style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip chip-line">Founder</span><span class="chip chip-line" style="border-color:#1A1B1E;color:#1A1B1E">Support</span><span class="chip chip-line">Brand</span></div><input class="in" value="I work on support at Acme." aria-label="Disclosure line"></div></div>
+            <div class="step"><span class="n">4</span><div style="display:flex;flex-direction:column;gap:8px;width:100%"><div style="font-weight:600">Limits</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label style="font-size:12px;display:flex;flex-direction:column;gap:4px" class="muted">Posts per day<input class="in" value="3" aria-label="Posts per day"></label><label style="font-size:12px;display:flex;flex-direction:column;gap:4px" class="muted">Self-promo max<input class="in" value="10%" aria-label="Self-promo max"></label></div></div></div>
+            <button class="btn btn-primary" style="height:38px;justify-content:center;font-size:14px;border-radius:12px">Finish connecting</button>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1040}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const good = '#15803D', warn = '#B9700A';
+    return {
+      accts: [
+        { user: 'u/jane_from_acme', ini: 'JP', owner: 'Jane Park', role: 'Founder', disc: 'I work on Acme', health: 'Healthy', healthChip: 'chip chip-ok', karma: '2,410', age: '3y 2m', posts: 11, today: '3 of 5', todayW: '60%', ratio: '9%', ratioW: '45%', ratioColor: good },
+        { user: 'u/leo_acme_founder', ini: 'LM', owner: 'Leo Martins', role: 'Founder', disc: 'Co-founder at Acme', health: 'Watch ratio', healthChip: 'chip chip-warn', karma: '1,180', age: '1y 8m', posts: 8, today: '2 of 3', todayW: '66%', ratio: '14%', ratioW: '70%', ratioColor: warn },
+        { user: 'u/sam_acme_support', ini: 'SO', owner: 'Sam Okafor', role: 'Support', disc: 'Support at Acme', health: 'Healthy', healthChip: 'chip chip-ok', karma: '640', age: '11m', posts: 4, today: '1 of 3', todayW: '33%', ratio: '4%', ratioW: '20%', ratioColor: good }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env: { POSTGRES_USER: threadline, POSTGRES_PASSWORD: threadline, POSTGRES_DB: threadline }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U threadline" --health-interval 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    env:
+      DATABASE_URL: postgresql://threadline:threadline@localhost:5432/threadline
+      SHADOW_DATABASE_URL: postgresql://threadline:threadline@localhost:5432/threadline_shadow
+      REDIS_URL: redis://localhost:6379
+      APP_URL: http://localhost:3000
+      AUTH_SECRET: ci-only-secret-not-used-in-prod-000000000
+      APP_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: psql postgresql://threadline:threadline@localhost:5432/threadline -c 'CREATE DATABASE threadline_shadow'
+      - name: Migrations match schema
+        run: pnpm --filter @threadline/db migrate:check
+      - run: pnpm db:migrate:deploy && pnpm db:seed
+      - run: pnpm test
+      - name: E2E
+        run: |
+          pnpm --filter @threadline/web exec playwright install --with-deps chromium
+          (pnpm --filter @threadline/web dev > web.log 2>&1 &)
+          npx wait-on -t 120000 http://localhost:3000/login
+          pnpm test:e2e
+      - if: failure()
+        run: tail -200 web.log || true

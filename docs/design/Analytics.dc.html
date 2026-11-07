@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Analytics</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+body{margin:0;background:#F7F7F5}
+a{color:#1A1B1E;text-decoration:none}a:hover{color:#C2410C}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:9px;border:1px solid #E6E6E2;background:#fff;font:inherit;font-size:13px;font-weight:500;color:#1A1B1E;cursor:pointer;white-space:nowrap}
+.btn:hover{background:#F2F2EF}
+.btn-ghost{border-color:transparent;background:transparent;color:#5C5F66}.btn-ghost:hover{background:#F2F2EF;color:#1A1B1E}
+.panel{background:#fff;border:1px solid #E6E6E2;border-radius:16px}
+.chip{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:600;line-height:1;white-space:nowrap}
+.chip-ok{background:#E3F4E8;color:#15803D}.chip-warn{background:#FDF3D7;color:#8A5A00}.chip-mid{background:#E9E9E5;color:#5C5F66}.chip-line{background:#fff;border:1px solid #E6E6E2;color:#3F4248;font-weight:500}
+.muted{color:#6B6E75}.num{font-variant-numeric:tabular-nums}
+.seg{display:inline-flex;background:#EFEFEC;border-radius:10px;padding:3px;gap:2px}
+.seg label{display:flex;align-items:center;justify-content:center;height:26px;padding:0 10px;border-radius:8px;font-size:12px;font-weight:500;color:#5C5F66;cursor:pointer}
+.seg input{position:absolute;opacity:0;width:0;height:0}
+.seg label:has(input:checked){background:#fff;color:#1A1B1E;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.table{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap}
+.table th{text-align:left;font-weight:500;color:#6B6E75;font-size:12px;padding:8px 10px;border-bottom:1px solid #E6E6E2}
+.table td{padding:9px 10px;border-bottom:1px solid #F0F0ED;vertical-align:middle}
+.table tr:last-child td{border-bottom:0}
+.sect-h{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid #EFEFEC}
+.sect-h h2{margin:0;font-size:14px;font-weight:600}
+.lg{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#5C5F66}
+.lg i{width:10px;height:10px;border-radius:3px;display:inline-block}
+</style>
+</helmet>
+<div style="display:flex;flex-wrap:wrap;width:100%;min-height:1040px;background:#F7F7F5;color:#1A1B1E;font-family:Inter,system-ui,sans-serif">
+  <dc-import name="Sidebar" active="analytics" hint-size="232px,1040px"></dc-import>
+  <div style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column">
+    <dc-import name="Topbar" hint-size="100%,64px"></dc-import>
+    <main style="padding:24px;display:flex;flex-direction:column;gap:20px">
+      <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:240px"><h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.01em">Analytics</h1><div class="muted" style="font-size:13px;margin-top:4px">Traffic and revenue attributed to Reddit · last 30 days</div></div>
+        <button class="btn">Export weekly report</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px">
+        <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="6">
+          <div class="panel" style="padding:14px 16px;display:flex;flex-direction:column;gap:6px;min-width:0"><div class="muted" style="font-size:12px">{{ k.label }}</div><div class="num" style="font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1">{{ k.value }}</div><div class="muted" style="font-size:11.5px"><span style="color:#15803D;font-weight:600">{{ k.delta }}</span> vs prior 30d</div></div>
+        </sc-for>
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:20px;align-items:start">
+        <section class="panel">
+          <div class="sect-h"><h2>Clicks and signups</h2><span class="muted" style="font-size:12px">Daily · split by subreddit</span><div style="flex:1"></div><div class="seg"><label><input type="radio" name="ser" checked="">Clicks</label><label><input type="radio" name="ser">Signups</label></div></div>
+          <div style="padding:16px 18px 10px;display:flex;flex-direction:column;gap:10px">
+            <svg viewBox="0 0 640 200" role="img" aria-label="Daily clicks over 30 days by subreddit, rising from about 20 to 75" style="width:100%;height:220px;display:block;font-family:Inter,sans-serif">
+              <g stroke="#EFEFEC" stroke-width="1"><line x1="40" y1="20" x2="640" y2="20"/><line x1="40" y1="65" x2="640" y2="65"/><line x1="40" y1="110" x2="640" y2="110"/><line x1="40" y1="155" x2="640" y2="155"/></g>
+              <g fill="#6B6E75" font-size="11"><text x="0" y="24">80</text><text x="0" y="69">60</text><text x="0" y="114">40</text><text x="0" y="159">20</text><text x="40" y="190">Oct 9</text><text x="330" y="190">Oct 24</text><text x="600" y="190">Nov 7</text></g>
+              <polyline fill="none" stroke="#1A1B1E" stroke-width="2" stroke-linejoin="round" points="40,150 80,140 120,145 160,128 200,120 240,124 280,105 320,100 360,92 400,84 440,88 480,70 520,62 560,55 600,45 640,32"/>
+              <polyline fill="none" stroke="#C2410C" stroke-width="2" stroke-linejoin="round" points="40,165 80,160 120,158 160,150 200,146 240,142 280,138 320,130 360,124 400,118 440,112 480,104 520,98 560,92 600,86 640,78"/>
+              <polyline fill="none" stroke="#6D5BD0" stroke-width="2" stroke-linejoin="round" points="40,170 80,168 120,166 160,164 200,160 240,158 280,156 320,150 360,148 400,144 440,140 480,138 520,134 560,130 600,126 640,122"/>
+              <polyline fill="none" stroke="#9A9DA4" stroke-width="2" stroke-dasharray="4 4" points="40,172 80,172 120,170 160,170 200,168 240,168 280,166 320,166 360,164 400,164 440,162 480,162 520,160 560,160 600,158 640,158"/>
+            </svg>
+            <div style="display:flex;gap:16px;flex-wrap:wrap"><span class="lg"><i style="background:#1A1B1E"></i>r/projectmanagement</span><span class="lg"><i style="background:#C2410C"></i>r/SaaS</span><span class="lg"><i style="background:#6D5BD0"></i>r/startups</span><span class="lg"><i style="background:#9A9DA4"></i>Other</span></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="sect-h"><h2>Where revenue came from</h2><span class="muted" style="font-size:12px">Subreddit → thread → click → signup → paid</span></div>
+          <div style="padding:14px 18px 16px;display:flex;flex-direction:column;gap:10px;font-size:12.5px">
+            <sc-for list="{{ flow }}" as="f" hint-placeholder-count="5">
+              <div style="display:grid;grid-template-columns:130px minmax(0,1fr) 60px;gap:10px;align-items:center">
+                <span style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.name }}</span>
+                <div style="display:flex;gap:3px;height:18px">
+                  <div style="width:{{ f.w1 }};background:#D7D7D2;border-radius:6px 2px 2px 6px" title="clicks"></div>
+                  <div style="width:{{ f.w2 }};background:#9A9DA4;border-radius:2px" title="signups"></div>
+                  <div style="width:{{ f.w3 }};background:#C2410C;border-radius:2px 6px 6px 2px" title="paid"></div>
+                </div>
+                <span class="num" style="text-align:right;font-weight:600">{{ f.rev }}</span>
+              </div>
+            </sc-for>
+            <div style="display:flex;gap:14px;margin-top:4px"><span class="lg"><i style="background:#D7D7D2"></i>Clicks</span><span class="lg"><i style="background:#9A9DA4"></i>Signups</span><span class="lg"><i style="background:#C2410C"></i>Paid</span></div>
+          </div>
+        </section>
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start">
+        <section class="panel">
+          <div class="sect-h"><h2>Breakdown</h2><div style="flex:1"></div><div class="seg"><label><input type="radio" name="bk" checked="">Subreddit</label><label><input type="radio" name="bk">Keyword</label><label><input type="radio" name="bk">Thread</label><label><input type="radio" name="bk">Agent</label><label><input type="radio" name="bk">Account</label></div></div>
+          <div style="padding:4px 8px 6px;overflow-x:auto">
+            <table class="table">
+              <thead><tr><th>Subreddit</th><th style="text-align:right">Replies</th><th style="text-align:right">Clicks ↓</th><th style="text-align:right">Signups</th><th style="text-align:right">Customers</th><th style="text-align:right">Revenue</th></tr></thead>
+              <tbody>
+                <sc-for list="{{ rows }}" as="r" hint-placeholder-count="5">
+                  <tr><td style="font-weight:500">{{ r.name }}</td><td class="num" style="text-align:right">{{ r.replies }}</td><td class="num" style="text-align:right">{{ r.clicks }}</td><td class="num" style="text-align:right">{{ r.signups }}</td><td class="num" style="text-align:right">{{ r.cust }}</td><td class="num" style="text-align:right;font-weight:600">{{ r.rev }}</td></tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="sect-h"><h2>Tracked links</h2><span class="muted" style="font-size:12px">14 short links</span><div style="flex:1"></div><button class="btn btn-ghost" style="height:28px">UTM builder</button></div>
+          <div style="padding:4px 8px 6px;overflow-x:auto">
+            <table class="table">
+              <thead><tr><th>Short link</th><th>Destination</th><th>Medium</th><th style="text-align:right">Clicks</th><th style="text-align:right">Conv.</th></tr></thead>
+              <tbody>
+                <sc-for list="{{ links }}" as="l" hint-placeholder-count="5">
+                  <tr><td style="font-weight:600">{{ l.short }}</td><td class="muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis">{{ l.dest }}</td><td><span class="chip chip-line">{{ l.medium }}</span></td><td class="num" style="text-align:right">{{ l.clicks }}</td><td class="num" style="text-align:right">{{ l.conv }}</td></tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+          <div style="border-top:1px solid #EFEFEC;padding:12px 18px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px">
+            <span class="muted" style="margin-right:4px">Integrations</span>
+            <span class="chip chip-ok">Site script</span><span class="chip chip-ok">GA4</span><span class="chip chip-ok">Stripe</span><span class="chip chip-warn">PostHog · stale 2d</span><span class="chip chip-mid">Reddit Pixel · not set up</span>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1040}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      kpis: [
+        { label: 'Clicks', value: '4,812', delta: '+31%' }, { label: 'Unique visitors', value: '3,140', delta: '+27%' }, { label: 'Signups', value: '212', delta: '+22%' },
+        { label: 'Customers', value: '31', delta: '+15%' }, { label: 'Revenue', value: '$4,320', delta: '+18%' }, { label: 'Revenue per reply', value: '$12.40', delta: '+9%' }
+      ],
+      flow: [
+        { name: 'r/projectmanagement', w1: '100%', w2: '18%', w3: '6%', rev: '$1,910' },
+        { name: 'r/SaaS', w1: '78%', w2: '14%', w3: '5%', rev: '$1,420' },
+        { name: 'r/startups', w1: '52%', w2: '9%', w3: '2%', rev: '$640' },
+        { name: 'r/productivity', w1: '34%', w2: '5%', w3: '1%', rev: '$250' },
+        { name: 'r/Entrepreneur', w1: '18%', w2: '2%', w3: '0.5%', rev: '$100' }
+      ],
+      rows: [
+        { name: 'r/projectmanagement', replies: 124, clicks: '1,980', signups: 88, cust: 13, rev: '$1,910' },
+        { name: 'r/SaaS', replies: 96, clicks: '1,412', signups: 64, cust: 10, rev: '$1,420' },
+        { name: 'r/startups', replies: 71, clicks: '812', signups: 36, cust: 5, rev: '$640' },
+        { name: 'r/productivity', replies: 44, clicks: '420', signups: 18, cust: 2, rev: '$250' },
+        { name: 'r/Entrepreneur', replies: 27, clicks: '188', signups: 6, cust: 1, rev: '$100' }
+      ],
+      links: [
+        { short: 'acme.so/r/pm-6team', dest: '/compare/asana', medium: 'comment', clicks: 612, conv: 31 },
+        { short: 'acme.so/r/clickup-speed', dest: '/compare/clickup', medium: 'comment', clicks: 488, conv: 24 },
+        { short: 'acme.so/r/launch-saas', dest: '/launch', medium: 'post', clicks: 374, conv: 19 },
+        { short: 'acme.so/r/guests', dest: '/docs/guest-access', medium: 'dm', clicks: 142, conv: 11 },
+        { short: 'acme.so/r/sprints-8', dest: '/templates/sprints', medium: 'comment', clicks: 97, conv: 4 }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
