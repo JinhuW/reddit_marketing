@@ -259,14 +259,21 @@ describe('templates', () => {
     assert.doesNotMatch(example, /cb_[0-9a-f]{16,}/, 'no CloakBrowser key');
   });
 
-  test('seccomp profile keeps user namespaces and blocks the kernel surface', () => {
+  test("seccomp profile is Docker's default allowlist plus the namespace syscalls Chromium needs", () => {
     const p = JSON.parse(readFileSync(join(nodeDir, 'seccomp-browser.json'), 'utf8'));
-    const denied = new Set(p.syscalls.filter((s) => s.action === 'SCMP_ACT_ERRNO').flatMap((s) => s.names));
-    for (const s of ['clone', 'clone3', 'unshare', 'chroot'])
-      assert.ok(!denied.has(s), `${s} must stay allowed`);
-    for (const s of ['mount', 'keyctl', 'bpf', 'kexec_load', 'init_module', 'setns', 'pivot_root'])
-      assert.ok(denied.has(s), `${s} must be denied`);
-    assert.ok(p.architectures.includes('SCMP_ARCH_X86_64'));
+    assert.equal(p.defaultAction, 'SCMP_ACT_ERRNO', 'unknown syscalls must be denied');
+    // Allowed for every caller: no capability includes, no argument filters.
+    const open = new Set(
+      p.syscalls
+        .filter(
+          (r) => r.action === 'SCMP_ACT_ALLOW' && !r.args?.length && !Object.keys(r.includes ?? {}).length,
+        )
+        .flatMap((r) => r.names),
+    );
+    for (const s of ['clone', 'clone3', 'unshare', 'setns']) assert.ok(open.has(s), `${s} must be allowed`);
+    for (const s of ['mount', 'keyctl', 'bpf', 'kexec_load', 'init_module', 'pivot_root'])
+      assert.ok(!open.has(s), `${s} must not be open to every caller`);
+    assert.ok(p.archMap.some((m) => m.architecture === 'SCMP_ARCH_X86_64'));
   });
 
   test('systemd timer is weekly and persistent', () => {

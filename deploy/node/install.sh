@@ -159,7 +159,7 @@ ensure_registry_image() {
   fi
 }
 
-rev="$(git -C "$repo" rev-parse --short=12 HEAD 2>/dev/null || echo local)"
+rev="$(git -c safe.directory="$repo" -C "$repo" rev-parse --short=12 HEAD 2>/dev/null || echo local)"
 agent_image="$(pick "$opt_agent_image" AGENT_IMAGE)"
 if [ -n "$agent_image" ]; then
   ensure_registry_image "$agent_image"
@@ -286,6 +286,10 @@ else
   log "backup timer: threadline-node-backup.timer enabled (weekly)"
 fi
 # Whoever redeploys later (e.g. the GitHub runner user) must own the install dir; node.env stays mode 600.
-if [ -n "$owner" ]; then chown -R "$owner" "$prefix"; fi
+if [ -n "$owner" ]; then
+  chown -R "$owner" "$prefix"
+  # bin/ holds scripts the root backup timer runs; keep them root-owned.
+  if [ "$(id -u)" -eq 0 ]; then chown -R root:root "$prefix/bin"; fi
+fi
 
 log "done. Status: docker compose -f $compose_file --env-file $compose_env ps"
