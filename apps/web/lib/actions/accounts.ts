@@ -1,0 +1,122 @@
+'use server';
+
+import { PENDING_COOKIE, openPending } from '@/lib/reddit-oauth';
+import { ForbiddenError, requireRole } from '@/lib/session';
+import { PolicyError, assertOneAccountPerMember } from '@threadline/agents';
+import { accounts } from '@threadline/db';
+import { AccountRoleLabel } from '@threadline/shared';
+import { revalidatePath } from 'next/cache';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { z } from 'zod';
+
+export interface ActionState {
+  ok?: boolean;
+  error?: string;
+  message?: string;
+}
+
+const str = (f: FormData, k: string) => String(f.get(k) ?? '').trim();
+
+const Limits = {
+  dailyPostLimit: z.coerce
+    .number()
+    .int()
+    .min(1, 'Posts per day must be at least 1.')
+    .max(50, 'Posts per day is at most 50.'),
+  selfPromoMax: z.coerce.number().int().min(0).max(100, 'Self-promo max is a percentage (0–100).'),
+};
+const Disclosure = z.string().min(3, 'Add a disclosure line, e.g. “I work on Acme”.').max(200);
+
+const Fingerprint = z.object({
+  userAgent: z.string().max(500),
+  screen: z.string().max(40),
+  tz: z.string().max(80),
+  locale: z.string().max(80),
+  os: z.string().max(80).optional(),
+});
+
+const fail = (e: unknown): ActionState => {
+  if (e instanceof z.ZodError) return { error: e.issues[0]?.message ?? 'Invalid input.' };
+  if (e instanceof PolicyError || e instanceof ForbiddenError) return { error: e.message };
+  if (e instanceof Error && /Unique constraint/i.test(e.message))
+    return { error: 'That Reddit account is already connected.' };
+  return { error: e instanceof Error ? e.message : 'Something went wrong.' };
+};
+
+/** Steps 2–4: owner (the signed-in member), role + disclosure, limits. Creates the account and its browser profile. */
+export async function finishConnect(_: ActionState, f: FormData): Promise<ActionState> {
+  try {
+    const me = await requireRole('editor');
+    assertOneAccountPerMember(await accounts.findByOwner(me.id));
+    const jar = await cookies();
+    const pending = openPending(jar.get(PENDING_COOKIE)?.value, me.id);
+    if (!pending)
+      return { error: 'Sign in with Reddit first (step 1). The authorization expires after 15 minutes.' };
+    const input = z
+      .object({
+        roleLabel: z.enum(AccountRoleLabel),
+        disclosureLine: Disclosure,
+        ...Limits,
+        fingerprint: z.string(),
+      })
+      .parse({
+        roleLabel: str(f, 'roleLabel'),
+        disclosureLine: str(f, 'disclosureLine'),
+        dailyPostLimit: f.get('dailyPostLimit'),
+        selfPromoMax: str(f, 'selfPromoMax').replace('%', ''),
+        fingerprint: str(f, 'fingerprint'),
+      });
+    const fp = Fingerprint.safeParse(JSON.parse(input.fingerprint || '{}'));
+    await accounts.connect({
+      workspaceId: me.workspaceId,
+      ownerMemberId: me.id,
+      username: pending.username,
+      redditId: pending.redditId,
+      karma: pending.karma,
+      accountCreatedAt: new Date(pending.createdUtc * 1000),
+      oauthTokenEnc: pending.refreshEnc,
+      scopes: pending.scopes,
+      roleLabel: input.roleLabel,
+      disclosureLine: input.disclosureLine,
+      dailyPostLimit: input.dailyPostLimit,
+      selfPromoMax: input.selfPromoMax,
+      fingerprint: fp.success ? { ...fp.data, capturedAt: new Date().toISOString() } : {},
+    });
+    jar.delete(PENDING_COOKIE);
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath('/accounts');
+  redirect('/accounts');
+}
+
+/** Admins, or the account owner, can edit limits and the disclosure line. */
+export async function saveLimits(_: ActionState, f: FormData): Promise<ActionState> {
+  try {
+    const me = await requireRole('editor');
+    const id = str(f, 'accountId');
+    const isOwner = me.ownedAccount?.id === id;
+    if (me.role !== 'admin' && !isOwner)
+      throw new ForbiddenError('Only an admin or the account owner can change limits.');
+    const input = z.object({ disclosureLine: Disclosure, ...Limits }).parse({
+      disclosureLine: str(f, 'disclosureLine'),
+      dailyPostLimit: f.get('dailyPostLimit'),
+      selfPromoMax: str(f, 'selfPromoMax').replace('%', ''),
+    });
+    await accounts.updateLimits(me.workspaceId, id, input);
+    revalidatePath('/accounts');
+    return { ok: true, message: 'Limits saved.' };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function disconnectAccount(f: FormData) {
+  const me = await requireRole('editor');
+  const id = str(f, 'accountId');
+  if (me.role !== 'admin' && me.ownedAccount?.id !== id)
+    throw new ForbiddenError('Only an admin or the account owner can disconnect.');
+  await accounts.disconnect(me.workspaceId, id, me.id);
+  revalidatePath('/accounts');
+}

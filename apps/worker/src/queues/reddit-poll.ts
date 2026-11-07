@@ -51,7 +51,7 @@ export async function redditPoll(job: Job<{ keywordGroupId: string }>, scoreQueu
         await scoreQueue.add(
           'score',
           { postId: post.id, keywordGroupId: group.id, matched: kw },
-          { jobId: `post:${post.id}`, attempts: 2 },
+          { jobId: `post-${post.id}`, attempts: 2 },
         );
     }
   }

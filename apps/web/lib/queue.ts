@@ -29,7 +29,7 @@ function queue(name: QueueName): Queue {
 export const enqueue = {
   postPublish: (data: PostPublishJob, delayMs = 0) =>
     queue(QUEUES.postPublish).add('publish', data, {
-      jobId: `draft:${data.draftId}`,
+      jobId: `draft-${data.draftId}`,
       delay: delayMs,
       attempts: 3,
       backoff: { type: 'exponential', delay: 30_000 },
@@ -37,7 +37,7 @@ export const enqueue = {
     }),
   draftGenerate: (data: DraftGenerateJob, version: number) =>
     queue(QUEUES.draftGenerate).add('generate', data, {
-      jobId: `draft:${data.draftId ?? data.opportunityId ?? data.conversationId}:v${version}`,
+      jobId: `draft-${data.draftId ?? data.opportunityId ?? data.conversationId}-v${version}`,
       attempts: 2,
       backoff: { type: 'exponential', delay: 10_000 },
       removeOnComplete: 1000,

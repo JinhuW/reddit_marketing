@@ -526,6 +526,7 @@ model Subreddit {
   posts        Post[]
   trackedLinks TrackedLink[]
   accountStats AccountSubredditStat[]
+  drafts       Draft[]
 
   @@unique([workspaceId, name])
 }
@@ -608,6 +609,8 @@ model Draft {
   workspaceId           String
   opportunityId         String?
   conversationId        String?
+  /// Target subreddit; required for new posts (no opportunity) so sub rules still apply.
+  subredditId           String?
   agentId               String
   accountId             String
   type                  DraftType
@@ -635,6 +638,7 @@ model Draft {
   workspace    Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   opportunity  Opportunity?     @relation(fields: [opportunityId], references: [id])
   conversation Conversation?    @relation(fields: [conversationId], references: [id])
+  subreddit    Subreddit?       @relation(fields: [subredditId], references: [id])
   agent        Agent            @relation(fields: [agentId], references: [id])
   account      RedditAccount    @relation(fields: [accountId], references: [id])
   trackedLink  TrackedLink?     @relation(fields: [trackedLinkId], references: [id])

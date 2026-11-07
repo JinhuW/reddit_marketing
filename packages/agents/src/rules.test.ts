@@ -7,6 +7,7 @@ import {
   blockingFailures,
   canApprove,
   containsDisclosure,
+  countLinks,
   evaluateDraft,
   linksAllowedToday,
   proxyRegionMismatch,
@@ -98,6 +99,29 @@ describe('link rule (block)', () => {
   it('allows one link on Saturdays only for the saturdays rule', () => {
     expect(linksAllowedToday('saturdays', SAT)).toBe(1);
     expect(linksAllowedToday('saturdays', MON)).toBe(0);
+  });
+});
+
+describe('countLinks', () => {
+  it('counts http, www and bare domain/path links', () => {
+    expect(countLinks('see https://a.com and www.b.com and acme.so/r/pm-6team')).toBe(3);
+  });
+  it('does not count words like Node.js or e.g.', () => {
+    expect(countLinks('We use Node.js, e.g. for the API.')).toBe(0);
+  });
+  it('counts a bare short host when given', () => {
+    expect(countLinks('try acme.so today', ['acme.so'])).toBe(1);
+    expect(countLinks('try acme.so today')).toBe(0);
+  });
+});
+
+describe('link rule catches bare links (block)', () => {
+  it('fails a bare tracked link in a no-links sub', () => {
+    const c = ctx(
+      { subreddit: { name: 'SaaS', linkRule: 'none', minKarma: 0, minAccountAgeDays: 0 } },
+      { body: `${DISCLOSURE} acme.so/r/pm-6team` },
+    );
+    expect(get(c, 'link_rule')?.passed).toBe(false);
   });
 });
 

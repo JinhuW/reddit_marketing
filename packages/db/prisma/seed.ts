@@ -372,7 +372,6 @@ async function main() {
           testedAt: b.proxy.test.testedAt.toISOString(),
           kind: b.proxy.kind,
           label: b.proxy.label,
-          userHint: b.proxy.user,
         },
       },
     });
@@ -1712,6 +1711,7 @@ async function main() {
         ...W,
         opportunityId: opp?.id ?? null,
         conversationId: convId,
+        subredditId: sub?.id ?? null,
         agentId: AG[d.agent]!,
         accountId: acct.id,
         type: d.type,

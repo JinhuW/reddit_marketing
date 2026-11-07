@@ -89,6 +89,7 @@ export type ModStatus = (typeof ModStatus)[number];
 
 export const AuditAction = [
   'draft.created',
+  'draft.requested',
   'draft.edited',
   'draft.regenerated',
   'draft.approved',
@@ -103,11 +104,13 @@ export const AuditAction = [
   'lead.stage_changed',
   'account.connected',
   'account.health_changed',
+  'profile.proxy_updated',
   'session.started',
   'session.handed_back',
   'session.ended',
   'member.invited',
   'member.role_changed',
+  'workspace.report_updated',
 ] as const;
 export type AuditAction = (typeof AuditAction)[number];
 

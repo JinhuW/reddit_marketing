@@ -16,8 +16,8 @@ const run = (cmd, args) => {
 run('Xvfb', [env.DISPLAY || ':99', '-screen', '0', `${w}x${h}x24`, '-nolisten', 'tcp']);
 setTimeout(() => {
   const chromeArgs = [
-    `--user-data-dir=/data/chromium`,
-    `--remote-debugging-address=0.0.0.0`,
+    '--user-data-dir=/data/chromium',
+    '--remote-debugging-address=0.0.0.0',
     `--remote-debugging-port=${env.CDP_PORT || 9222}`,
     `--window-size=${w},${h}`,
     `--lang=${(env.LANG || 'en-US').split('.')[0].replace('_', '-')}`,
@@ -27,6 +27,16 @@ setTimeout(() => {
   ];
   if (env.PROXY_URL) chromeArgs.push(`--proxy-server=${env.PROXY_URL}`);
   run('chromium', chromeArgs);
-  run('x11vnc', ['-display', env.DISPLAY || ':99', '-forever', '-shared', '-nopw', '-localhost', '-rfbport', '5900', '-quiet']);
+  run('x11vnc', [
+    '-display',
+    env.DISPLAY || ':99',
+    '-forever',
+    '-shared',
+    '-nopw',
+    '-localhost',
+    '-rfbport',
+    '5900',
+    '-quiet',
+  ]);
   run('websockify', ['--web', '/usr/share/novnc', String(env.VNC_PORT || 6080), 'localhost:5900']);
 }, 800);

@@ -32,6 +32,8 @@ export interface RuleContext {
     promoItems7d: number;
     totalItems7d: number;
   };
+  /** Short-link host for this workspace (counted as a link even without a path). */
+  shortHost?: string | null;
   subreddit?: {
     name: string;
     linkRule: LinkRule;
@@ -78,8 +80,21 @@ export function containsDisclosure(body: string, disclosure: string): boolean {
   return want.length >= 3 && hits / want.length >= 0.85;
 }
 
-const URL_RE = /\bhttps?:\/\/[^\s)>\]]+|\b(?:www\.)[^\s)>\]]+/gi;
-export const countLinks = (body: string) => (body.match(URL_RE) ?? []).length;
+/**
+ * Counts links the way a moderator would: http(s) URLs, www. hosts, and bare `domain.tld/path` links
+ * (e.g. `acme.so/r/pm-6team`). A bare domain without a path ("Node.js", "acme.so") is not counted
+ * unless it is one of `extraHosts` (e.g. the workspace's short-link host).
+ */
+const URL_RE = /\bhttps?:\/\/[^\s)>\]]+|\bwww\.[^\s)>\]]+|\b(?:[a-z0-9-]+\.)+[a-z]{2,24}\/[^\s)>\]]*/gi;
+export function countLinks(body: string, extraHosts: string[] = []): number {
+  let n = (body.match(URL_RE) ?? []).length;
+  const rest = body.replace(URL_RE, ' ');
+  for (const h of extraHosts) {
+    const esc = h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    n += (rest.match(new RegExp(`(?<![\\w.-])${esc}(?![\\w-])`, 'gi')) ?? []).length;
+  }
+  return n;
+}
 
 function weekdayIn(now: Date, timeZone = 'UTC') {
   return new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone }).format(now);
@@ -148,7 +163,7 @@ export function evaluateDraft(ctx: RuleContext): RuleCheck[] {
   // Subreddit link rule — block (comments and posts; DMs are not subject to sub rules)
   if (draft.type !== 'dm' && subreddit) {
     const allowed = linksAllowedToday(subreddit.linkRule, now, ctx.timeZone);
-    const n = countLinks(draft.body);
+    const n = countLinks(draft.body, ctx.shortHost ? [ctx.shortHost] : []);
     checks.push({
       key: 'link_rule',
       label: 'Subreddit link rule',
