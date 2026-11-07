@@ -156,29 +156,29 @@ radii 16/12/9/999. Dark mode via `data-theme` on `<html>` with prefers-color-sch
 seed data visible in Prisma Studio.
 
 ### M1 · Tracking and opportunities
-- [ ] Reddit app registration, client-credentials token, reddit/client.ts with rate limiter and fixtures
-- [ ] KeywordGroup and Subreddit CRUD + Tracking screen
-- [ ] reddit.poll queue + Post upsert; opportunity.score with the Claude scoring tool and the ≥ 60 threshold
-- [ ] Opportunities screen: filters, cards with keyword highlights and intent reason, detail panel, bulk actions
-- [ ] Slack/email alerts per keyword group
+- [ ] Reddit app registration, client-credentials token, reddit/client.ts with rate limiter and fixtures — client + rate limiter done; needs a registered Reddit app and recorded fixtures
+- [x] KeywordGroup and Subreddit CRUD + Tracking screen
+- [ ] reddit.poll queue + Post upsert; opportunity.score with the Claude scoring tool and the ≥ 60 threshold — code done and unit-tested; not yet run against live Reddit/Claude
+- [x] Opportunities screen: filters, cards with keyword highlights and intent reason, detail panel, bulk actions
+- [ ] Slack/email alerts per keyword group — Slack instant alerts done; email digest pending
 
 *Accepted when:* adding a keyword group against a live subreddit yields scored opportunities within 10 minutes;
 filters and bulk actions persist; a fixture run scores the sample "Asana alternative" post ≥ 85.
 
 ### M2 · Accounts and agents
-- [ ] Reddit OAuth connect flow (4 steps), token encryption, owner uniqueness rule, fingerprint capture
-- [ ] Accounts screen with limits and self-promo meters computed from the account's last 7 days of comments
-- [ ] Agent CRUD + Persona, Skills, Assignment tabs; Context tab with URL/doc import and pgvector embeddings
-- [ ] packages/agents: prompt builder, tools, AgentRun logging; Test the agent playground
+- [ ] Reddit OAuth connect flow (4 steps), token encryption, owner uniqueness rule, fingerprint capture — built; untested against a real Reddit app
+- [x] Accounts screen with limits and self-promo meters computed from the account's last 7 days of comments
+- [ ] Agent CRUD + Persona, Skills, Assignment tabs; Context tab with URL/doc import and pgvector embeddings — all tabs done; context.embed (Voyage) pending
+- [ ] packages/agents: prompt builder, tools, AgentRun logging; Test the agent playground — runtime + AgentRun logs done; playground shows the prompt, live run pending
 
 *Accepted when:* a connected account shows real karma/age; the playground returns a draft with reasoning for the
 sample post, with the disclosure line present, in under 20 s.
 
 ### M3 · Drafts and approvals (first end-to-end loop)
-- [ ] draft.generate queue, tracked-link minting, rule checks (§10), Draft lifecycle
-- [ ] Approvals screen: split view, keyboard shortcuts, edit, regenerate, schedule, reject with reason, PostingAsBanner
-- [ ] post.publish via API for comments, posts and DMs; limit and ratio re-check at post time; AuditEvent on every transition
-- [ ] Home dashboard KPIs, hot opportunities, activity feed
+- [x] draft.generate queue, tracked-link minting, rule checks (§10), Draft lifecycle
+- [x] Approvals screen: split view, keyboard shortcuts, edit, regenerate, schedule, reject with reason, PostingAsBanner
+- [ ] post.publish via API for comments, posts and DMs; limit and ratio re-check at post time; AuditEvent on every transition — done with integration tests (fake poster); not yet posted to live Reddit
+- [x] Home dashboard KPIs, hot opportunities, activity feed
 
 *Accepted when:* Generate draft → Approve → the comment appears on Reddit under the owner's account with the
 disclosure line and the tracked link, and the audit log shows approver, account and timestamp. A draft without a
@@ -186,16 +186,16 @@ disclosure cannot be approved.
 
 ### M4 · Leads and conversations
 - [ ] Comment-reply and DM pollers; RedditUser, Lead, Conversation, Message creation rules
-- [ ] Leads kanban and table (saved views, CSV export); Lead detail with timeline, notes, tasks
-- [ ] Conversations three-column screen; Ask agent to draft creates a Draft that goes to Approvals
+- [x] Leads kanban and table (saved views, CSV export); Lead detail with timeline, notes, tasks
+- [x] Conversations three-column screen; Ask agent to draft creates a Draft that goes to Approvals
 - [ ] Notifications and unread counts over SSE
 
 *Accepted when:* a reply to our comment creates a lead in replied within 5 minutes, drag-to-stage persists, and a
 DM draft for a user with no inbound message is refused with a visible reason.
 
 ### M5 · Attribution and analytics
-- [ ] /r/[slug] redirector, tl.js, /api/tl/collect, Stripe webhook, attribution.rollup
-- [ ] Analytics screen: KPI row, clicks/signups chart, revenue flow, breakdown tables, tracked links + UTM builder, integration strip
+- [ ] /r/[slug] redirector, tl.js, /api/tl/collect, Stripe webhook, attribution.rollup — all but the Stripe webhook
+- [x] Analytics screen: KPI row, clicks/signups chart, revenue flow, breakdown tables, tracked links + UTM builder, integration strip
 - [ ] Home funnel and leaderboard from real rollups; weekly report email and CSV export
 
 *Accepted when:* clicking a tracked link, firing tl.track('signup') and a Stripe test payment moves the matching
@@ -203,7 +203,7 @@ lead to customer with revenue, and the thread shows the revenue in Analytics.
 
 ### M6 · Browser profiles, proxies and VNC
 - [ ] apps/browser-profile image; browser/manager.ts (dockerode) with per-profile volume and proxy env; health checks
-- [ ] Browsers screen: profile table, proxy editor, connection test, region-mismatch warning, fingerprint, permissions
+- [ ] Browsers screen: profile table, proxy editor, connection test, region-mismatch warning, fingerprint, permissions — screen done; connection test runs in the worker (M6)
 - [ ] Playwright actions openThread, submitComment, sendDm; NeedsHuman detection; post.publish browser fallback
 - [ ] Remote session screen: noVNC viewer behind the authenticated websocket proxy, take-over, session log, Hand back, idle timeout
 
@@ -219,7 +219,7 @@ pauses the job and notifies the owner; the owner completes it over VNC and Hand 
 HubSpot contact within 2 minutes.
 
 ### M8 · Settings, billing and hardening
-- [ ] Team and roles, invites, audit log with CSV export, weekly report settings, workspace list
+- [x] Team and roles, invites, audit log with CSV export, weekly report settings, workspace list
 - [ ] Stripe Billing for Starter / Pro / Agency with plan limits enforced
 - [ ] Dark mode pass on every screen; tablet layout pass; accessibility audit
 - [ ] Load test the pollers; backup and restore runbook; Sentry

@@ -27,3 +27,15 @@ Newest first.
 - **Seed volumes are generated** where the mockup shows totals (e.g. 33 filler opportunities, click events spread
   over 30 days with a deterministic PRNG) so dashboards compute real numbers from rows instead of hard-coded copy.
 - **`@playwright/test` pinned to 1.63.0** to match the browsers preinstalled in the build environment.
+
+## 2026-11-07 — screens and worker wiring
+
+- **BullMQ job ids use `-`, not `:`** (BullMQ rejects colons in custom ids): `draft-<id>`, `draft-<id>-v<n>`, `post-<id>`.
+- **Context search is keyword (ILIKE) until `context.embed` runs**; the pgvector HNSW index is in place.
+- **Reddit OAuth callback stores the identity in a 15-minute encrypted cookie**; the final step of the connect
+  flow creates the account, browser profile and `account.connected` audit row in one transaction, so the flow
+  keeps the artboard's order (Reddit first).
+- **Disconnecting an account** clears its token and scopes and sets health `blocked`; history is kept.
+- **NeedsBrowser (captcha/verification) leaves the draft approved** and notifies the account owner; the M6 browser
+  fallback will pick it up.
+- **Share of voice** is horizontal bars over 30 days instead of the artboard's weekly lines (no chart library yet).

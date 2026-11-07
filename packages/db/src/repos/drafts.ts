@@ -8,7 +8,14 @@ import {
   evaluateDraft,
   warnings,
 } from '@threadline/agents';
-import type { DraftType, MemberRole, RuleCheck } from '@threadline/shared';
+import {
+  type DraftType,
+  type MemberRole,
+  type RuleCheck,
+  buildUtm,
+  makeSlug,
+  withUtm,
+} from '@threadline/shared';
 import { prisma } from '../client';
 import { writeAudit } from './audit';
 import { memberCanApprove } from './members';
@@ -442,10 +449,33 @@ export async function markPosted(draftId: string, postedRedditId: string, now: D
     const d = await tx.draft.update({
       where: { id: draftId },
       data: { status: 'posted', postedRedditId, postedAt: now },
-      include: { account: { select: { username: true } }, agent: { select: { name: true } } },
+      include: {
+        account: { select: { username: true, disclosureLine: true } },
+        agent: { select: { name: true } },
+      },
     });
     if (d.opportunityId)
       await tx.opportunity.update({ where: { id: d.opportunityId }, data: { status: 'replied' } });
+    // Outbound messages always link the Draft they came from.
+    if (d.conversationId) {
+      await tx.message.create({
+        data: {
+          workspaceId: d.workspaceId,
+          conversationId: d.conversationId,
+          direction: 'out',
+          accountId: d.accountId,
+          draftId: d.id,
+          redditId: postedRedditId,
+          author: d.account.username,
+          body: d.body,
+          sentAt: now,
+        },
+      });
+      await tx.conversation.update({
+        where: { id: d.conversationId },
+        data: { lastMessageAt: now, needsReply: false },
+      });
+    }
     await writeAudit(
       {
         workspaceId: d.workspaceId,
@@ -459,6 +489,7 @@ export async function markPosted(draftId: string, postedRedditId: string, now: D
           account: d.account.username,
           agent: d.agent.name,
           postedRedditId,
+          disclosurePresent: containsDisclosure(d.body, d.account.disclosureLine),
         },
       },
       tx,
@@ -484,4 +515,201 @@ export async function markFailed(draftId: string, error: string) {
     );
     return d;
   });
+}
+
+// ───────────────────────── agent output (draft.generate) ─────────────────────────
+
+/** Everything draft.generate needs to build the prompt and tools. */
+export async function generationContext(input: {
+  workspaceId: string;
+  agentId: string;
+  draftId?: string;
+  opportunityId?: string;
+  conversationId?: string;
+}) {
+  const [workspace, agent, existing] = await Promise.all([
+    prisma.workspace.findUniqueOrThrow({ where: { id: input.workspaceId } }),
+    prisma.agent.findFirstOrThrow({
+      where: { id: input.agentId, workspaceId: input.workspaceId },
+      include: { account: true, skills: true },
+    }),
+    input.draftId ? get(input.workspaceId, input.draftId) : Promise.resolve(null),
+  ]);
+  const opportunityId = input.opportunityId ?? existing?.opportunityId ?? undefined;
+  const conversationId = input.conversationId ?? existing?.conversationId ?? undefined;
+  const opportunity = opportunityId
+    ? await prisma.opportunity.findFirst({
+        where: { id: opportunityId, workspaceId: input.workspaceId },
+        include: { post: { include: { subreddit: true } }, keywordGroup: true },
+      })
+    : null;
+  const conversation = conversationId
+    ? await prisma.conversation.findFirst({
+        where: { id: conversationId, workspaceId: input.workspaceId },
+        include: {
+          messages: { orderBy: { sentAt: 'asc' } },
+          lead: { include: { redditUser: true } },
+          post: { include: { subreddit: true } },
+        },
+      })
+    : null;
+  return { workspace, agent, existing, opportunity, conversation };
+}
+
+/** Keyword search over the agent's ContextItems (pgvector similarity replaces this once embeddings exist). */
+export async function searchContext(agentId: string, query: string, take = 8) {
+  const terms = query
+    .toLowerCase()
+    .split(/\W+/)
+    .filter((t) => t.length > 2)
+    .slice(0, 6);
+  const items = await prisma.contextItem.findMany({
+    where: {
+      agentId,
+      ...(terms.length
+        ? {
+            OR: terms.flatMap((t) => [
+              { title: { contains: t, mode: 'insensitive' as const } },
+              { content: { contains: t, mode: 'insensitive' as const } },
+            ]),
+          }
+        : {}),
+    },
+    orderBy: { freshAt: 'desc' },
+    take,
+  });
+  return items.map((i) => ({
+    title: i.title,
+    kind: i.kind,
+    source: i.sourceUrl,
+    content: i.content.slice(0, 2000),
+  }));
+}
+
+/** Saves agent output as a pending Draft (new) or as the next version of an existing one (regenerate). */
+export async function saveGenerated(input: {
+  workspaceId: string;
+  agentId: string;
+  accountId: string;
+  type: DraftType;
+  body: string;
+  reasoning: string;
+  title?: string | null;
+  draftId?: string;
+  opportunityId?: string | null;
+  conversationId?: string | null;
+  subredditId?: string | null;
+  trackedLinkId?: string | null;
+  agentName: string;
+}) {
+  const now = new Date();
+  const id = await prisma.$transaction(async (tx) => {
+    let draftId = input.draftId;
+    if (draftId) {
+      const prev = await tx.draft.findUniqueOrThrow({ where: { id: draftId } });
+      const hist = [
+        ...((prev.bodyHistory as unknown[]) ?? []),
+        {
+          body: input.body,
+          at: now.toISOString(),
+          by: input.agentName,
+          instruction: prev.regenerateInstruction,
+        },
+      ];
+      await tx.draft.update({
+        where: { id: draftId },
+        data: {
+          body: input.body,
+          reasoning: input.reasoning,
+          bodyHistory: hist as Prisma.InputJsonValue,
+          regenerateInstruction: null,
+          status: 'pending',
+          trackedLinkId: input.trackedLinkId ?? prev.trackedLinkId,
+        },
+      });
+    } else {
+      const d = await tx.draft.create({
+        data: {
+          workspaceId: input.workspaceId,
+          agentId: input.agentId,
+          accountId: input.accountId,
+          type: input.type,
+          title: input.title ?? null,
+          body: input.body,
+          reasoning: input.reasoning,
+          opportunityId: input.opportunityId ?? null,
+          conversationId: input.conversationId ?? null,
+          subredditId: input.subredditId ?? null,
+          trackedLinkId: input.trackedLinkId ?? null,
+          status: 'pending',
+          bodyHistory: [{ body: input.body, at: now.toISOString(), by: input.agentName }],
+        },
+      });
+      draftId = d.id;
+      if (input.opportunityId)
+        await tx.opportunity.update({ where: { id: input.opportunityId }, data: { status: 'drafting' } });
+    }
+    await writeAudit(
+      {
+        workspaceId: input.workspaceId,
+        actorMemberId: null,
+        action: input.draftId ? 'draft.regenerated' : 'draft.created',
+        targetType: 'Draft',
+        targetId: draftId,
+        accountId: input.accountId,
+        meta: { agent: input.agentName, type: input.type },
+      },
+      tx,
+    );
+    return draftId;
+  });
+  // Rule checks are stored for the queue view; approval re-evaluates them anyway.
+  const d = await get(input.workspaceId, id);
+  if (d) {
+    const checks = await evaluate(d, now);
+    await prisma.draft.update({
+      where: { id },
+      data: { ruleChecks: checks as unknown as Prisma.InputJsonValue },
+    });
+  }
+  return id;
+}
+
+/** Mints a TrackedLink for a draft (called only when the subreddit's link rule allows one today). */
+export async function mintTrackedLink(input: {
+  workspaceId: string;
+  destinationUrl: string;
+  medium: 'comment' | 'dm' | 'post';
+  subredditId?: string | null;
+  subredditName?: string | null;
+  postId?: string | null;
+  postRedditId?: string | null;
+  agentId: string;
+  agentName: string;
+}) {
+  const utm = buildUtm({
+    medium: input.medium,
+    subreddit: input.subredditName,
+    postId: input.postRedditId,
+    agent: input.agentName,
+  });
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      return await prisma.trackedLink.create({
+        data: {
+          workspaceId: input.workspaceId,
+          slug: makeSlug(),
+          destinationUrl: input.destinationUrl,
+          medium: input.medium,
+          subredditId: input.subredditId ?? null,
+          postId: input.postId ?? null,
+          agentId: input.agentId,
+          utm: { ...utm, full: withUtm(input.destinationUrl, utm) } as Prisma.InputJsonValue,
+        },
+      });
+    } catch (e) {
+      if ((e as { code?: string }).code !== 'P2002') throw e; // slug collision: retry
+    }
+  }
+  throw new Error('could not mint a unique slug');
 }
