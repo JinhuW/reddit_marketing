@@ -1,0 +1,77 @@
+# Deploy a browser node (plan T32): runs deploy/node/install.sh on the node itself, through a self-hosted runner
+# registered there with the label `browser-node` (deploy/node/README.md "GitHub runner").
+#
+# Manual only. No secrets come from GitHub: NODE_TOKEN and CLOAKBROWSER_LICENSE_KEY live in the node's
+# /opt/threadline-node/node.env (mode 600, owned by the runner user), which install.sh reads and never prints.
+name: Deploy node
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to deploy (branch, tag or SHA)
+        required: true
+        default: main
+      agent_image:
+        description: Registry image for the node agent (empty = build from the checkout)
+        required: false
+        default: ''
+      browser_image:
+        description: Registry image for browser profiles (empty = build from the checkout with CLOAK_VERSION)
+        required: false
+        default: ''
+      cloak_version:
+        description: CloakBrowser build to bake in (empty = CLOAK_VERSION from node.env)
+        required: false
+        default: ''
+      rebuild_browser:
+        description: Rebuild the browser image even if its tag exists
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-node
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, browser-node]
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          # The node keeps no git credentials.
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test deploy scripts
+        run: node --test deploy/node/test/node.test.mjs
+
+      - name: Install / update
+        env:
+          AGENT_IMAGE_INPUT: ${{ inputs.agent_image }}
+          BROWSER_IMAGE_INPUT: ${{ inputs.browser_image }}
+          CLOAK_VERSION_INPUT: ${{ inputs.cloak_version }}
+          REBUILD_BROWSER: ${{ inputs.rebuild_browser }}
+        run: |
+          args=(--skip-timer)
+          if [ -n "$AGENT_IMAGE_INPUT" ]; then args+=(--agent-image "$AGENT_IMAGE_INPUT"); fi
+          if [ -n "$BROWSER_IMAGE_INPUT" ]; then args+=(--browser-image "$BROWSER_IMAGE_INPUT"); fi
+          if [ -n "$CLOAK_VERSION_INPUT" ]; then args+=(--cloak-version "$CLOAK_VERSION_INPUT"); fi
+          if [ "$REBUILD_BROWSER" == true ]; then args+=(--rebuild-browser); fi
+          deploy/node/install.sh "${args[@]}"
+
+      - name: Status
+        if: always()
+        run: |
+          docker compose -f /opt/threadline-node/compose.yml --env-file /opt/threadline-node/compose.env ps || true
+          docker logs --tail 20 tl-node-agent 2>&1 || true

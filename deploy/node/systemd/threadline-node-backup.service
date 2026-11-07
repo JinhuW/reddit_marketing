@@ -1,0 +1,13 @@
+# Installed by deploy/node/install.sh (@PREFIX@ is replaced with the install dir). Started by the timer.
+[Unit]
+Description=Threadline browser node: restic backup of tl-profile-* volumes
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=TL_NODE_ENV=@PREFIX@/node.env
+ExecStart=@PREFIX@/bin/backup.sh
+Nice=10
+IOSchedulingClass=idle

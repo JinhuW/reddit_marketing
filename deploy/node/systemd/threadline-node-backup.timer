@@ -1,0 +1,11 @@
+# Weekly backup of tl-profile-* volumes (deploy/node/backup.sh). Installed by deploy/node/install.sh.
+[Unit]
+Description=Weekly Threadline browser-profile backup
+
+[Timer]
+OnCalendar=Sun *-*-* 03:30:00
+RandomizedDelaySec=20m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -60,7 +60,7 @@ CLOAKBROWSER_LICENSE_KEY=… docker buildx build --platform linux/amd64 \
   --build-arg CLOAK_VERSION=<build> \
   --build-arg CLOAK_URL='https://…/{version}/….tar.gz' \
   --build-arg CLOAK_SHA256=<sha256 of the archive> \
-  -t threadline/browser-profile:<build> apps/browser-profile
+  -t tl.invalid/browser-profile:<build> apps/browser-profile
 ```
 
 Offline: put the archive at `vendor/cloakbrowser-<build>-linux-x64.tar.gz` and leave `CLOAK_URL` empty. Archives in
@@ -73,7 +73,7 @@ For work on the supervisor or the probe without a key, on any architecture, buil
 has no fingerprinting, so the probe's seed checks fail on it by design:
 
 ```sh
-docker buildx build --build-arg ENGINE=chromium -t threadline/browser-profile:chromium apps/browser-profile
+docker buildx build --build-arg ENGINE=chromium -t tl.invalid/browser-profile:chromium apps/browser-profile
 ```
 
 ## Probe (`scripts/browser-probe.ts`)
@@ -82,7 +82,7 @@ Runs on `browser-1` (Node 22.18+ and Docker; no `pnpm install` needed). Never in
 Pass the seccomp profile the agent will use with `--docker-opt=--security-opt=seccomp=<file>`.
 
 ```sh
-CLOAKBROWSER_LICENSE_KEY=… node scripts/browser-probe.ts --image threadline/browser-profile:<build>
+CLOAKBROWSER_LICENSE_KEY=… node scripts/browser-probe.ts --image tl.invalid/browser-profile:<build>
 ```
 
 It starts seed A, reads it, restarts the container on the same volume and reads again, starts seed B on a fresh
