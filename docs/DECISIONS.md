@@ -78,3 +78,11 @@ Newest first.
 - **Browser node names are unique across workspaces.** The name is the `browser.<name>` queue and the gateway
   login (`X-Node-Name`), so `@@unique([workspaceId, name])` became `name @unique`; `nodes.register` refuses a
   name another workspace owns.
+- **First CloakBrowser pin: `156.0.8078.47.1-pro` (linux-x64), team plan.** Fetched once on the node with the npm
+  package's signed download (Ed25519-checked), packed as the `vendor/` archive (sha256
+  `a27a3d95619a43b1ac93fa42c71beb0e4e59b02fc1a661d0873ff084022ccffb`). A build bump is a device change (ADR).
+- **Chromium keeps its sandbox on the node** via a seccomp profile = Docker's default plus `clone`, `clone3`,
+  `unshare`, `setns` (Ubuntu 24.04 + Docker's default profile otherwise kills the zygote: "No usable sandbox").
+  The agent passes it with `BROWSER_SECCOMP_PROFILE`. `--no-sandbox` is not used.
+- **`browser-1` runs on the homelab VM and dials the gateway's Railway domain** until the custom domain exists
+  (G1); `GATEWAY_URL` is the only thing to change then. It starts at `NODE_MAX_PROFILES=1`.

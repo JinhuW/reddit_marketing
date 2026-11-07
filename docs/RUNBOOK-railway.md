@@ -413,9 +413,10 @@ One row per applied change. Times in UTC. "By" is a person, or an agent plus the
 | 2026-11-07 | §1 | Read-only inventory; nothing changed | T15 agent | — |
 | | §3 | `app.<domain>`, `go.<domain>` on `web` | | |
 | | §4 | `TRACKING_HOST`, `APP_URL`, `AUTH_URL` on `web`, `worker`; Reddit redirect URI | | |
-| | §5 | PITR enabled; schedule daily + weekly; first backup `t15-first`; earliest restore point: | | |
-| | §6 | Tracing on `web`, `worker` | | |
-| | §7 | `node-gateway` service, `nodes.<domain>`, gateway variables | | |
+| 2026-11-07 21:16 | §5 | PITR enabled; schedule daily + weekly; first backup `t15-first`; earliest restore point 2026-11-07 21:16 UTC | coordinator agent / owner (G4) | archiver healthy, 1 base backup |
+| 2026-11-07 21:22 | §6 | Tracing on `web`, `worker`, `node-gateway` (auto-instrumentation off) | coordinator agent / owner (G4) | |
+| 2026-11-07 21:20 | §7 | `node-gateway` service with Railway domain `node-gateway-production-6426.up.railway.app` (no custom domain until G1); gateway variables; `NODE_GATEWAY_URL`/`GATEWAY_INTERNAL_SECRET` on `web`, `worker` | coordinator agent / owner (G4) | |
+| 2026-11-07 21:22 | T16 | `web`, `worker`, `node-gateway` build from the repo `Dockerfile` (`railway up`); start commands per service; `web` pre-deploy runs `migrate:deploy`. Rollback: redeploy `web` 14c80ce9, `worker` d0b76404 | coordinator agent / owner (G4) | |
 | | §8 | `staging` environment | | |
 
 ## 11. Settings register (target state)
