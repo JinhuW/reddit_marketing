@@ -45,7 +45,7 @@ FROM runtime AS web
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/login').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
-CMD ["sh", "-c", "pnpm --filter @threadline/db migrate:deploy && cd apps/web && exec node_modules/.bin/next start -p ${PORT:-3000}"]
+CMD ["sh", "-c", "pnpm --filter @threadline/db migrate:deploy && cd apps/web && exec node_modules/.bin/tsx server.ts"]
 
 FROM runtime AS worker
 ENV SERVICE_ROLE=core

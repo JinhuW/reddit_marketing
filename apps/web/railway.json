@@ -14,7 +14,7 @@
   },
   "deploy": {
     "preDeployCommand": ["pnpm --filter @threadline/db migrate:deploy"],
-    "startCommand": "sh -c 'cd apps/web && exec node_modules/.bin/next start -p ${PORT:-3000}'",
+    "startCommand": "sh -c 'cd apps/web && NODE_ENV=production exec node_modules/.bin/tsx server.ts'",
     "healthcheckPath": "/login",
     "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",
