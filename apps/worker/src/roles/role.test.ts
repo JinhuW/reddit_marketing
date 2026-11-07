@@ -32,6 +32,8 @@ describe('gateway role', () => {
     const handle = await startRole('gateway');
     expect(handle.role).toBe('gateway');
     expect(startGateway).toHaveBeenCalledOnce();
+    const opts = (startGateway.mock.calls[0] as unknown[])[0] as { plugins: { name: string }[] };
+    expect(opts.plugins.map((p) => p.name)).toEqual(['dispatch', 'vnc', 'browser.health']);
     await handle.stop();
   });
 

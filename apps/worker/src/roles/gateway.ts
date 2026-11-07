@@ -3,7 +3,10 @@
  * `browser.<node>` queues and talks to node agents over WSS; it runs none of the core processors.
  * `startGateway()` is expected to resolve once the gateway is listening and to reject if it cannot start.
  */
-import { startGateway } from '../gateway/index';
+import { dispatchPlugin } from '../gateway/dispatch';
+import { type GatewayPlugin, startGateway } from '../gateway/index';
+import { createVncPlugin } from '../gateway/vnc';
+import { browserHealthPlugin } from '../queues/browser-health';
 import type { RoleHandle } from './role';
 
 /**
@@ -21,7 +24,14 @@ const isClosable = (x: unknown): x is Closable =>
 const isStoppable = (x: unknown): x is Stoppable =>
   typeof x === 'object' && x !== null && typeof (x as Stoppable).stop === 'function';
 
-export async function startGatewayRole(start: () => Promise<unknown> = startGateway): Promise<RoleHandle> {
+/** Every Wave 2 feature the gateway serves. Without these the hub accepts agents but does nothing. */
+export function gatewayPlugins(): GatewayPlugin[] {
+  return [dispatchPlugin(), createVncPlugin(), browserHealthPlugin()];
+}
+
+export async function startGatewayRole(
+  start: () => Promise<unknown> = () => startGateway({ plugins: gatewayPlugins() }),
+): Promise<RoleHandle> {
   const started: unknown = await start();
   return {
     role: 'gateway',
