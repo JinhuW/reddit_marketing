@@ -30,6 +30,14 @@ export default async function globalSetup(config: FullConfig) {
   const baseURL = (config.projects[0]?.use.baseURL as string) ?? 'http://localhost:3000';
   const dir = join(HERE, '.auth');
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  await signInAs('jane@acme.so', baseURL, join(dir, 'jane.json'));
-  await signInAs('rhea@brightloop.io', baseURL, join(dir, 'rhea.json'));
+  // Retry once: the dev server may be recompiling when the run starts.
+  const withRetry = async (email: string, file: string) => {
+    try {
+      await signInAs(email, baseURL, join(dir, file));
+    } catch {
+      await signInAs(email, baseURL, join(dir, file));
+    }
+  };
+  await withRetry('jane@acme.so', 'jane.json');
+  await withRetry('rhea@brightloop.io', 'rhea.json');
 }
