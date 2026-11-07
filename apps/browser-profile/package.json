@@ -1,0 +1,18 @@
+{
+  "name": "@threadline/browser-profile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CloakBrowser profile image (one container per BrowserProfile) and the fingerprint probe.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "image:build": "docker buildx build --platform linux/amd64 --secret id=cloak_key,env=CLOAKBROWSER_LICENSE_KEY --build-arg CLOAK_VERSION --build-arg CLOAK_URL --build-arg CLOAK_SHA256 -t threadline/browser-profile:dev .",
+    "image:build:chromium": "docker buildx build --build-arg ENGINE=chromium -t threadline/browser-profile:chromium .",
+    "probe": "node ../../scripts/browser-probe.ts"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.0",
+    "vitest": "3.2.4"
+  }
+}
