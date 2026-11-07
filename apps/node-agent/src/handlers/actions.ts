@@ -1,11 +1,13 @@
-/** STUB until T22 (Playwright actions) lands. T22 replaces this file's body and keeps the `actionsModule` export. */
-import { type AgentModule, notImplemented } from '../registry';
+/**
+ * Playwright actions over CDP (plan §4 T22): `action.submitComment`, `action.sendDm` and `profile.testProxy`.
+ * The work lives in `src/actions/`; this file only registers it. Proxy credentials come from
+ * `profileProxies`, which the profile module fills on `profile.start`.
+ */
+import { createActionHandlers, profileProxies } from '../actions';
+import type { AgentModule } from '../registry';
 
 export const actionsModule: AgentModule = {
   name: 'actions',
-  handlers: {
-    'action.submitComment': notImplemented('action.submitComment'),
-    'action.sendDm': notImplemented('action.sendDm'),
-    'profile.testProxy': notImplemented('profile.testProxy'),
-  },
+  handlers: createActionHandlers(),
+  stop: () => profileProxies.clear(),
 };

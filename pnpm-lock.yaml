@@ -48,6 +48,9 @@ importers:
         specifier: 3.25.76
         version: 3.25.76
     devDependencies:
+      '@threadline/node-testkit':
+        specifier: workspace:*
+        version: link:../../packages/node-testkit
       '@types/dockerode':
         specifier: 3.3.44
         version: 3.3.44
