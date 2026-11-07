@@ -388,8 +388,8 @@ model BrowserProfile {
 model BrowserNode {
   id           String            @id @default(cuid())
   workspaceId  String
-  /// "browser-1"; also the queue suffix (browserQueue)
-  name         String
+  /// "browser-1"; also the queue suffix (browserQueue) and the X-Node-Name header, so unique across workspaces
+  name         String            @unique
   /// sha256 (hex) of the node token; the token itself lives only in Railway + the node's env
   tokenHash    String
   status       BrowserNodeStatus @default(offline)
@@ -406,7 +406,7 @@ model BrowserNode {
   workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   profiles  BrowserProfile[]
 
-  @@unique([workspaceId, name])
+  @@index([workspaceId])
 }
 
 model Proxy {

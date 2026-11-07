@@ -75,3 +75,6 @@ Newest first.
   a CloakBrowser key (G2), a local VM (G3) or a Railway change (G4) stops at "ready, not applied".
   M1–M5 acceptance is still required before M6 is ticked in PLAN §8.
 - **Browser nodes dial out to a Railway `node-gateway` over WSS** (ADR-0001). Postgres and Redis stay private.
+- **Browser node names are unique across workspaces.** The name is the `browser.<name>` queue and the gateway
+  login (`X-Node-Name`), so `@@unique([workspaceId, name])` became `name @unique`; `nodes.register` refuses a
+  name another workspace owns.

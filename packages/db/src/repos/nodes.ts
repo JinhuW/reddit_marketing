@@ -53,8 +53,12 @@ export async function register(input: {
     ...(input.maxProfiles !== undefined ? { maxProfiles: input.maxProfiles } : {}),
     ...(input.seatsLimit !== undefined ? { seatsLimit: input.seatsLimit } : {}),
   };
+  // Names are global (they name the queue and the gateway login), so never re-key another workspace's node.
+  const existing = await prisma.browserNode.findUnique({ where: { name }, select: { workspaceId: true } });
+  if (existing && existing.workspaceId !== input.workspaceId)
+    throw new Error(`node name "${name}" is already used by another workspace`);
   return prisma.browserNode.upsert({
-    where: { workspaceId_name: { workspaceId: input.workspaceId, name } },
+    where: { name },
     create: { workspaceId: input.workspaceId, name, tokenHash, ...limits },
     update: { tokenHash, ...limits },
     select: publicSelect,
@@ -79,10 +83,7 @@ export async function verifyToken(name: string, token: string): Promise<NodeRow 
 }
 
 export function getByName(workspaceId: string, name: string): Promise<NodeRow | null> {
-  return prisma.browserNode.findUnique({
-    where: { workspaceId_name: { workspaceId, name } },
-    select: publicSelect,
-  });
+  return prisma.browserNode.findFirst({ where: { workspaceId, name }, select: publicSelect });
 }
 
 export function getById(id: string): Promise<NodeRow | null> {
