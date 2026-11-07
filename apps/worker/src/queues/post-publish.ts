@@ -1,8 +1,10 @@
 import { PolicyError, assertPublishable } from '@threadline/agents';
-import { drafts, prisma } from '@threadline/db';
+import { browsers, drafts, prisma } from '@threadline/db';
+import { type BrowserJob, type DraftType, browserJobId } from '@threadline/shared';
 import { type Job, UnrecoverableError } from 'bullmq';
 import { log } from '../log';
 import { NeedsBrowser, RedditClient, RedditError } from '../reddit/client';
+import { type BrowserQueues, sharedBrowserQueues } from './browser-health';
 
 /** What post.publish needs from Reddit. Injected so tests never call the live API. */
 export interface Poster {
@@ -18,7 +20,56 @@ export type PublishOutcome =
   | { status: 'posted'; postedRedditId: string }
   | { status: 'skipped'; reason: string }
   | { status: 'refused'; reason: string; failures: string[] }
-  | { status: 'needs_human'; reason: string };
+  | {
+      status: 'needs_human';
+      reason: string;
+      /** set when the draft went to its node's browser queue; null when the account was paused instead */
+      fallback: { node: string; jobId: string } | null;
+    };
+
+/**
+ * Browser fallback (PLAN §14: "on by default for DMs and verification recovery only"). Only draft types with a
+ * browser action can fall back: a comment (verification recovery) and a DM. A `post` never goes to the browser.
+ */
+export const BROWSER_FALLBACK_ACTION: Partial<
+  Record<DraftType, Extract<BrowserJob['kind'], 'action.submitComment' | 'action.sendDm'>>
+> = { comment: 'action.submitComment', dm: 'action.sendDm' };
+
+/** Attempts for a browser action job: the agent replays a stored result per cmdId, so a retry never posts twice. */
+export const FALLBACK_ATTEMPTS = 3;
+
+/** The draft's account with its pause state and its profile's node. */
+interface AccountForPublish {
+  id: string;
+  username: string;
+  ownerMemberId: string;
+  oauthTokenEnc: string | null;
+  pausedReason: string | null;
+  browserProfile: { id: string; node: { name: string } | null } | null;
+}
+
+function loadAccountForPublish(accountId: string): Promise<AccountForPublish> {
+  return prisma.redditAccount.findUniqueOrThrow({
+    where: { id: accountId },
+    select: {
+      id: true,
+      username: true,
+      ownerMemberId: true,
+      oauthTokenEnc: true,
+      pausedReason: true,
+      browserProfile: { select: { id: true, node: { select: { name: true } } } },
+    },
+  });
+}
+
+/** The browser job for a draft, or null when its type has no browser action. */
+export function fallbackJob(
+  d: { id: string; workspaceId: string; type: string },
+  profileId: string,
+): BrowserJob | null {
+  const kind = BROWSER_FALLBACK_ACTION[d.type as DraftType];
+  return kind ? { kind, workspaceId: d.workspaceId, profileId, draftId: d.id } : null;
+}
 
 /**
  * Publish one draft. This is the ONLY code path that posts to Reddit, and it refuses unless
@@ -30,10 +81,20 @@ export async function publishDraft(
   draftId: string,
   makePoster: PosterFactory = redditPoster,
   now: Date = new Date(),
+  browser?: BrowserQueues,
 ): Promise<PublishOutcome> {
   const d = await drafts.get(workspaceId, draftId);
   if (!d) return { status: 'skipped', reason: 'draft not found' };
   if (d.status === 'posted') return { status: 'skipped', reason: 'already posted' };
+
+  const account = await loadAccountForPublish(d.accountId);
+  // A paused account (any PauseReason) posts nothing until resumed; the draft keeps its status.
+  if (account.pausedReason)
+    return { status: 'skipped', reason: `account u/${account.username} is paused (${account.pausedReason})` };
+  // The browser has this draft: posting through the API too could post it twice.
+  const node = account.browserProfile?.node?.name;
+  if (node && (await (browser ?? sharedBrowserQueues()).inFlight(node, d.id)))
+    return { status: 'skipped', reason: `browser fallback in progress on ${node}` };
 
   const checks = await drafts.evaluate(d, now);
   try {
@@ -46,10 +107,6 @@ export async function publishDraft(
     return { status: 'refused', reason: e.message, failures: e.failures };
   }
 
-  const account = await prisma.redditAccount.findUniqueOrThrow({
-    where: { id: d.accountId },
-    select: { id: true, oauthTokenEnc: true },
-  });
   const poster = makePoster(account);
   let postedRedditId: string;
   try {
@@ -70,33 +127,62 @@ export async function publishDraft(
       postedRedditId = await poster.compose(to, 'Re: your question', d.body);
     }
   } catch (e) {
-    if (e instanceof NeedsBrowser) {
-      // Verification / captcha: the owner takes over in the browser profile (M6). Draft stays approved.
-      const owner = await prisma.redditAccount.findUnique({
-        where: { id: d.accountId },
-        select: { ownerMemberId: true, browserProfile: { select: { id: true } } },
-      });
-      if (owner)
-        await prisma.notification.create({
-          data: {
-            workspaceId,
-            memberId: owner.ownerMemberId,
-            kind: 'needs_human',
-            payload: {
-              draftId: d.id,
-              profileId: owner.browserProfile?.id ?? null,
-              text: `Reddit asked for verification: ${e.message}`,
-            },
-          },
-        });
-      return { status: 'needs_human', reason: e.message };
-    }
+    if (e instanceof NeedsBrowser) return needsBrowser(d, account, e.message, browser);
     throw e;
   }
 
   await drafts.markPosted(d.id, postedRedditId, now);
   log.info({ draftId: d.id, postedRedditId }, 'draft posted');
   return { status: 'posted', postedRedditId };
+}
+
+/**
+ * Reddit asked for verification. The owner is notified as before; then either the draft goes to its node's
+ * browser queue (comment/DM, profile on a node, not tried in the browser yet), or the account is paused with
+ * `needs_human` so the minute sweep stops retrying it until someone hands the browser back or resumes it.
+ * The draft stays approved either way. The gateway re-checks approval before it sends any action to a node.
+ */
+async function needsBrowser(
+  d: { id: string; workspaceId: string; type: string },
+  account: AccountForPublish,
+  reason: string,
+  browser: BrowserQueues | undefined,
+): Promise<PublishOutcome> {
+  const profileId = account.browserProfile?.id ?? null;
+  const node = account.browserProfile?.node?.name ?? null;
+  const job = profileId ? fallbackJob(d, profileId) : null;
+  let fallback: { node: string; jobId: string } | null = null;
+  if (job && node) {
+    const jobId = browserJobId(job);
+    // An existing id means the browser already tried this draft (any state): a human has to step in now.
+    if (await (browser ?? sharedBrowserQueues()).add(node, job, jobId, { attempts: FALLBACK_ATTEMPTS }))
+      fallback = { node, jobId };
+  }
+
+  await prisma.notification.create({
+    data: {
+      workspaceId: d.workspaceId,
+      memberId: account.ownerMemberId,
+      kind: 'needs_human',
+      payload: {
+        draftId: d.id,
+        profileId,
+        fallback: fallback !== null,
+        text: fallback
+          ? `Reddit asked for verification: ${reason}. Retrying in the browser on ${fallback.node}.`
+          : `Reddit asked for verification: ${reason}`,
+      },
+    },
+  });
+  if (!fallback)
+    await browsers.pauseAccount({
+      workspaceId: d.workspaceId,
+      accountId: account.id,
+      reason: 'needs_human',
+      detail: `draft ${d.id}: ${reason}`.slice(0, 500),
+    });
+  log.info({ draftId: d.id, fallback }, 'draft needs the browser');
+  return { status: 'needs_human', reason, fallback };
 }
 
 /** post.publish job: one draft (enqueued on approve), or a sweep of due scheduled drafts (every minute). */

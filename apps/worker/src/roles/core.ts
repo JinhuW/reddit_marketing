@@ -9,6 +9,7 @@ import { type Job, Queue, Worker } from 'bullmq';
 import { redisConnection } from '../connection';
 import { log } from '../log';
 import { attributionRollup } from '../queues/attribution-rollup';
+import { HEALTH_EVERY_MS, closeSharedBrowserQueues } from '../queues/browser-health';
 import { draftGenerate } from '../queues/draft-generate';
 import { opportunityScore } from '../queues/opportunity-score';
 import { postPublish } from '../queues/post-publish';
@@ -70,6 +71,12 @@ async function schedule(q: QueueFor) {
     { name: 'rollup', data: {} },
   );
   await q(QUEUES.sessionIdle).upsertJobScheduler('idle', { every: 60_000 }, { name: 'idle', data: {} });
+  // Scheduled here, processed by the gateway role (queues/browser-health.ts browserHealthPlugin). Retries 0.
+  await q(QUEUES.browserHealth).upsertJobScheduler(
+    'health',
+    { every: HEALTH_EVERY_MS },
+    { name: 'health', data: {}, opts: { attempts: 1, removeOnComplete: 100, removeOnFail: 100 } },
+  );
 }
 
 export async function startCore(): Promise<RoleHandle> {
@@ -98,6 +105,7 @@ export async function startCore(): Promise<RoleHandle> {
       // Workers first so in-flight jobs finish, then the producer queues they may still enqueue to.
       await Promise.all(workers.map((w) => w.close()));
       await Promise.all([...queues.values()].map((x) => x.close()));
+      await closeSharedBrowserQueues();
     },
   };
 }
