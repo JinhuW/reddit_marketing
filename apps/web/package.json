@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "tsx server.ts",
+    "dev:next": "next dev -p 3000",
     "build": "next build",
-    "start": "next start -p 3000",
+    "start": "NODE_ENV=production tsx server.ts",
+    "start:next": "next start -p 3000",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:e2e": "playwright test --trace off"
@@ -14,6 +16,7 @@
   "dependencies": {
     "@auth/prisma-adapter": "2.11.3",
     "@dnd-kit/core": "6.3.1",
+    "@novnc/novnc": "1.4.0",
     "@threadline/agents": "workspace:*",
     "@threadline/db": "workspace:*",
     "@threadline/shared": "workspace:*",
@@ -25,6 +28,8 @@
     "react": "19.1.10",
     "react-dom": "19.1.10",
     "server-only": "0.0.1",
+    "tsx": "4.20.6",
+    "ws": "8.18.3",
     "zod": "3.25.76"
   },
   "devDependencies": {
@@ -33,6 +38,7 @@
     "@types/node": "22.18.0",
     "@types/react": "19.1.17",
     "@types/react-dom": "19.1.11",
+    "@types/ws": "8.18.1",
     "tailwindcss": "4.1.18",
     "typescript": "5.9.3",
     "vitest": "3.2.4"
