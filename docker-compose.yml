@@ -1,0 +1,60 @@
+# Local development services. `docker compose up -d postgres redis jaeger`, then `pnpm dev`.
+# `docker compose up -d` also runs web + worker in containers (production-like).
+name: threadline
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: threadline
+      POSTGRES_PASSWORD: threadline
+      POSTGRES_DB: threadline
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U threadline"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    volumes: [redisdata:/data]
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    environment: { COLLECTOR_OTLP_ENABLED: "true" }
+    ports: ["16686:16686", "4318:4318"]
+
+  web:
+    build: { context: ., dockerfile: Dockerfile, target: web }
+    profiles: [app]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://threadline:threadline@postgres:5432/threadline
+      REDIS_URL: redis://redis:6379
+    ports: ["3000:3000"]
+    depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_started } }
+
+  worker:
+    build: { context: ., dockerfile: Dockerfile, target: worker }
+    profiles: [app]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://threadline:threadline@postgres:5432/threadline
+      REDIS_URL: redis://redis:6379
+    # The worker starts one browser-profile container per account on this daemon (M6).
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock"]
+    networks: [default, browsers]
+    depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_started } }
+
+networks:
+  default: {}
+  # Browser containers join this network only; nothing is published to the host.
+  browsers:
+    name: threadline_browsers
+    internal: true
+
+volumes:
+  pgdata: {}
+  redisdata: {}
