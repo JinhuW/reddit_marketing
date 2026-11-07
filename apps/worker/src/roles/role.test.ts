@@ -49,6 +49,13 @@ describe('gateway role', () => {
     await handle.stop();
     expect(close).toHaveBeenCalledOnce();
   });
+
+  it('stops the gateway on stop when it returns a GatewayHandle', async () => {
+    const stop = vi.fn(async () => {});
+    const handle = await startGatewayRole(async () => ({ stop }));
+    await handle.stop();
+    expect(stop).toHaveBeenCalledOnce();
+  });
 });
 
 describe('createShutdown', () => {
