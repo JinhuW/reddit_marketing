@@ -1,0 +1,20 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile",
+    "watchPatterns": [
+      "apps/worker/**",
+      "packages/**",
+      "Dockerfile",
+      "package.json",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml"
+    ]
+  },
+  "deploy": {
+    "startCommand": "sh -c 'cd apps/worker && SERVICE_ROLE=core exec node_modules/.bin/tsx src/index.ts'",
+    "restartPolicyType": "ALWAYS",
+    "drainingSeconds": 60
+  }
+}
