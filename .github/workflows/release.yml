@@ -23,3 +23,16 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  # Browser-node images for the new tag. Called here because a tag that release-please creates with
+  # GITHUB_TOKEN does not trigger images.yml's own `push: tags`.
+  images:
+    needs: release-please
+    if: needs.release-please.outputs.released == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/images.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag }}
+    secrets: inherit

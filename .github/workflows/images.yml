@@ -1,0 +1,145 @@
+# Browser-node images (ADR-0001 "Build and release", plan T16): node-agent and browser-profile, linux/amd64 only
+# (CloakBrowser has no arm64 build), pushed to private GHCR. Nodes pin them by the digest this job prints.
+#
+# Triggers:
+#   - release.yml calls this after release-please publishes vX.Y.Z (a tag created with GITHUB_TOKEN does not
+#     fire `push: tags`, so the call is what runs on normal releases);
+#   - a tag pushed by hand;
+#   - workflow_dispatch to rebuild a tag.
+#
+# The CloakBrowser key (repo secret CLOAKBROWSER_LICENSE_KEY) is passed only as the BuildKit secret `cloak_key`.
+# Every image is checked for the key (history, config, every layer) before anything is pushed.
+name: Images
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build, e.g. v0.4.0
+        required: true
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: images-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Monorepo context: the agent depends on @threadline/shared.
+          - image: node-agent
+            context: .
+            dockerfile: apps/node-agent/Dockerfile
+            needs_cloak_key: false
+          - image: browser-profile
+            context: apps/browser-profile
+            dockerfile: apps/browser-profile/Dockerfile
+            needs_cloak_key: true
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      LOCAL: threadline/${{ matrix.image }}:candidate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Dockerfile present
+        id: present
+        run: |
+          if [ -f "${{ matrix.dockerfile }}" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::${{ matrix.dockerfile }} does not exist at $TAG; skipping ${{ matrix.image }}"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: CloakBrowser key configured
+        if: steps.present.outputs.ok == 'true' && matrix.needs_cloak_key
+        env:
+          CLOAK_KEY: ${{ secrets.CLOAKBROWSER_LICENSE_KEY }}
+        run: |
+          if [ -z "$CLOAK_KEY" ]; then
+            echo "::error::repo secret CLOAKBROWSER_LICENSE_KEY is not set (owner gate G2); ${{ matrix.image }} cannot be built"
+            exit 1
+          fi
+
+      - name: Image name
+        if: steps.present.outputs.ok == 'true'
+        id: name
+        run: |
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "repo=ghcr.io/${owner}/threadline-${{ matrix.image }}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.present.outputs.ok == 'true'
+
+      # Build into the local daemon first; nothing is pushed until the key check below passes.
+      - name: Build (linux/amd64)
+        if: steps.present.outputs.ok == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          tags: ${{ env.LOCAL }}
+          build-args: |
+            ${{ vars.CLOAK_VERSION && format('CLOAK_VERSION={0}', vars.CLOAK_VERSION) || '' }}
+          secrets: |
+            ${{ matrix.needs_cloak_key && format('cloak_key={0}', secrets.CLOAKBROWSER_LICENSE_KEY) || '' }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ env.TAG }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+      - name: No CloakBrowser key in the image
+        if: steps.present.outputs.ok == 'true'
+        env:
+          SECRET_VALUE: ${{ secrets.CLOAKBROWSER_LICENSE_KEY }}
+        run: |
+          if [ -z "$SECRET_VALUE" ]; then
+            echo "::notice::CLOAKBROWSER_LICENSE_KEY not set; ${{ matrix.image }} was built without it, nothing to scan for"
+            exit 0
+          fi
+          .github/scripts/assert-no-secret-in-image.sh "$LOCAL"
+
+      - name: Log in to GHCR
+        if: steps.present.outputs.ok == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Push exactly the image that was checked, not a rebuild.
+      - name: Push
+        if: steps.present.outputs.ok == 'true'
+        env:
+          REPO: ${{ steps.name.outputs.repo }}
+        run: |
+          short="$(git rev-parse --short=12 HEAD)"
+          for t in "$TAG" "sha-$short"; do
+            docker tag "$LOCAL" "$REPO:$t"
+            docker push "$REPO:$t"
+          done
+          digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$REPO:$TAG")"
+          echo "### ${{ matrix.image }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Pin on nodes: \`$digest\`" >> "$GITHUB_STEP_SUMMARY"
