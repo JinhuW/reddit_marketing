@@ -3,7 +3,8 @@ import { type DraftGenerateJob, type PostPublishJob, QUEUES, type QueueName } fr
 import { Queue } from 'bullmq';
 
 const g = globalThis as unknown as { __tlQueues?: Map<string, Queue> };
-const queues = (g.__tlQueues ??= new Map());
+if (!g.__tlQueues) g.__tlQueues = new Map();
+const queues = g.__tlQueues;
 
 function connection() {
   const url = new URL(process.env.REDIS_URL ?? 'redis://localhost:6379');

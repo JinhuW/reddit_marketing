@@ -18,7 +18,10 @@ const connection = redisConnection();
 const queues = new Map<QueueName, Queue>();
 const q = (name: QueueName) => {
   let x = queues.get(name);
-  if (!x) queues.set(name, (x = new Queue(name, { connection })));
+  if (!x) {
+    x = new Queue(name, { connection });
+    queues.set(name, x);
+  }
   return x;
 };
 

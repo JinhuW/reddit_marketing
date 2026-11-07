@@ -1,5 +1,5 @@
-import { levelForScore, scorePost, scoringPrompt, shouldCreateOpportunity } from '@threadline/agents';
-import { client } from '@threadline/agents/runtime';
+import { levelForScore, scoringPrompt, shouldCreateOpportunity } from '@threadline/agents';
+import { client, scorePost } from '@threadline/agents/runtime';
 import { audit, prisma } from '@threadline/db';
 import type { Job } from 'bullmq';
 import { log } from '../log';
