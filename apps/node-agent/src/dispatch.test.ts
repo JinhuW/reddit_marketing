@@ -102,13 +102,14 @@ describe('Dispatcher', () => {
         ctx.signal.addEventListener('abort', () => {
           aborted = true;
         });
-        await sleep(150);
+        await sleep(1_200);
         return { outcome: 'posted', data: { fullname: 't1_late' } };
       },
     });
+    // Margins in hundreds of ms: this file runs next to Chromium-driven action tests (T22) on a busy CPU.
     const t0 = Date.now();
-    await d.handle(cmd('bj-4', comment(), 100), send);
-    expect(Date.now() - t0).toBeLessThan(100);
+    await d.handle(cmd('bj-4', comment(), 1_000), send);
+    expect(Date.now() - t0).toBeLessThan(1_000);
     expect(results()[0]).toMatchObject({ outcome: 'error', error: { code: 'deadline_exceeded' } });
     expect(aborted).toBe(true);
     expect(d.cached('bj-4')).toBeUndefined();
@@ -213,7 +214,8 @@ describe('Dispatcher', () => {
     );
     await d.handle(cmd('bj-10', { kind: 'health.check' }), send);
     const [a, b, h] = results();
-    expect(a?.error?.code).toBe('not_implemented');
+    // action.* is real since T22: with no tl-profile-p container to dial it fails before touching any page.
+    expect(a?.error?.code).toBe('cdp_unreachable');
     expect(b?.error?.code).toBe('not_implemented');
     expect(h).toMatchObject({
       outcome: 'ok',
