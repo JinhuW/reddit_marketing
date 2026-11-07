@@ -9,9 +9,18 @@ import { type Poster, publishDraft } from './post-publish';
 const created: string[] = [];
 const calls: string[] = [];
 const fake: Poster = {
-  comment: async (parent) => (calls.push(`comment:${parent}`), 't1_fake'),
-  submit: async (sr) => (calls.push(`submit:${sr}`), 't3_fake'),
-  compose: async (to) => (calls.push(`dm:${to}`), 'dm_fake'),
+  comment: async (parent) => {
+    calls.push(`comment:${parent}`);
+    return 't1_fake';
+  },
+  submit: async (sr) => {
+    calls.push(`submit:${sr}`);
+    return 't3_fake';
+  },
+  compose: async (to) => {
+    calls.push(`dm:${to}`);
+    return 'dm_fake';
+  },
 };
 
 async function copyOf(where: object) {
