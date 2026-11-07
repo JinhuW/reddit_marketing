@@ -24,7 +24,9 @@ pnpm dev · pnpm test · pnpm test:e2e · pnpm typecheck · pnpm lint (Biome) ·
   Match the artboard before adding anything it does not show.
 - Tests: Vitest for packages, Testcontainers for queues, Playwright for flows. Record Reddit/LLM fixtures
   under tests/fixtures; never call live services in CI.
-- Commit style: `feat(approvals): …`, `fix(worker): …`; one milestone task per PR where practical.
+- Commit style: Conventional Commits, `feat(approvals): …`, `fix(worker): …`; one milestone task per PR where
+  practical. PR titles are Conventional Commits too (squash merge). Never hand-edit CHANGELOG.md or versions:
+  release-please generates them. Process: docs/RELEASING.md.
 
 ## When unsure
 Prefer the simpler option that keeps the human-approval gate intact, then leave a note in docs/DECISIONS.md.

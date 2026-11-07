@@ -1,0 +1,25 @@
+# Release process: docs/RELEASING.md
+# On every push to main, release-please opens or updates a "chore: release x.y.z" PR that bumps the version
+# and writes CHANGELOG.md from Conventional Commit messages. Merging that PR tags vX.Y.Z and publishes a
+# GitHub Release.
+name: Release
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

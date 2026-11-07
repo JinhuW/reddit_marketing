@@ -282,7 +282,8 @@ light and dark; nightly live smoke against a private test subreddit.
 2. Unit and integration tests green; new rules or queues have tests.
 3. `pnpm typecheck && pnpm lint` clean; no `any` added without a comment.
 4. Screens match the artboard at 1440 wide in light mode; dark mode by M8.
-5. A short entry in CHANGELOG.md and updated .env.example if config changed.
+5. Conventional Commit PR titles (they become the CHANGELOG via release-please, docs/RELEASING.md) and an updated
+   .env.example if config changed. A milestone ships as a tagged release.
 
 ## 12. Environment, local setup and deployment
 
