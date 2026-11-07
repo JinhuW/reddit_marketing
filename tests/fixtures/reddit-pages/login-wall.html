@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Log In | Reddit</title>
+<style>
+  body { font-family: sans-serif; display: grid; place-items: center; min-height: 100vh; margin: 0; }
+  .card { max-width: 400px; padding: 24px; border: 1px solid #ddd; border-radius: 16px; }
+  input { width: 100%; box-sizing: border-box; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<main class="card">
+  <h1>Log In</h1>
+  <p>By continuing, you agree to our User Agreement and acknowledge that you understand the Privacy Policy.</p>
+  <form id="login" action="/login/" method="post">
+    <input id="login-username" name="username" type="text" autocomplete="username" placeholder="Email or username" required>
+    <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="Password" required>
+    <a href="/password/">Forgot password?</a>
+    <button type="submit" class="login">Log In</button>
+  </form>
+  <p>New to Reddit? <a href="/register/">Sign Up</a></p>
+</main>
+</body>
+</html>

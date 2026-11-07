@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>reddit.com: send a message</title>
+<style>
+  body { font-family: sans-serif; margin: 0; color: #222; }
+  #header { display: flex; justify-content: space-between; padding: 6px 12px; border-bottom: 1px solid #ddd; }
+  .content { max-width: 640px; margin: 16px; }
+  label { display: block; margin-top: 10px; font-weight: bold; }
+  input, textarea { width: 100%; box-sizing: border-box; }
+  .error { color: #c00; }
+</style>
+</head>
+<body>
+<div id="header">
+  <a href="/">reddit</a>
+  <span class="user"><a href="/user/testkit_poster/">testkit_poster</a></span>
+</div>
+<div class="content" role="main">
+  <h1>send a private message</h1>
+  <form id="compose-message" class="form-v2" action="/api/compose" method="post">
+    <label for="to">to</label>
+    <input id="to" name="to" type="text" autocomplete="off" placeholder="username, or /r/name for that subreddit's moderators">
+    <span class="error" id="to-error" hidden>please enter a username</span>
+    <label for="subject">subject</label>
+    <input id="subject" name="subject" type="text" maxlength="100">
+    <label for="text">message</label>
+    <textarea id="text" name="text" rows="8" maxlength="10000"></textarea>
+    <span class="error" id="text-error" hidden>we need something here</span>
+    <p><button id="send" type="submit" name="send">send</button></p>
+    <p class="status" role="status" aria-live="polite"></p>
+  </form>
+</div>
+<script>
+  // Fixture behaviour (not Reddit's code).
+  const params = new URLSearchParams(location.search);
+  const form = document.getElementById('compose-message');
+  if (params.get('to')) form.to.value = params.get('to');
+  if (params.get('subject')) form.subject.value = params.get('subject');
+  if (params.get('message')) form.text.value = params.get('message');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const status = form.querySelector('.status');
+    document.getElementById('to-error').hidden = form.to.value.trim() !== '';
+    document.getElementById('text-error').hidden = form.text.value.trim() !== '';
+    if (!form.to.value.trim() || !form.text.value.trim()) return;
+    form.send.disabled = true;
+    status.textContent = 'submitting...';
+    const res = await fetch('/api/compose', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ to: form.to.value.trim(), subject: form.subject.value, text: form.text.value }),
+    });
+    form.send.disabled = false;
+    if (!res.ok) {
+      status.textContent = 'something went wrong';
+      status.classList.add('error');
+      return;
+    }
+    const { fullname } = await res.json();
+    status.dataset.messageId = fullname;
+    status.textContent = 'your message has been delivered';
+  });
+</script>
+</body>
+</html>

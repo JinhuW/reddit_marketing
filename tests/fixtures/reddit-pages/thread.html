@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Looking for an Asana alternative for a 6 person agency : r/testkit_sandbox</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: sans-serif; margin: 0; background: #fff; color: #1a1a1b; }
+  header { display: flex; justify-content: space-between; padding: 8px 16px; border-bottom: 1px solid #ddd; }
+  main { max-width: 760px; margin: 16px auto; padding: 0 16px; }
+  shreddit-post, shreddit-comment { display: block; }
+  shreddit-comment { margin: 12px 0 0 16px; padding-left: 8px; border-left: 1px solid #ddd; }
+  [contenteditable] { min-height: 64px; border: 1px solid #ccc; border-radius: 9px; padding: 8px; }
+  .composer[hidden] { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" aria-label="Home">reddit</a>
+  <span id="user-drawer-button" data-username="testkit_poster" aria-label="Expand user menu">u/testkit_poster</span>
+</header>
+<main>
+  <shreddit-post id="t3_1abc2de" post-title="Looking for an Asana alternative for a 6 person agency"
+    author="testkit_op" subreddit-prefixed-name="r/testkit_sandbox" permalink="/r/testkit_sandbox/comments/1abc2de/looking_for_an_asana_alternative/"
+    comment-count="2" score="14" post-type="text">
+    <h1 slot="title" id="post-title-t3_1abc2de">Looking for an Asana alternative for a 6 person agency</h1>
+    <div slot="text-body" class="md">
+      <p>We are a small design agency. Asana got expensive at our size and the timeline view is overkill.
+      What are people using for client projects with a handful of people? Budget is tight.</p>
+    </div>
+  </shreddit-post>
+
+  <comment-composer-host id="top-level-composer" parent-id="t3_1abc2de">
+    <button type="button" class="composer-trigger" aria-label="Join the conversation">Join the conversation</button>
+    <form class="composer" data-parent="t3_1abc2de" hidden>
+      <div contenteditable="true" role="textbox" aria-label="Add a comment" aria-multiline="true" name="body"></div>
+      <button type="button" slot="cancel-button">Cancel</button>
+      <button type="submit" slot="submit-button" disabled>Comment</button>
+    </form>
+  </comment-composer-host>
+
+  <shreddit-comment-tree id="comment-tree" post-id="t3_1abc2de">
+    <shreddit-comment thingid="t1_kx1aa01" author="testkit_user_a" depth="0" parentid="t3_1abc2de">
+      <div slot="comment" class="md"><p>We moved to a simple kanban tool last year. Way less overhead.</p></div>
+      <button type="button" class="reply" aria-label="Reply">Reply</button>
+    </shreddit-comment>
+    <shreddit-comment thingid="t1_kx1aa02" author="testkit_user_b" depth="0" parentid="t3_1abc2de">
+      <div slot="comment" class="md"><p>How many active client projects at a time? That changes the answer a lot.</p></div>
+      <button type="button" class="reply" aria-label="Reply">Reply</button>
+    </shreddit-comment>
+  </shreddit-comment-tree>
+</main>
+
+<template id="composer-template">
+  <form class="composer">
+    <div contenteditable="true" role="textbox" aria-label="Add a reply" aria-multiline="true" name="body"></div>
+    <button type="button" slot="cancel-button">Cancel</button>
+    <button type="submit" slot="submit-button" disabled>Comment</button>
+  </form>
+</template>
+
+<script>
+  // Fixture behaviour (not Reddit's code): enough for an automation to open a composer, type and submit.
+  function wire(form) {
+    const box = form.querySelector('[role="textbox"]');
+    const submit = form.querySelector('[slot="submit-button"]');
+    box.addEventListener('input', () => { submit.disabled = box.textContent.trim() === ''; });
+    form.querySelector('[slot="cancel-button"]').addEventListener('click', () => {
+      box.textContent = '';
+      submit.disabled = true;
+    });
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      submit.disabled = true;
+      const parent = form.dataset.parent;
+      const text = box.innerText.trim();
+      const res = await fetch('/svc/shreddit/comment', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ parent, text }),
+      });
+      if (!res.ok) {
+        const err = document.createElement('p');
+        err.setAttribute('role', 'alert');
+        err.textContent = 'Something went wrong. Please try again.';
+        form.append(err);
+        submit.disabled = false;
+        return;
+      }
+      const { fullname } = await res.json();
+      const c = document.createElement('shreddit-comment');
+      c.setAttribute('thingid', fullname);
+      c.setAttribute('author', document.getElementById('user-drawer-button').dataset.username);
+      c.setAttribute('parentid', parent);
+      const body = document.createElement('div');
+      body.setAttribute('slot', 'comment');
+      body.className = 'md';
+      body.textContent = text;
+      c.append(body);
+      const owner = parent.startsWith('t1_')
+        ? document.querySelector(`shreddit-comment[thingid="${parent}"]`)
+        : document.getElementById('comment-tree');
+      if (parent.startsWith('t1_')) owner.append(c);
+      else owner.prepend(c);
+      box.textContent = '';
+    });
+  }
+  const topForm = document.querySelector('#top-level-composer .composer');
+  wire(topForm);
+  document.querySelector('.composer-trigger').addEventListener('click', (e) => {
+    topForm.hidden = false;
+    e.currentTarget.hidden = true;
+    topForm.querySelector('[role="textbox"]').focus();
+  });
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('button.reply');
+    if (!btn) return;
+    const comment = btn.closest('shreddit-comment');
+    if (comment.querySelector(':scope > form.composer')) return;
+    const form = document.getElementById('composer-template').content.firstElementChild.cloneNode(true);
+    form.dataset.parent = comment.getAttribute('thingid');
+    comment.append(form);
+    wire(form);
+    form.querySelector('[role="textbox"]').focus();
+  });
+</script>
+</body>
+</html>

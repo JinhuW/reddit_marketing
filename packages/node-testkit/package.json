@@ -1,0 +1,29 @@
+{
+  "name": "@threadline/node-testkit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./fake-agent": "./src/fake-agent.ts",
+    "./fake-gateway": "./src/fake-gateway.ts",
+    "./fake-cdp": "./src/fake-cdp.ts",
+    "./fixtures": "./src/fixtures.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@threadline/shared": "workspace:*",
+    "playwright-core": "1.63.0",
+    "ws": "8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.0",
+    "@types/ws": "8.18.1",
+    "vitest": "3.2.4"
+  }
+}
