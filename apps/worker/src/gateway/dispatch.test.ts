@@ -69,7 +69,7 @@ async function profileFor(type: 'comment' | 'dm') {
 }
 
 beforeAll(async () => {
-  process.env.APP_ENCRYPTION_KEY ??= TEST_KEY;
+  process.env.APP_ENCRYPTION_KEY ||= TEST_KEY;
   workspaceId = (await prisma.workspace.findFirstOrThrow({ select: { id: true } })).id;
   nodeName = `t20-${randomBytes(4).toString('hex')}`;
   token = randomBytes(24).toString('hex');
