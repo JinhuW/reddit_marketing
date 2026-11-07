@@ -1,13 +1,92 @@
 /**
- * STUB until T21 (docker manager) lands. T21 replaces this file's body and keeps the `profileModule` export;
- * its `start()` should call `ctx.status.setProvider(...)` with real running/seats/imageDigest/docker readers.
+ * `profile.start` / `profile.stop`: one CloakBrowser container per profile through the local Docker socket
+ * (see `../docker.ts`). On agent start the module adopts running profile containers and plugs the real
+ * running/seats/imageDigest/docker readers into the status store, so `hello`, `heartbeat` and `health.check`
+ * report what Docker actually runs.
+ *
+ * Optional node env read here (not part of the agent's core config):
+ * - `NODE_SEAT_LIMIT`: CloakBrowser seats on this node's license tier; starts above it are refused.
+ * - `BROWSER_SECCOMP_PROFILE`: path to a seccomp JSON that allows the Chromium sandbox's user namespaces
+ *   (apps/browser-profile/README.md "Sandbox"); passed as `--security-opt seccomp=…`.
  */
-import { type AgentModule, notImplemented } from '../registry';
+import { readFileSync } from 'node:fs';
+import { z } from 'zod';
+import { type DockerBackend, DockerManager, type DockerManagerOptions, dockerodeBackend } from '../docker';
+import type { AgentModule } from '../registry';
 
-export const profileModule: AgentModule = {
-  name: 'profile',
-  handlers: {
-    'profile.start': notImplemented('profile.start'),
-    'profile.stop': notImplemented('profile.stop'),
-  },
-};
+const ProfileEnv = z.object({
+  NODE_SEAT_LIMIT: z.coerce.number().int().positive().optional(),
+  BROWSER_SECCOMP_PROFILE: z.string().min(1).optional(),
+});
+
+export interface ProfileModuleOptions {
+  /** Defaults to dockerode on the local socket (`DOCKER_HOST` or `/var/run/docker.sock`). */
+  backend?: () => DockerBackend;
+  env?: NodeJS.ProcessEnv;
+  /** Test overrides for timings and the readiness probe. */
+  manager?: Partial<
+    Pick<
+      DockerManagerOptions,
+      'readyProbe' | 'readyTimeoutMs' | 'crashBackoffMs' | 'pollMs' | 'reconcileMs' | 'now' | 'seatLimit'
+    >
+  >;
+}
+
+let current: DockerManager | undefined;
+
+/** The running agent's docker manager (actions use it for proxy credentials); undefined before start. */
+export function profileManager(): DockerManager | undefined {
+  return current;
+}
+
+export function createProfileModule(opts: ProfileModuleOptions = {}): AgentModule & {
+  manager(): DockerManager | undefined;
+} {
+  let manager: DockerManager | undefined;
+  const need = () => {
+    if (!manager) throw new Error('profile module used before start');
+    return manager;
+  };
+  return {
+    name: 'profile',
+    manager: () => manager,
+    handlers: {
+      'profile.start': (cmd, ctx) => need().start(cmd, ctx.signal),
+      'profile.stop': (cmd) => need().stop(cmd.profileId),
+    },
+    async start(ctx) {
+      const env = ProfileEnv.parse(opts.env ?? process.env);
+      const securityOpt = env.BROWSER_SECCOMP_PROFILE
+        ? [`seccomp=${readFileSync(env.BROWSER_SECCOMP_PROFILE, 'utf8')}`]
+        : [];
+      manager = new DockerManager({
+        backend: (opts.backend ?? dockerodeBackend)(),
+        log: ctx.log,
+        emit: ctx.emit,
+        nodeName: ctx.config.nodeName,
+        image: ctx.config.browserImage,
+        network: ctx.config.browserNetwork,
+        maxProfiles: ctx.config.maxProfiles,
+        seatLimit: env.NODE_SEAT_LIMIT ?? null,
+        licenseKey: ctx.config.cloakLicenseKey,
+        securityOpt,
+        ...opts.manager,
+      });
+      current = manager;
+      const m = manager;
+      ctx.status.setProvider({
+        running: () => m.running(),
+        seats: () => m.seats(),
+        imageDigest: () => m.imageDigest(),
+        docker: () => m.docker(),
+      });
+      await m.init();
+    },
+    stop() {
+      manager?.close();
+      if (current === manager) current = undefined;
+    },
+  };
+}
+
+export const profileModule = createProfileModule();
