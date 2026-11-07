@@ -39,3 +39,11 @@ Newest first.
 - **NeedsBrowser (captcha/verification) leaves the draft approved** and notifies the account owner; the M6 browser
   fallback will pick it up.
 - **Share of voice** is horizontal bars over 30 days instead of the artboard's weekly lines (no chart library yet).
+
+## 2026-11-07 — infrastructure (ADR-0001)
+
+- **G0: M6 browser-node infra starts before M1–M5 acceptance.** The owner asked to start the infra plan
+  (`docs/plans/0001-infra-implementation.md`) now. Code-only tasks run; anything that needs the domain (G1),
+  a CloakBrowser key (G2), a local VM (G3) or a Railway change (G4) stops at "ready, not applied".
+  M1–M5 acceptance is still required before M6 is ticked in PLAN §8.
+- **Browser nodes dial out to a Railway `node-gateway` over WSS** (ADR-0001). Postgres and Redis stay private.
