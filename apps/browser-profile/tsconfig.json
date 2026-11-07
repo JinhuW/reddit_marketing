@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "allowJs": true,
+    "checkJs": true,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["supervisor.mjs", "lib", "probe", "test", "../../scripts/browser-probe.ts"]
+}

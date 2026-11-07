@@ -1,0 +1,3 @@
+# CloakBrowser archives dropped here for an offline build; never commit them.
+vendor/*
+!vendor/.gitkeep

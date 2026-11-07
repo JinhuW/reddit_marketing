@@ -18,6 +18,15 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
+  apps/browser-profile:
+    devDependencies:
+      '@types/node':
+        specifier: 22.18.0
+        version: 22.18.0
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/node@22.18.0)(jiti@2.7.0)(lightningcss@1.30.2)(tsx@4.20.6)
+
   apps/node-agent:
     dependencies:
       '@threadline/shared':
