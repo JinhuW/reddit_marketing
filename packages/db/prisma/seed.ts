@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 /**
  * Seed = the mockup sample data (docs/design/*.dc.html): Acme workspace, 5 members, 3 agents,
@@ -390,6 +391,21 @@ async function main() {
     });
     PROFILE[b.key] = prof.id;
   }
+
+  // ── browser node (ADR-0001): one dev node that runs every profile. The gateway checks the token by hash;
+  // a local node-agent uses NODE_TOKEN_BROWSER_1 (dev default below; real tokens live in Railway only).
+  const devNodeToken = process.env.NODE_TOKEN_BROWSER_1 || 'dev-node-token-browser-1';
+  const node = await prisma.browserNode.create({
+    data: {
+      ...W,
+      name: 'browser-1',
+      tokenHash: createHash('sha256').update(devNodeToken, 'utf8').digest('hex'),
+      status: 'offline',
+      maxProfiles: 8,
+      seatsLimit: 5,
+    },
+  });
+  await prisma.browserProfile.updateMany({ where: { ...W }, data: { nodeId: node.id } });
 
   // ── agents ──
   const agentDefs = [
