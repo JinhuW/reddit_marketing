@@ -129,3 +129,45 @@ describe('nodes status', () => {
     expect(await audits(n.id)).toEqual([]);
   });
 });
+
+describe('nodes.registerInWorkspace', () => {
+  it('registers by slug and assigns only profiles without a node, only when asked', async () => {
+    const profile = await prisma.browserProfile.findFirstOrThrow({
+      where: { workspaceId, nodeId: { not: null } },
+    });
+    const others = await prisma.browserProfile.findMany({
+      where: { workspaceId, nodeId: { not: null }, id: { not: profile.id } },
+      select: { id: true, nodeId: true },
+    });
+    await prisma.browserProfile.update({ where: { id: profile.id }, data: { nodeId: null } });
+    try {
+      const plain = await nodes.registerInWorkspace({ workspaceSlug: 'acme', name: uniq(), token: token() });
+      created.push(plain.node.id);
+      expect(plain.assignedProfiles).toBe(0);
+
+      const { node, assignedProfiles } = await nodes.registerInWorkspace({
+        workspaceSlug: 'acme',
+        name: uniq(),
+        token: token(),
+        assignUnassignedProfiles: true,
+      });
+      created.push(node.id);
+      expect(assignedProfiles).toBe(1);
+      expect((await prisma.browserProfile.findUniqueOrThrow({ where: { id: profile.id } })).nodeId).toBe(
+        node.id,
+      );
+      for (const o of others)
+        expect((await prisma.browserProfile.findUniqueOrThrow({ where: { id: o.id } })).nodeId).toBe(
+          o.nodeId,
+        );
+    } finally {
+      await prisma.browserProfile.update({ where: { id: profile.id }, data: { nodeId: profile.nodeId } });
+    }
+  });
+
+  it('refuses an unknown workspace', async () => {
+    await expect(
+      nodes.registerInWorkspace({ workspaceSlug: 'no-such-ws', name: uniq(), token: token() }),
+    ).rejects.toThrow(/no workspace/);
+  });
+});
