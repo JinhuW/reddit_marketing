@@ -12,6 +12,8 @@ WORKDIR /repo
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc tsconfig.base.json ./
 COPY apps/node-agent/package.json apps/node-agent/
 COPY packages/shared/package.json packages/shared/
+# node-testkit is a devDependency (tests only); pnpm still needs its manifest to resolve the workspace.
+COPY packages/node-testkit/package.json packages/node-testkit/
 RUN pnpm install --frozen-lockfile --filter @threadline/node-agent...
 COPY packages/shared packages/shared
 COPY apps/node-agent apps/node-agent
