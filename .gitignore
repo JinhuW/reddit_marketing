@@ -10,4 +10,4 @@ test-results
 playwright-report
 *.tsbuildinfo
 next-env.d.ts
-tests/e2e/.auth
+**/tests/e2e/.auth/
