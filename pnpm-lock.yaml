@@ -78,6 +78,9 @@ importers:
       '@dnd-kit/core':
         specifier: 6.3.1
         version: 6.3.1(react-dom@19.1.10(react@19.1.10))(react@19.1.10)
+      '@novnc/novnc':
+        specifier: 1.4.0
+        version: 1.4.0
       '@threadline/agents':
         specifier: workspace:*
         version: link:../../packages/agents
@@ -111,6 +114,12 @@ importers:
       server-only:
         specifier: 0.0.1
         version: 0.0.1
+      tsx:
+        specifier: 4.20.6
+        version: 4.20.6
+      ws:
+        specifier: 8.18.3
+        version: 8.18.3
       zod:
         specifier: 3.25.76
         version: 3.25.76
@@ -130,6 +139,9 @@ importers:
       '@types/react-dom':
         specifier: 19.1.11
         version: 19.1.11(@types/react@19.1.17)
+      '@types/ws':
+        specifier: 8.18.1
+        version: 8.18.1
       tailwindcss:
         specifier: 4.1.18
         version: 4.1.18
@@ -942,6 +954,9 @@ packages:
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [win32]
+
+  '@novnc/novnc@1.4.0':
+    resolution: {integrity: sha512-kW6ALMc5BuH08e/ond/I1naYcfjc19JYMN1EdtmgjjjzPGCjW8fMtVM3MwM6q7YLRjPlQ3orEvoKMgSS7RkEVQ==}
 
   '@opentelemetry/api@1.10.0':
     resolution: {integrity: sha512-lMkyes8iHrG+mk6WH7X70MdCLI2RS0FwNBY1PyQ8UemaijE2m5mv5A0Niy3HtbYTFrgkUEQjFMXmSAk2hQDuPQ==}
@@ -2635,6 +2650,8 @@ snapshots:
 
   '@next/swc-win32-x64-msvc@15.5.29':
     optional: true
+
+  '@novnc/novnc@1.4.0': {}
 
   '@opentelemetry/api@1.10.0': {}
 
