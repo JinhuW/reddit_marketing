@@ -62,6 +62,19 @@ describe('nodes.register / verifyToken', () => {
     expect((await nodes.verifyToken(n.name, t2))?.id).toBe(n.id);
   });
 
+  it('refuses a name another workspace already uses (names are the global queue and login)', async () => {
+    const { n, t } = await fresh();
+    const other = await prisma.workspace.create({ data: { name: 'Other', slug: `t00-${uniq()}` } });
+    try {
+      await expect(nodes.register({ workspaceId: other.id, name: n.name, token: token() })).rejects.toThrow(
+        /another workspace/,
+      );
+      expect(await nodes.verifyToken(n.name, t)).not.toBeNull();
+    } finally {
+      await prisma.workspace.delete({ where: { id: other.id } });
+    }
+  });
+
   it('refuses short tokens and bad names', async () => {
     await expect(nodes.register({ workspaceId, name: uniq(), token: 'short' })).rejects.toThrow();
     await expect(nodes.register({ workspaceId, name: 'Bad Name', token: token() })).rejects.toThrow();
