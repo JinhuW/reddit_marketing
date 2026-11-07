@@ -216,7 +216,8 @@ describe('Dispatcher', () => {
     const [a, b, h] = results();
     // action.* is real since T22: with no tl-profile-p container to dial it fails before touching any page.
     expect(a?.error?.code).toBe('cdp_unreachable');
-    expect(b?.error?.code).toBe('not_implemented');
+    // vnc.open is real since T24: with no profile container it fails cleanly instead of answering not_implemented.
+    expect(b).toMatchObject({ outcome: 'error', error: { code: 'vnc_target_unreachable' } });
     expect(h).toMatchObject({
       outcome: 'ok',
       data: { running: [{ profileId: 'p9', startedAt: 1 }], seats: { inUse: 0, limit: null }, docker: 'ok' },
