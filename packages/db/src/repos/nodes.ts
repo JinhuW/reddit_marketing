@@ -178,3 +178,30 @@ export function recordHeartbeat(nodeId: string, seats: Seats, now = new Date()):
     select: publicSelect,
   });
 }
+
+/**
+ * Ops entry point (`apps/worker/src/cli/register-node.ts`): register or re-key a node in the workspace with this
+ * slug and, when asked, put every profile that has no node yet on it.
+ */
+export async function registerInWorkspace(input: {
+  workspaceSlug: string;
+  name: string;
+  token: string;
+  assignUnassignedProfiles?: boolean;
+}): Promise<{ node: NodeRow; assignedProfiles: number }> {
+  const ws = await prisma.workspace.findUnique({
+    where: { slug: input.workspaceSlug },
+    select: { id: true },
+  });
+  if (!ws) throw new Error(`no workspace with slug "${input.workspaceSlug}"`);
+  const node = await register({ workspaceId: ws.id, name: input.name, token: input.token });
+  let assignedProfiles = 0;
+  if (input.assignUnassignedProfiles) {
+    const r = await prisma.browserProfile.updateMany({
+      where: { workspaceId: ws.id, nodeId: null },
+      data: { nodeId: node.id },
+    });
+    assignedProfiles = r.count;
+  }
+  return { node, assignedProfiles };
+}
