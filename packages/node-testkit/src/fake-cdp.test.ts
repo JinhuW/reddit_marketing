@@ -60,7 +60,10 @@ describe.skipIf(!available)('startFakeCdpTarget', { timeout: 30_000 }, () => {
     await parent.getByRole('textbox', { name: 'Add a reply' }).fill('Same here.');
     await parent.locator('[slot="submit-button"]').click();
     const sub = await target.submissions.waitFor((s) => s.kind === 'comment' && s.parent === 't1_kx1aa01');
-    await expect(parent.locator(`shreddit-comment[thingid="${sub.fullname}"]`).count()).resolves.toBe(1);
+    // The server records the submission before the page inserts the reply, so wait for it.
+    const reply = parent.locator(`shreddit-comment[thingid="${sub.fullname}"]`);
+    await reply.waitFor();
+    await expect(reply.count()).resolves.toBe(1);
   });
 
   it('serves the comment permalink with the reply box open', async () => {
