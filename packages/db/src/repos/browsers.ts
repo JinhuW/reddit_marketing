@@ -242,6 +242,45 @@ export async function listProxies(workspaceId: string): Promise<ProxyListItem[]>
   }));
 }
 
+/**
+ * Adds a workspace proxy no profile uses yet (ops CLI `add-proxy`; the picker then offers it). Credentials arrive
+ * already encrypted. Re-adding the same host:port in the workspace updates that row instead of duplicating it.
+ */
+export async function createProxy(
+  workspaceId: string,
+  data: {
+    provider: string;
+    protocol: 'http' | 'socks5';
+    host: string;
+    port: number;
+    region?: string | null;
+    sticky?: boolean;
+    usernameEnc?: string | null;
+    passwordEnc?: string | null;
+  },
+): Promise<{ id: string; created: boolean }> {
+  const fields = {
+    provider: data.provider,
+    protocol: data.protocol,
+    host: data.host,
+    port: data.port,
+    region: data.region ?? null,
+    sticky: data.sticky ?? true,
+    usernameEnc: data.usernameEnc ?? null,
+    passwordEnc: data.passwordEnc ?? null,
+  };
+  const existing = await prisma.proxy.findFirst({
+    where: { workspaceId, host: data.host, port: data.port },
+    select: { id: true },
+  });
+  if (existing) {
+    await prisma.proxy.update({ where: { id: existing.id }, data: fields });
+    return { id: existing.id, created: false };
+  }
+  const p = await prisma.proxy.create({ data: { workspaceId, ...fields }, select: { id: true } });
+  return { id: p.id, created: true };
+}
+
 /** {@link attachProxy} inside `tx`. */
 export async function attachProxyTx(
   tx: Db,
