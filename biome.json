@@ -14,7 +14,8 @@
       "playwright-report",
       "apps/web/public/tl.js",
       "**/tests/e2e/.auth",
-      ".archify"
+      ".archify",
+      ".release-please-manifest.json"
     ]
   },
   "formatter": {
