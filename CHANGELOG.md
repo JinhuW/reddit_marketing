@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/JinhuW/reddit_marketing/compare/v0.1.0...v0.1.1) (2026-11-08)
+
+
+### Bug Fixes
+
+* **accounts:** resume an unfinished browser connect instead of refusing a new one ([8be76af](https://github.com/JinhuW/reddit_marketing/commit/8be76af5221018f8af27f75a7fb17628dec9bb93))
+
 ## 0.1.0 (2026-11-08)
 
 
