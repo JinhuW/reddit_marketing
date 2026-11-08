@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/JinhuW/reddit_marketing/compare/v0.5.0...v0.5.1) (2026-11-08)
+
+
+### Bug Fixes
+
+* **worker:** re-send proxy credentials to browsers a restarted node agent adopts ([d6a0d51](https://github.com/JinhuW/reddit_marketing/commit/d6a0d51df4d90cf91ebf8f69091e8e765fe9ad7f))
+
 ## [0.5.0](https://github.com/JinhuW/reddit_marketing/compare/v0.4.0...v0.5.0) (2026-11-08)
 
 
