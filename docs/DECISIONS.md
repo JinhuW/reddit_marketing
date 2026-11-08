@@ -86,3 +86,69 @@ Newest first.
   The agent passes it with `BROWSER_SECCOMP_PROFILE`. `--no-sandbox` is not used.
 - **`browser-1` runs on the homelab VM and dials the gateway's Railway domain** until the custom domain exists
   (G1); `GATEWAY_URL` is the only thing to change then. It starts at `NODE_MAX_PROFILES=1`.
+
+## 2026-11-07 — Browser mode (plan 0002)
+
+Accounts can connect without a Reddit API app: a person signs in inside the account's browser profile and the
+node reads the identity. Spec: `docs/plans/0002-browser-mode.md`.
+
+**Data and gate**
+
+- **`RedditAccount.authMode` (`oauth` | `browser`) and `identifiedAt`.** A browser account starts as
+  `pending-<id>` with `redditId` `pending:<id>` and `identifiedAt` null; `accounts.completeBrowserIdentity` sets
+  the real username, `t2_<id>` and `identifiedAt` and writes `account.connected`. It is idempotent and refuses a
+  Reddit user already connected in the workspace (`AccountConflictError`).
+- **The "signed in" check lives inside the existing `account_eligible` block rule**, not a new rule, so the
+  checks list keeps its shape. Drafts for an unidentified account can be neither approved nor posted; the
+  gateway also refuses `action.*` jobs for them. No rule was weakened.
+- **`nodes.pickForProfile` takes no lock.** Two connects at the same moment can push a node one profile over
+  `maxProfiles`; accepted for now. A hard cap would lock the node row (`SELECT … FOR UPDATE`) inside the tx.
+
+**Node agent and gateway**
+
+- **`profile.whoami` loads `/api/me.json` in a tab of the profile's own context.** A redirect to the login page
+  is `ok {loggedIn:false}` (it is exactly "not signed in"), not `needs_human`; captcha and verification walls are
+  `needs_human` and keep the tab for take-over. The body and cookies are never logged.
+- **whoami results are never cached by the node's dispatcher**, because its cmdId is the same for every check
+  on a profile and a stored `loggedIn:false` would be replayed.
+- **The gateway returns whoami as `{outcome:'ok', data}`**; a duplicate identity fails the job as final with
+  code `identity_conflict`, malformed data as `bad_whoami_data`.
+- **Refused-before-send failures carry the prefix `refused: `.** When the dispatcher refuses a job before
+  anything reaches the node, the failure text starts with `refused: ` (`DISPATCH_REFUSED_PREFIX`). Anything that
+  matches failure text, including the web UI, must expect it.
+
+**Posting and polling**
+
+- **Browser-mode accounts never call the Reddit API to post.** After the same `assertPublishable` check,
+  comment and DM drafts go to the node's browser queue (`bj-action.<kind>-<draftId>`). New threads (`post`
+  drafts) are failed with "New threads are not supported in browser mode; nothing was sent."
+- **Re-queue only after a clean refusal.** Approved drafts are swept every minute; if the earlier browser job
+  was refused before send, post.publish re-queues as `<id>-r1` … `-r3`. Any other finished job may have reached
+  Reddit, so it is never re-sent: the account is paused with `needs_human`.
+- **Without a Reddit app, `reddit.poll` reads the public Atom feed** (`/r/<sub>/new/.rss?limit=100`), because
+  `new.json` returns 403 without OAuth. Plain User-Agent, optional `REDDIT_READ_PROXY_URL`, 1 request per 3 s per
+  process, 429 honoured (Retry-After or backoff from 10 s; a wait over 60 s fails the run). Feed posts carry no
+  score or comment count, so those are 0 on insert and left alone on update. Polling is now always scheduled.
+  The plan doc still describes `new.json`.
+
+**Web UI additions not shown on the artboards** (each in its smallest form)
+
+- Browsers table: a **Node column** (name, Online/Offline/Draining below) and a **"Paused · <reason>" chip**
+  under Status (Needs a human, No browser seat, Node offline, Proxy failed, Paused by an admin).
+- Profile editor: a **"Browser" block** at the top with status, Admin **Assign node** (online nodes plus
+  Unassigned; an offline current node stays listed), a pause banner with Admin **Resume**, a "Sign in now" link
+  for an unidentified account, and **Start / Stop / Open browser** for the admin or the account owner. Save stays
+  in the header and submits the proxy form through `form=`.
+- **"Use a saved proxy"** select above the proxy fields; labels are provider · host:port · profile count, never
+  credentials.
+- Connect step 1 in browser mode: **"Connect through the browser"** with a short explanation and a Proxy select.
+  It is the first choice when no Reddit app is configured, the second when one is.
+- Session page: a **sign-in panel** above the viewer ("I'm signed in" runs whoami and checks every 3 s for 60 s;
+  then "Signed in as u/name" + "Hand back and finish", "Not signed in yet", or the error) and a warning note when
+  the node is missing or offline. Take-over now also queues `profile.start`; hand back leaves the stop to the idle
+  sweep.
+- Accounts card: **"Waiting for sign-in"** title and chip with an "Open sign-in" strip, and a "Browser sign-in"
+  chip once connected. Pending accounts cannot be removed from the UI yet (Disconnect is hidden).
+- The Browsers page **refreshes itself every 10 s** while the tab is visible.
+- The web app copies the gateway's browser job options (`BROWSER_JOB_OPTIONS`) because it cannot import
+  apps/worker; moving them to packages/shared is a later clean-up.
