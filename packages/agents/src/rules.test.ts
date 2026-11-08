@@ -33,6 +33,7 @@ function ctx(over: Partial<RuleContext> = {}, draft: Partial<RuleContext['draft'
       postedToday: 3,
       karma: 4200,
       accountCreatedAt: new Date('2019-01-01'),
+      identifiedAt: new Date('2026-01-01'),
       health: 'healthy',
       selfPromoMax: 30,
       promoItems7d: 2,
@@ -152,6 +153,14 @@ describe('account eligible (block)', () => {
     c.account.health = 'blocked';
     expect(get(c, 'account_eligible')?.passed).toBe(false);
   });
+  it('fails when nobody has signed in to the account yet (browser mode, identifiedAt null)', () => {
+    const c = ctx();
+    c.account.identifiedAt = null;
+    const check = get(c, 'account_eligible');
+    expect(check?.passed).toBe(false);
+    expect(check?.level).toBe('block');
+    expect(check?.detail).toMatch(/not signed in yet/);
+  });
 });
 
 describe('DM only after engagement (block)', () => {
@@ -230,6 +239,16 @@ describe('human approval (block)', () => {
   it('refuses a scheduled draft before its time', () => {
     const d = { ...approved, status: 'scheduled' as const, scheduledFor: new Date(SAT.getTime() + 60_000) };
     expect(() => assertPublishable(d, true, [], SAT)).toThrow(/Scheduled/);
+  });
+  it('refuses an approved draft whose account is not signed in yet', () => {
+    const c = ctx();
+    c.account.identifiedAt = null;
+    expect(() => assertPublishable(approved, true, evaluateDraft(c), SAT)).toThrow(/block rules/);
+    try {
+      assertPublishable(approved, true, evaluateDraft(c), SAT);
+    } catch (e) {
+      expect((e as PolicyError).failures).toContain('account_eligible');
+    }
   });
   it('refuses when a block rule fails at post time', () => {
     const c = ctx();

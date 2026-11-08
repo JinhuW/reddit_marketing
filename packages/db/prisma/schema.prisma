@@ -34,6 +34,11 @@ enum AccountRoleLabel {
   brand
 }
 
+enum AccountAuthMode {
+  oauth
+  browser
+}
+
 enum AccountHealth {
   healthy
   watch
@@ -326,6 +331,8 @@ model RedditAccount {
   ownerMemberId    String           @unique
   roleLabel        AccountRoleLabel @default(founder)
   disclosureLine   String
+  /// oauth = Reddit API token; browser = driven through the account's BrowserProfile (docs/plans/0002-browser-mode.md)
+  authMode         AccountAuthMode  @default(oauth)
   oauthTokenEnc    String?
   scopes           String[]
   karma            Int              @default(0)
@@ -337,6 +344,9 @@ model RedditAccount {
   /// Set = post.publish and browser dispatch skip this account (browsers.pauseAccount / resumeAccount).
   pausedReason     PauseReason?
   pausedAt         DateTime?
+  /// When the Reddit identity was confirmed (OAuth callback or profile.whoami). Null = a browser-mode account
+  /// whose owner has not signed in yet: never publishable, never dispatched (isIdentified).
+  identifiedAt     DateTime?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 

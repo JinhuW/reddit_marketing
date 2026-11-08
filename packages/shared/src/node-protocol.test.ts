@@ -8,6 +8,7 @@ import {
   HealthData,
   PostedData,
   TestProxyData,
+  WhoamiData,
   encodeAgentMessage,
   encodeGatewayMessage,
   nodeTokenEnvName,
@@ -47,6 +48,13 @@ const agentMessages: AgentMessage[] = [
   },
   { type: 'result', cmdId: 'c2', outcome: 'error', error: { code: 'not_implemented', message: 'stub' } },
   { type: 'result', cmdId: 'c3', outcome: 'license_denied' },
+  { type: 'result', cmdId: 'bj-profile.whoami-prof_1', outcome: 'ok', data: { loggedIn: false } },
+  {
+    type: 'result',
+    cmdId: 'bj-profile.whoami-prof_2',
+    outcome: 'ok',
+    data: { loggedIn: true, name: 'jane_from_acme', id: '1a2b3c', totalKarma: 4210, createdUtc: 1546300800 },
+  },
   { type: 'event', profileId: 'prof_1', kind: 'container.exited', detail: { exitCode: 78 } },
   { type: 'event', profileId: 'prof_1', kind: 'session.activity' },
   { type: 'event', profileId: 'prof_1', kind: 'needs_human' },
@@ -101,6 +109,7 @@ const cmds: Cmd[] = [
     token: 'abc',
   },
   { kind: 'health.check' },
+  { kind: 'profile.whoami', profileId: 'prof_1' },
 ];
 
 const gatewayMessages: GatewayMessage[] = [
@@ -139,8 +148,27 @@ describe('node protocol round-trips', () => {
       [TestProxyData, { pageIp: '73.218.44.19', agentIp: '73.218.44.19' }],
       [HealthData, { running, seats, docker: 'ok' }],
       [PostedData, { fullname: 't1_abc' }],
+      [WhoamiData, { loggedIn: false }],
+      [WhoamiData, { loggedIn: true, name: 'jane_from_acme', id: '1a2b3c' }],
+      [WhoamiData, { loggedIn: true, name: 'Leo-B', id: 'k9', totalKarma: -3, createdUtc: 1546300800.5 }],
     ] as const) {
       expect(schema.parse(JSON.parse(JSON.stringify(v)))).toEqual(v);
+    }
+  });
+
+  it('whoami data refuses malformed or oversharing payloads', () => {
+    for (const bad of [
+      {},
+      { loggedIn: true },
+      { loggedIn: true, name: 'jane', id: 't2_1a2b3c' },
+      { loggedIn: true, name: 'has space', id: '1a2b3c' },
+      { loggedIn: true, name: 'jane', id: '1a2b3c', totalKarma: 1.5 },
+      { loggedIn: true, name: 'jane', id: '1a2b3c', createdUtc: -1 },
+      // extra keys (e.g. the rest of me.json, or a cookie) are refused, not passed through
+      { loggedIn: true, name: 'jane', id: '1a2b3c', modhash: 'abc' },
+      { loggedIn: false, name: 'jane' },
+    ]) {
+      expect(WhoamiData.safeParse(bad).success).toBe(false);
     }
   });
 });

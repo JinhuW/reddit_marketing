@@ -7,6 +7,7 @@ const jobs: BrowserJob[] = [
   { kind: 'action.submitComment', workspaceId: 'ws', profileId: 'prof', draftId: 'draft' },
   { kind: 'action.sendDm', workspaceId: 'ws', profileId: 'prof', draftId: 'draft' },
   { kind: 'profile.testProxy', workspaceId: 'ws', profileId: 'prof' },
+  { kind: 'profile.whoami', workspaceId: 'ws', profileId: 'prof' },
   { kind: 'health.check', workspaceId: 'ws' },
 ];
 
@@ -23,9 +24,10 @@ describe('browser queues', () => {
       'bj-action.submitComment-draft',
       'bj-action.sendDm-draft',
       'bj-profile.testProxy-prof',
+      'bj-profile.whoami-prof',
       'bj-health.check-ws',
     ]);
-    expect(browserJobId(jobs[5]!, '202611071200')).toBe('bj-health.check-ws-202611071200');
+    expect(browserJobId(jobs[6]!, '202611071200')).toBe('bj-health.check-ws-202611071200');
     expect(() => browserJobId({ kind: 'health.check', workspaceId: 'a:b' })).toThrow();
   });
 
@@ -41,6 +43,10 @@ describe('browser queues', () => {
         profileId: 'p',
         password: 'x',
       }).success,
+    ).toBe(false);
+    expect(
+      BrowserJobSchema.safeParse({ kind: 'profile.whoami', workspaceId: 'ws', profileId: 'p', cookie: 'x' })
+        .success,
     ).toBe(false);
     expect(
       BrowserJobSchema.safeParse({ kind: 'profile.start', workspaceId: 'ws', profileId: 'p' }).success,
