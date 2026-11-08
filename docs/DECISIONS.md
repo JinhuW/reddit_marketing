@@ -218,3 +218,16 @@ existing Browsers editor and the owner's reference (an anti-detect-browser "edit
   user, so a browser whose cookies still hold the previous account cannot pass as the new one.
 - The `/accounts/connect` browser flow is unchanged. It resumes only its own `pending-…` placeholders, never an
   account added by name.
+
+## 2026-11-08 · Continuous deployment from main
+
+- Every push to `main` deploys to production once its GitHub checks pass (owner: "always deploy once merged to
+  main"). Railway follows the repo (`main`, Wait for CI) instead of `railway up` from a laptop, so no Railway token
+  lives in GitHub. All three Railway services run `migrate:deploy` before start (Prisma's advisory lock serializes
+  them), which fixes the race where the gateway started before `web` had migrated.
+- Browser nodes deploy through a self-hosted runner on the homelab (user systemd service, linger), only when node
+  files changed since the last node deploy, so an unrelated commit never restarts the agents.
+- A missing `CLOAKBROWSER_LICENSE_KEY` now skips the browser-profile image with a warning instead of failing the
+  release, since a red release commit would hold back the Railway deploy.
+- GitHub Actions may now open PRs (repo setting), so release-please runs in CI again. PRs it opens with
+  `GITHUB_TOKEN` do not trigger other workflows; the code in them already passed CI on `main`.

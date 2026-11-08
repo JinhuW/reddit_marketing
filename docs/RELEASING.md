@@ -37,10 +37,25 @@ adding `Release-As: 1.0.0` to a commit body.
 2. Review that PR: check the notes read well and that anything operators must do (migrations, new env vars)
    is called out. Edit the release PR's changelog text if needed before merging.
 3. **Merge the release PR.** release-please tags `vX.Y.Z` and publishes a GitHub Release with the same notes.
-4. **Deploy the tag** (docs/PLAN.md §12): on the server
-   `git fetch --tags && git checkout vX.Y.Z && docker compose -f docker-compose.prod.yml build && docker compose -f docker-compose.prod.yml up -d`
-   — the web container runs `prisma migrate deploy` on start. Take a `pg_dump` first when the release has a
-   migration.
+4. Nothing to deploy by hand: see **Continuous deployment** below. A release commit deploys like any other push.
+
+## Continuous deployment
+
+Every push to `main` goes to production on its own once its checks pass. Nobody runs `railway up`.
+
+| What | How it deploys | Gate |
+|---|---|---|
+| `web`, `worker`, `node-gateway` (Railway) | Each service's source is the GitHub repo, branch `main`, built from the repo `Dockerfile` | Railway "Wait for CI" (`checkSuites`): it deploys only when every GitHub check on the commit has passed |
+| Database migrations | Pre-deploy command `pnpm --filter @threadline/db migrate:deploy` on all three services; Prisma's advisory lock serializes them, so no service starts on an old schema | Same as above |
+| Browser nodes `browser-1`, `browser-2` (homelab) | `.github/workflows/deploy-node.yml` on the self-hosted runner `homelab-browser-node` (label `browser-node`), after CI succeeds on `main`. It runs `deploy/node/install.sh` for each install dir in the repo variable `NODE_PREFIXES` | CI green, and the commits since the last node deploy touch `apps/node-agent/`, `apps/browser-profile/`, `packages/shared/`, `deploy/node/` or the lockfile |
+| Browser-node images in GHCR | `images.yml`, called by `release.yml` when a release is tagged. browser-profile is skipped with a warning while `CLOAKBROWSER_LICENSE_KEY` is not set | Release tag |
+
+If a check fails, the commit is not deployed: fix forward with a new commit. To roll back Railway, redeploy the
+previous deployment from the dashboard (or `railway redeploy`); nodes: run **Deploy node** by hand with the previous
+tag as `ref`. A migration that drops data still needs a backup first (docs/RUNBOOK-railway.md §5).
+
+The runner on the homelab is a user systemd service (`systemctl --user status gh-runner`, linger enabled), files
+in `~/actions-runner`; the last deployed node commit is in `~/.threadline-node-deployed-sha`.
 
 Release cadence: whenever `main` has user-visible changes worth shipping, at least at the end of each
 milestone in docs/PLAN.md §8. A milestone is "released" when its acceptance criteria pass on the deployed tag.

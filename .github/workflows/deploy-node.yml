@@ -1,16 +1,31 @@
-# Deploy a browser node (plan T32): runs deploy/node/install.sh on the node itself, through a self-hosted runner
-# registered there with the label `browser-node` (deploy/node/README.md "GitHub runner").
+# Deploy the browser nodes (plan T32): runs deploy/node/install.sh on the node host itself, through a self-hosted
+# runner registered there with the label `browser-node` (deploy/node/README.md "GitHub runner").
 #
-# Manual only. No secrets come from GitHub: NODE_TOKEN and CLOAKBROWSER_LICENSE_KEY live in the node's
-# /opt/threadline-node/node.env (mode 600, owned by the runner user), which install.sh reads and never prints.
+# Continuous deployment: after CI passes on a push to main, every node install on the host is updated, but only
+# when the commit range since the last node deploy touches what runs on a node (NODE_PATHS below). Run it by hand
+# (workflow_dispatch) to deploy a given ref, force a deploy, or rebuild the browser image.
+#
+# Install dirs: repo variable NODE_PREFIXES, space-separated (default /opt/threadline-node). The homelab host runs
+# browser-1 and browser-2: "/home/jinhu/threadline-node/opt /home/jinhu/threadline-node/opt-browser-2".
+#
+# No secrets come from GitHub: NODE_TOKEN and CLOAKBROWSER_LICENSE_KEY live in each install's node.env (mode 600,
+# owned by the runner user), which install.sh reads and never prints.
 name: Deploy node
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       ref:
         description: Git ref to deploy (branch, tag or SHA)
         required: true
         default: main
+      force:
+        description: Deploy even if nothing node-related changed since the last deploy
+        type: boolean
+        default: true
       agent_image:
         description: Registry image for the node agent (empty = build from the checkout)
         required: false
@@ -35,8 +50,19 @@ concurrency:
   group: deploy-node
   cancel-in-progress: false
 
+env:
+  # What a node runs: the agent, the browser image, the shared protocol, and the install scripts.
+  NODE_PATHS: '^(apps/node-agent/|apps/browser-profile/|packages/shared/|deploy/node/|pnpm-lock\.yaml$)'
+  NODE_PREFIXES: ${{ vars.NODE_PREFIXES || '/opt/threadline-node' }}
+  # Last deployed commit, kept on the node host (outside the runner's work dir).
+  STATE_FILE: ${{ vars.NODE_DEPLOY_STATE || '~/.threadline-node-deployed-sha' }}
+
 jobs:
   deploy:
+    # A push to main whose CI passed, or a manual run.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: [self-hosted, browser-node]
     timeout-minutes: 45
     defaults:
@@ -45,18 +71,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || github.event.workflow_run.head_sha }}
+          fetch-depth: 0
           # The node keeps no git credentials.
           persist-credentials: false
 
+      - name: Anything to deploy?
+        id: changed
+        env:
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force }}
+        run: |
+          state="${STATE_FILE/#\~/$HOME}"
+          head="$(git rev-parse HEAD)"
+          last="$(cat "$state" 2>/dev/null || true)"
+          if [ "$FORCE" == true ] || [ -z "$last" ] || ! git cat-file -e "$last^{commit}" 2>/dev/null; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"; echo "Deploying $head (forced or no usable last deploy)"; exit 0
+          fi
+          if ! git merge-base --is-ancestor "$last" "$head"; then
+            echo "deploy=false" >> "$GITHUB_OUTPUT"; echo "::notice::$head is not newer than the deployed $last; skipping"; exit 0
+          fi
+          if git diff --name-only "$last" "$head" | grep -Eq "$NODE_PATHS"; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"; echo "Node files changed since $last"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"; echo "::notice::nothing node-related changed since $last; skipping"
+          fi
+
       - uses: actions/setup-node@v4
+        if: steps.changed.outputs.deploy == 'true'
         with:
           node-version: 22
 
       - name: Test deploy scripts
+        if: steps.changed.outputs.deploy == 'true'
         run: node --test deploy/node/test/node.test.mjs
 
-      - name: Install / update
+      - name: Install / update every node on this host
+        if: steps.changed.outputs.deploy == 'true'
         env:
           AGENT_IMAGE_INPUT: ${{ inputs.agent_image }}
           BROWSER_IMAGE_INPUT: ${{ inputs.browser_image }}
@@ -68,10 +118,18 @@ jobs:
           if [ -n "$BROWSER_IMAGE_INPUT" ]; then args+=(--browser-image "$BROWSER_IMAGE_INPUT"); fi
           if [ -n "$CLOAK_VERSION_INPUT" ]; then args+=(--cloak-version "$CLOAK_VERSION_INPUT"); fi
           if [ "$REBUILD_BROWSER" == true ]; then args+=(--rebuild-browser); fi
-          deploy/node/install.sh "${args[@]}"
+          for prefix in $NODE_PREFIXES; do
+            echo "::group::install $prefix"
+            deploy/node/install.sh --prefix "$prefix" "${args[@]}"
+            echo "::endgroup::"
+          done
+          state="${STATE_FILE/#\~/$HOME}"
+          git rev-parse HEAD > "$state"
 
       - name: Status
-        if: always()
+        if: always() && steps.changed.outputs.deploy == 'true'
         run: |
-          docker compose -f /opt/threadline-node/compose.yml --env-file /opt/threadline-node/compose.env ps || true
-          docker logs --tail 20 tl-node-agent 2>&1 || true
+          for prefix in $NODE_PREFIXES; do
+            docker compose -f "$prefix/compose.yml" --env-file "$prefix/compose.env" ps || true
+          done
+          docker ps --filter name=tl-node-agent --format '{{.Names}} {{.Status}}' || true

@@ -417,6 +417,7 @@ One row per applied change. Times in UTC. "By" is a person, or an agent plus the
 | 2026-11-07 21:22 | §6 | Tracing on `web`, `worker`, `node-gateway` (auto-instrumentation off) | coordinator agent / owner (G4) | |
 | 2026-11-07 21:20 | §7 | `node-gateway` service with Railway domain `node-gateway-production-6426.up.railway.app` (no custom domain until G1); gateway variables; `NODE_GATEWAY_URL`/`GATEWAY_INTERNAL_SECRET` on `web`, `worker` | coordinator agent / owner (G4) | |
 | 2026-11-07 21:22 | T16 | `web`, `worker`, `node-gateway` build from the repo `Dockerfile` (`railway up`); start commands per service; `web` pre-deploy runs `migrate:deploy`. Rollback: redeploy `web` 14c80ce9, `worker` d0b76404 | coordinator agent / owner (G4) | |
+| 2026-11-08 16:40 | CD | `web`, `worker`, `node-gateway` source = GitHub `JinhuW/reddit_marketing@main` with Wait for CI (`checkSuites`); `worker` and `node-gateway` also run `migrate:deploy` as pre-deploy. Rollback: reconnect nothing, redeploy the previous deployment | owner request | docs/RELEASING.md "Continuous deployment" |
 | | §8 | `staging` environment | | |
 
 ## 11. Settings register (target state)

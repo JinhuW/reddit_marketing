@@ -113,7 +113,11 @@ Stopping the agent does not stop running browser containers; the next agent adop
 Register a self-hosted runner on the node with the extra label `browser-node`
 (Settings → Actions → Runners → New self-hosted runner; `./config.sh --labels browser-node`; `sudo ./svc.sh install`).
 The runner user must be in the `docker` group and own `/opt/threadline-node` (`install.sh --owner <runner user>`).
-The workflow passes no secrets; it checks out the ref, runs the tests above and `install.sh --skip-timer`.
+The workflow passes no secrets; it checks out the ref, runs the tests above and `install.sh --skip-timer` for every
+install dir in the repo variable `NODE_PREFIXES`. It runs on its own after CI passes on `main` (only when node files
+changed since the commit in `~/.threadline-node-deployed-sha`), or by hand. Without sudo, run the runner as a user
+service instead of `svc.sh`: `loginctl enable-linger $USER` and a `~/.config/systemd/user/gh-runner.service` whose
+`ExecStart` is `~/actions-runner/run.sh` (that is how the homelab runner `homelab-browser-node` runs).
 Membership of the `docker` group is root-equivalent on that VM: only trusted workflows may target `browser-node`.
 
 ## Seccomp
