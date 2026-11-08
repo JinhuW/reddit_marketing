@@ -1,7 +1,8 @@
 /**
  * Maps an agent `result` to Threadline state (docs/plans/0001-infra-implementation.md §4 T20).
  *
- *   ok            → `profile.started` / `profile.stopped` audit for start/stop, nothing else
+ *   ok            → `profile.started` / `profile.stopped` audit for start/stop; for `profile.whoami` the signed-in
+ *                   identity is recorded on a browser-mode account (applyWhoami; a duplicate is final)
  *   posted        → `drafts.markPosted` (writes `draft.posted`), once: a replayed result for a draft that is
  *                   already posted changes nothing
  *   needs_human   → pause the account (`needs_human`) and notify its owner; the draft stays approved
@@ -20,8 +21,8 @@
  *
  * Only `error.code` from the agent is recorded or logged: agent messages may quote page text or proxy URLs.
  */
-import { audit, browsers, drafts, prisma } from '@threadline/db';
-import { type BrowserJob, type PauseReason, PostedData, type Result } from '@threadline/shared';
+import { accounts, audit, browsers, drafts, prisma } from '@threadline/db';
+import { type BrowserJob, type PauseReason, PostedData, type Result, WhoamiData } from '@threadline/shared';
 import { log as rootLog } from '../log';
 import { NodeError } from './hub';
 
@@ -38,6 +39,12 @@ export interface OutcomeDeps {
   draftStatus: (workspaceId: string, draftId: string) => Promise<string | null>;
   pauseAccount: typeof browsers.pauseAccount;
   writeAudit: (input: Parameters<typeof audit.writeAudit>[0]) => Promise<unknown>;
+  /** accounts.completeBrowserIdentity: writes `account.connected`; throws AccountConflictError on a duplicate. */
+  completeIdentity: (
+    workspaceId: string,
+    accountId: string,
+    who: accounts.BrowserIdentity,
+  ) => Promise<{ changed: boolean; username: string }>;
   notifyNeedsHuman: (input: {
     workspaceId: string;
     memberId: string;
@@ -55,6 +62,7 @@ export const defaultOutcomeDeps: OutcomeDeps = {
   pauseAccount: (input) => browsers.pauseAccount(input),
   writeAudit: (input) => audit.writeAudit(input),
   // Same shape post.publish writes for NeedsBrowser (there is no notifications repo yet; see DECISIONS).
+  completeIdentity: (ws, accountId, who) => accounts.completeBrowserIdentity(ws, accountId, who),
   notifyNeedsHuman: (n) =>
     prisma.notification.create({
       data: {
@@ -138,6 +146,7 @@ export async function applyOutcome(
           meta: { item: ctx.profile.name, node: ctx.node, reason: job.reason },
         });
       }
+      if (job.kind === 'profile.whoami') return applyWhoami(ctx, result.data, deps, l);
       if (isAction(job)) {
         // An action that "succeeded" without posting is a contract breach: never guess, let a human look.
         l.error('action returned ok instead of posted');
@@ -226,5 +235,59 @@ export async function applyOutcome(
         await deps.markFailed(job.draftId, `Browser action failed on ${ctx.node}: ${code}`);
       throw new FinalOutcomeError(code, `agent error on ${ctx.node}: ${code}`);
     }
+  }
+}
+
+/**
+ * `profile.whoami` → `ok`. Nobody signed in: no change. Signed in: a browser-mode account gets its identity
+ * (`accounts.completeBrowserIdentity`, idempotent; writes `account.connected`); an OAuth account keeps the
+ * identity from its token. A refusal (that Reddit user is already connected in the workspace, or the profile
+ * is signed in as another user than the account) is final. Logs carry codes only, never the username.
+ */
+async function applyWhoami(
+  ctx: OutcomeContext,
+  data: unknown,
+  deps: OutcomeDeps,
+  l: typeof rootLog,
+): Promise<BrowserJobOutcome> {
+  const p = ctx.profile;
+  if (!p) throw new FinalOutcomeError('unexpected_outcome', 'profile.whoami without a profile');
+  const parsed = WhoamiData.safeParse(data);
+  if (!parsed.success) {
+    l.error({ code: 'bad_whoami_data' }, 'whoami result does not match the protocol');
+    throw new FinalOutcomeError('bad_whoami_data', 'the node returned an unreadable whoami result');
+  }
+  const who = parsed.data;
+  if (!who.loggedIn) {
+    l.info({ accountId: p.accountId }, 'not signed in');
+    return { outcome: 'ok', kind: 'profile.whoami', data: { loggedIn: false } };
+  }
+  if (p.account.authMode !== 'browser') {
+    l.info(
+      { accountId: p.accountId, code: 'oauth_account' },
+      'whoami on an OAuth account; identity unchanged',
+    );
+    return { outcome: 'ok', kind: 'profile.whoami', data: { loggedIn: true, changed: false } };
+  }
+  try {
+    const r = await deps.completeIdentity(ctx.job.workspaceId, p.accountId, {
+      name: who.name,
+      id: who.id,
+      ...(who.totalKarma === undefined ? {} : { totalKarma: who.totalKarma }),
+      ...(who.createdUtc === undefined ? {} : { createdUtc: who.createdUtc }),
+    });
+    l.info({ accountId: p.accountId, changed: r.changed }, 'browser identity recorded');
+    return {
+      outcome: 'ok',
+      kind: 'profile.whoami',
+      data: { loggedIn: true, changed: r.changed, username: r.username },
+    };
+  } catch (e) {
+    if (!(e instanceof accounts.AccountConflictError)) throw e; // e.g. the database: retried by BullMQ
+    l.warn({ accountId: p.accountId, code: 'identity_conflict' }, 'browser identity refused');
+    throw new FinalOutcomeError(
+      'identity_conflict',
+      'This Reddit user is already connected in the workspace, or the profile is signed in as another user than the account (identity_conflict).',
+    );
   }
 }

@@ -15,6 +15,7 @@ import { opportunityScore } from '../queues/opportunity-score';
 import { postPublish } from '../queues/post-publish';
 import { redditPoll } from '../queues/reddit-poll';
 import { sessionIdle } from '../queues/session-idle';
+import { proxyHostForLog } from '../reddit/client';
 import type { RoleHandle } from './role';
 
 /** Queues that never run in the core role. */
@@ -51,15 +52,18 @@ export function coreProcessors(q: QueueFor): Record<CoreQueueName, { fn: Process
 }
 
 async function schedule(q: QueueFor) {
-  // Polling needs the Reddit app credentials; skip it cleanly when they are not configured.
-  if (process.env.REDDIT_CLIENT_ID) {
-    for (const g of await prisma.keywordGroup.findMany({ select: { id: true } }))
-      await q(QUEUES.redditPoll).upsertJobScheduler(
-        `poll:${g.id}`,
-        { every: 10 * 60_000 },
-        { name: 'poll', data: { keywordGroupId: g.id } },
-      );
-  } else log.warn('REDDIT_CLIENT_ID not set: reddit.poll is not scheduled');
+  // With a Reddit app: its client-credentials token. Without one: the public Atom feed (plan 0002).
+  for (const g of await prisma.keywordGroup.findMany({ select: { id: true } }))
+    await q(QUEUES.redditPoll).upsertJobScheduler(
+      `poll:${g.id}`,
+      { every: 10 * 60_000 },
+      { name: 'poll', data: { keywordGroupId: g.id } },
+    );
+  if (!process.env.REDDIT_CLIENT_ID || !process.env.REDDIT_CLIENT_SECRET)
+    log.info(
+      { proxy: proxyHostForLog(process.env.REDDIT_READ_PROXY_URL || undefined) },
+      'no Reddit app configured: reddit.poll reads public subreddit feeds',
+    );
   await q(QUEUES.postPublish).upsertJobScheduler(
     'scheduled-drafts',
     { every: 60_000 },
