@@ -16,7 +16,7 @@ if (!process.env.DATABASE_URL) {
 const { prisma } = await import('@threadline/db');
 
 const profileId = async (name: string) =>
-  (await prisma.browserProfile.findFirstOrThrow({ where: { name } })).id;
+  (await prisma.browserProfile.findFirstOrThrow({ where: { name, workspace: { slug: 'acme' } } })).id;
 const RHEA = join(HERE, '.auth/rhea.json');
 
 test('profile table lists 3 profiles and flags Sam’s region mismatch', async ({ page }) => {
@@ -153,7 +153,9 @@ test('Start on an offline node queues nothing; admin assigns a node', async ({ p
 test('a saved workspace proxy can be attached to a profile', async ({ page }) => {
   const id = await profileId('Sam · Chrome');
   const before = await prisma.browserProfile.findUniqueOrThrow({ where: { id } });
-  const jane = await prisma.browserProfile.findFirstOrThrow({ where: { name: 'Jane · Chrome' } });
+  const jane = await prisma.browserProfile.findFirstOrThrow({
+    where: { name: 'Jane · Chrome', workspace: { slug: 'acme' } },
+  });
   try {
     await page.goto(`/browsers?id=${id}`);
     const editor = page.getByTestId('profile-editor');

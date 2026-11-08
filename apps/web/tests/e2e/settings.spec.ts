@@ -27,15 +27,17 @@ test('team table shows the 5 seeded members with approval rights', async ({ page
 test('audit log shows posted and rejected items; CSV export works', async ({ page }) => {
   await page.goto('/settings/audit');
   const table = page.getByTestId('audit-table');
-  await expect(table.locator('.chip', { hasText: /^Posted$/ }).first()).toBeVisible();
-  await expect(table.locator('.chip', { hasText: 'Rejected' }).first()).toBeVisible();
-  await expect(table).toContainText('u/jane_from_acme');
+  // Page 1 holds the newest rows; earlier specs (and the unit tests on the same DB in CI) add audit rows, so the
+  // seeded posted/rejected items are checked in the full export rather than on the first page.
+  await expect(table.locator('.chip').first()).toBeVisible();
   const res = await page.request.get('/api/audit/export');
   expect(res.status()).toBe(200);
   expect(res.headers()['content-type']).toContain('text/csv');
-  expect((await res.text()).split('\n')[0]).toBe(
-    'when,action,label,item,agent,approved_by,posted_from,disclosure',
-  );
+  const csv = await res.text();
+  expect(csv.split('\n')[0]).toBe('when,action,label,item,agent,approved_by,posted_from,disclosure');
+  expect(csv).toContain('"draft.posted","Posted"');
+  expect(csv).toContain('"draft.rejected","Rejected"');
+  expect(csv).toContain('u/jane_from_acme');
 });
 
 test('an admin can invite a member', async ({ page }) => {
