@@ -27,10 +27,18 @@ export const HEALTH_EVERY_MS = 2 * 60_000;
 /** States in which a job will still run (or is running) on a node. */
 const PENDING = ['waiting', 'active', 'delayed', 'prioritized', 'waiting-children', 'paused'] as const;
 
+/**
+ * The gateway fails a job with a message starting with this when it refused it before sending anything to the
+ * node (approval gate, paused account, profile not ready). Only such a job may be queued again under a new id.
+ */
+export const DISPATCH_REFUSED_PREFIX = 'refused: ';
+
 export interface BrowserJobInfo {
   state: string;
   returnvalue: unknown;
   finishedOn?: number;
+  /** Set for a failed job: the gateway's error message (DISPATCH_REFUSED_PREFIX = refused before sending). */
+  failedReason?: string;
 }
 
 export interface AddOptions {
@@ -84,7 +92,12 @@ export function createBrowserQueues(connection = redisConnection()): BrowserQueu
     async get(nodeName, jobId) {
       const job = await q(nodeName).getJob(jobId);
       if (!job) return null;
-      return { state: await job.getState(), returnvalue: job.returnvalue, finishedOn: job.finishedOn };
+      return {
+        state: await job.getState(),
+        returnvalue: job.returnvalue,
+        finishedOn: job.finishedOn,
+        ...(job.failedReason ? { failedReason: job.failedReason } : {}),
+      };
     },
     async inFlight(nodeName, draftId) {
       const jobs = await q(nodeName).getJobs([...PENDING], 0, 500);
@@ -105,6 +118,7 @@ export function memoryBrowserQueues() {
   const queues: BrowserQueues & {
     jobs: Map<string, Entry>;
     finish(node: string, id: string, rv: unknown): void;
+    fail(node: string, id: string, failedReason: string): void;
   } = {
     jobs,
     async add(node, job, id, opts = {}) {
@@ -121,7 +135,14 @@ export function memoryBrowserQueues() {
     },
     async get(node, id) {
       const e = jobs.get(key(node, id));
-      return e ? { state: e.state, returnvalue: e.returnvalue, finishedOn: e.finishedOn } : null;
+      return e
+        ? {
+            state: e.state,
+            returnvalue: e.returnvalue,
+            finishedOn: e.finishedOn,
+            ...(e.failedReason ? { failedReason: e.failedReason } : {}),
+          }
+        : null;
     },
     async inFlight(node, draftId) {
       return [...jobs.values()].some(
@@ -138,6 +159,12 @@ export function memoryBrowserQueues() {
       const e = jobs.get(key(node, id));
       if (!e) throw new Error(`no job ${id} on ${node}`);
       Object.assign(e, { state: 'completed', returnvalue: rv, finishedOn: Date.now() });
+    },
+    /** Marks a job failed with the gateway's error message. */
+    fail(node, id, failedReason) {
+      const e = jobs.get(key(node, id));
+      if (!e) throw new Error(`no job ${id} on ${node}`);
+      Object.assign(e, { state: 'failed', returnvalue: null, failedReason, finishedOn: Date.now() });
     },
   };
   return queues;

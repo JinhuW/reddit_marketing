@@ -110,6 +110,7 @@ beforeAll(async () => {
       'action.submitComment': 2_000,
       'action.sendDm': 2_000,
       'profile.testProxy': 2_000,
+      'profile.whoami': 2_000,
       'health.check': 2_000,
     },
   });
@@ -524,5 +525,124 @@ describe('gateway dispatch', () => {
     agent.next('health.check', { outcome: 'ok', data });
     const out = await settle(await enqueue({ kind: 'health.check', workspaceId }));
     expect(out).toEqual({ ok: true, value: { outcome: 'ok', kind: 'health.check', data } });
+  });
+
+  describe('browser mode (plan 0002)', () => {
+    const saved = new Map<
+      string,
+      {
+        username: string;
+        redditId: string;
+        authMode: 'oauth' | 'browser';
+        identifiedAt: Date | null;
+        karma: number;
+        accountCreatedAt: Date | null;
+      }
+    >();
+    /** Makes the account a browser-mode account nobody has signed in to yet (as startBrowserConnect leaves it). */
+    async function pendingBrowserAccount(accountId: string) {
+      const a = await prisma.redditAccount.findUniqueOrThrow({ where: { id: accountId } });
+      if (!saved.has(accountId))
+        saved.set(accountId, {
+          username: a.username,
+          redditId: a.redditId,
+          authMode: a.authMode,
+          identifiedAt: a.identifiedAt,
+          karma: a.karma,
+          accountCreatedAt: a.accountCreatedAt,
+        });
+      await prisma.redditAccount.update({
+        where: { id: accountId },
+        data: {
+          authMode: 'browser',
+          identifiedAt: null,
+          username: `pending-${accountId.slice(-6)}`,
+          redditId: `pending:${accountId}`,
+        },
+      });
+    }
+    afterEach(async () => {
+      for (const [id, v] of saved) await prisma.redditAccount.update({ where: { id }, data: v });
+      saved.clear();
+    });
+    const whoamiCmds = (cmdId: string) =>
+      agent.commands.items.filter((c) => c.cmdId === cmdId && c.cmd.kind === 'profile.whoami');
+
+    it('profile.whoami starts a cold profile, then records the signed-in identity', async () => {
+      await pendingBrowserAccount(prof.dm.accountId);
+      await coldProfile(prof.dm.id);
+      const name = `b3who_${randomBytes(3).toString('hex')}`;
+      const redditId = randomBytes(4).toString('hex');
+      agent.next('profile.whoami', {
+        outcome: 'ok',
+        data: { loggedIn: true, name, id: redditId, totalKarma: 321, createdUtc: 1_600_000_000 },
+      });
+      const job = await enqueue({ kind: 'profile.whoami', workspaceId, profileId: prof.dm.id });
+      const out = await settle(job);
+      expect(out).toEqual({
+        ok: true,
+        value: {
+          outcome: 'ok',
+          kind: 'profile.whoami',
+          data: { loggedIn: true, changed: true, username: name },
+        },
+      });
+      expect(agent.commands.items.some((c) => c.cmdId === `${job.id}-start`)).toBe(true);
+      expect(whoamiCmds(job.id!)[0]?.cmd).toEqual({ kind: 'profile.whoami', profileId: prof.dm.id });
+      const acc = await prisma.redditAccount.findUniqueOrThrow({ where: { id: prof.dm.accountId } });
+      expect(acc).toMatchObject({ username: name, redditId: `t2_${redditId}`, karma: 321 });
+      expect(acc.identifiedAt).not.toBeNull();
+      const ev = await prisma.auditEvent.findFirst({
+        where: { targetId: prof.dm.accountId, action: 'account.connected' },
+        orderBy: { at: 'desc' },
+      });
+      expect(ev?.meta).toMatchObject({ username: name, authMode: 'browser' });
+    });
+
+    it('profile.whoami with nobody signed in changes nothing', async () => {
+      await pendingBrowserAccount(prof.dm.accountId);
+      agent.next('profile.whoami', { outcome: 'ok', data: { loggedIn: false } });
+      const out = await settle(await enqueue({ kind: 'profile.whoami', workspaceId, profileId: prof.dm.id }));
+      expect(out).toEqual({
+        ok: true,
+        value: { outcome: 'ok', kind: 'profile.whoami', data: { loggedIn: false } },
+      });
+      const acc = await prisma.redditAccount.findUniqueOrThrow({ where: { id: prof.dm.accountId } });
+      expect(acc.identifiedAt).toBeNull();
+    });
+
+    it('profile.whoami for a user already connected in the workspace is final (not retried)', async () => {
+      await pendingBrowserAccount(prof.dm.accountId);
+      const other = await prisma.redditAccount.findUniqueOrThrow({ where: { id: prof.comment.accountId } });
+      agent.setScript('profile.whoami', {
+        outcome: 'ok',
+        data: { loggedIn: true, name: other.username, id: 'zzz111' },
+      });
+      try {
+        const job = await enqueue({ kind: 'profile.whoami', workspaceId, profileId: prof.dm.id });
+        const out = await settle(job);
+        expect(out.ok).toBe(false);
+        expect(!out.ok && out.error).toMatch(/identity_conflict/);
+        expect(!out.ok && out.error).not.toContain(other.username);
+        expect(whoamiCmds(job.id!)).toHaveLength(1);
+        const acc = await prisma.redditAccount.findUniqueOrThrow({ where: { id: prof.dm.accountId } });
+        expect(acc.identifiedAt).toBeNull();
+      } finally {
+        agent.setScript('profile.whoami', { outcome: 'ok', data: { loggedIn: false } });
+      }
+    });
+
+    it('the approval gate refuses an action for an account nobody has signed in to', async () => {
+      const d = await draftCopy('dm'); // approved while the account was identified
+      await pendingBrowserAccount(prof.dm.accountId);
+      const before = agent.commands.items.length;
+      const out = await settle(
+        await enqueue({ kind: 'action.sendDm', workspaceId, profileId: prof.dm.id, draftId: d.id }),
+      );
+      expect(out.ok).toBe(false);
+      expect(!out.ok && out.error).toMatch(/^refused: account not signed in yet/);
+      expect(agent.commands.items.length).toBe(before); // not even a profile.start
+      expect((await prisma.draft.findUniqueOrThrow({ where: { id: d.id } })).status).toBe('failed');
+    });
   });
 });

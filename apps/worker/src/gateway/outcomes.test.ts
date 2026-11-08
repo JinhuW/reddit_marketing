@@ -1,0 +1,145 @@
+/** Unit: the `profile.whoami` outcome with injected deps (no database, no node). */
+import { accounts } from '@threadline/db';
+import { describe, expect, it, vi } from 'vitest';
+import { log } from '../log';
+import { FinalOutcomeError, type OutcomeContext, type OutcomeDeps, applyOutcome } from './outcomes';
+
+const ctx = (authMode: 'oauth' | 'browser' = 'browser'): OutcomeContext => ({
+  job: { kind: 'profile.whoami', workspaceId: 'w1', profileId: 'p1' },
+  cmdId: 'bj-profile.whoami-p1-x',
+  node: 'browser-1',
+  profile: {
+    id: 'p1',
+    name: 'Profile 1',
+    accountId: 'a1',
+    account: {
+      id: 'a1',
+      username: 'pending-abc',
+      ownerMemberId: 'm1',
+      pausedReason: null,
+      authMode,
+      identifiedAt: null,
+    },
+  },
+});
+
+function deps(
+  complete: OutcomeDeps['completeIdentity'] = async (_w, _a, who) => ({ changed: true, username: who.name }),
+) {
+  const unused = () => {
+    throw new Error('not expected');
+  };
+  return {
+    markPosted: unused,
+    markFailed: unused,
+    draftStatus: unused,
+    pauseAccount: unused,
+    writeAudit: unused,
+    notifyNeedsHuman: unused,
+    completeIdentity: vi.fn(complete),
+  } as unknown as OutcomeDeps & { completeIdentity: ReturnType<typeof vi.fn> };
+}
+
+/** Captures what the outcome logs, to prove the username never appears. */
+function capture() {
+  const lines: string[] = [];
+  const l = log.child({}) as typeof log;
+  for (const level of ['info', 'warn', 'error'] as const)
+    vi.spyOn(l, level).mockImplementation(((...args: unknown[]) => {
+      lines.push(JSON.stringify(args));
+    }) as never);
+  vi.spyOn(l, 'child').mockReturnValue(l as never);
+  return { l, lines };
+}
+
+const signedIn = {
+  loggedIn: true,
+  name: 'founder_jane',
+  id: 'abc123',
+  totalKarma: 1234,
+  createdUtc: 1_600_000_000,
+};
+
+describe('profile.whoami outcome', () => {
+  it('not signed in: ok, nothing recorded', async () => {
+    const d = deps();
+    const { l, lines } = capture();
+    const out = await applyOutcome(ctx(), { outcome: 'ok', data: { loggedIn: false } } as never, d, l);
+    expect(out).toEqual({ outcome: 'ok', kind: 'profile.whoami', data: { loggedIn: false } });
+    expect(d.completeIdentity).not.toHaveBeenCalled();
+    expect(lines.join()).toContain('not signed in');
+  });
+
+  it('signed in: records the identity on the browser-mode account', async () => {
+    const d = deps();
+    const { l, lines } = capture();
+    const out = await applyOutcome(ctx(), { outcome: 'ok', data: signedIn } as never, d, l);
+    expect(d.completeIdentity).toHaveBeenCalledWith('w1', 'a1', {
+      name: 'founder_jane',
+      id: 'abc123',
+      totalKarma: 1234,
+      createdUtc: 1_600_000_000,
+    });
+    expect(out).toEqual({
+      outcome: 'ok',
+      kind: 'profile.whoami',
+      data: { loggedIn: true, changed: true, username: 'founder_jane' },
+    });
+    expect(lines.join()).not.toContain('founder_jane');
+  });
+
+  it('a duplicate identity is final and logged by code only', async () => {
+    const d = deps(async () => {
+      throw new accounts.AccountConflictError('u/founder_jane is already connected in this workspace.');
+    });
+    const { l, lines } = capture();
+    const err = await applyOutcome(ctx(), { outcome: 'ok', data: signedIn } as never, d, l).catch((e) => e);
+    expect(err).toBeInstanceOf(FinalOutcomeError);
+    expect((err as FinalOutcomeError).code).toBe('identity_conflict');
+    expect((err as Error).message).not.toContain('founder_jane');
+    expect(lines.join()).toContain('identity_conflict');
+    expect(lines.join()).not.toContain('founder_jane');
+  });
+
+  it('other failures (e.g. the database) are not final, so BullMQ retries', async () => {
+    const d = deps(async () => {
+      throw new Error('connection reset');
+    });
+    const { l } = capture();
+    const err = await applyOutcome(ctx(), { outcome: 'ok', data: signedIn } as never, d, l).catch((e) => e);
+    expect(err).not.toBeInstanceOf(FinalOutcomeError);
+    expect((err as Error).message).toBe('connection reset');
+  });
+
+  it('an unreadable result is final and records nothing', async () => {
+    const d = deps();
+    const { l } = capture();
+    const err = await applyOutcome(
+      ctx(),
+      { outcome: 'ok', data: { loggedIn: true, name: 'x y', id: 'ABC' } } as never,
+      d,
+      l,
+    ).catch((e) => e);
+    expect((err as FinalOutcomeError).code).toBe('bad_whoami_data');
+    expect(d.completeIdentity).not.toHaveBeenCalled();
+  });
+
+  it('an OAuth account keeps the identity from its token', async () => {
+    const d = deps();
+    const { l } = capture();
+    const out = await applyOutcome(ctx('oauth'), { outcome: 'ok', data: signedIn } as never, d, l);
+    expect(out).toEqual({ outcome: 'ok', kind: 'profile.whoami', data: { loggedIn: true, changed: false } });
+    expect(d.completeIdentity).not.toHaveBeenCalled();
+  });
+
+  it('an agent error is retryable (whoami is not an action)', async () => {
+    const { l } = capture();
+    const err = await applyOutcome(
+      ctx(),
+      { outcome: 'error', error: { code: 'cdp_timeout', message: '' } } as never,
+      deps(),
+      l,
+    ).catch((e) => e);
+    expect((err as Error).name).toBe('RetryableOutcomeError');
+  });
+});

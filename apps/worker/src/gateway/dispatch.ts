@@ -11,9 +11,13 @@
  *
  * APPROVAL GATE (block): `action.submitComment` / `action.sendDm` re-read the Draft and refuse unless it is
  * `approved`/`scheduled`, has an `approverMemberId` whose member can still approve, is not posted, belongs to
- * the profile's account, and passes every block rule again at post time (`assertPublishable`, the same check
- * post.publish runs). The check runs again right before the command is sent. A refused draft never reaches the
- * agent.
+ * the profile's account, the account is identified (a browser-mode account someone has signed in to; plan 0002),
+ * and passes every block rule again at post time (`assertPublishable`, the same check post.publish runs). The
+ * check runs again right before the command is sent. A refused draft never reaches the agent; its job fails
+ * with a message starting with DISPATCH_REFUSED_PREFIX, so post.publish knows nothing was sent.
+ *
+ * `profile.whoami` (plan 0002): starts the profile if needed, asks the agent who is signed in, and outcomes.ts
+ * records that identity on the browser-mode account.
  *
  * Retries: `NodeNotConnected`, `NodeTimeout` and `NodeDisconnected` are thrown as is, so BullMQ retries the job
  * with the same id; the agent replays its stored result for that cmdId, so a comment posted before a disconnect
@@ -28,7 +32,7 @@
  * before its worker starts again.
  */
 import { PolicyError, assertPublishable } from '@threadline/agents';
-import { browsers, drafts } from '@threadline/db';
+import { accounts, browsers, drafts } from '@threadline/db';
 import {
   type BrowserJob,
   type BrowserJobKind,
@@ -48,6 +52,7 @@ import {
 } from 'bullmq';
 import { redisConnection } from '../connection';
 import { log as rootLog } from '../log';
+import { DISPATCH_REFUSED_PREFIX } from '../queues/browser-health';
 import type { Hub, NodeInfo, OfflineInfo } from './hub';
 import type { GatewayPlugin } from './index';
 import {
@@ -363,7 +368,10 @@ export class Dispatcher {
     } catch (e) {
       if (e instanceof DispatchRefused || e instanceof FinalOutcomeError) {
         this.log.warn({ node: nodeName, cmdId, kind: data.kind, why: e.message }, 'browser job refused');
-        throw new UnrecoverableError(e.message);
+        // The prefix tells post.publish that nothing reached the node, so the draft may be queued again.
+        throw new UnrecoverableError(
+          e instanceof DispatchRefused ? `${DISPATCH_REFUSED_PREFIX}${e.message}` : e.message,
+        );
       }
       throw e;
     }
@@ -420,9 +428,18 @@ export class Dispatcher {
         const result = await this.send(node.name, gate.cmd, cmdId, job.kind);
         return this.apply(ctx, result);
       }
-      case 'profile.whoami':
-        // Protocol and job kind exist (plan 0002, B1); the gateway handler lands with B3.
-        throw new DispatchRefused('profile.whoami is not handled by this gateway yet');
+      case 'profile.whoami': {
+        // Plan 0002: read who is signed in to the profile's browser; outcomes.ts records the identity.
+        const pre = await this.ensureRunning(node, profile, cmdId, 'test', null, lastAttempt);
+        if (pre) return pre;
+        const result = await this.send(
+          node.name,
+          { kind: 'profile.whoami', profileId: profile.id },
+          cmdId,
+          job.kind,
+        );
+        return this.apply(ctx, result);
+      }
     }
   }
 
@@ -523,6 +540,8 @@ export class Dispatcher {
       throw new DispatchRefused('draft belongs to another account than the browser profile');
     if (profile.account.pausedReason)
       throw new DispatchRefused(`account is paused (${profile.account.pausedReason}); not sent`);
+    // Browser mode: nobody has signed in to this profile yet, so the identity behind it is unknown.
+    if (!accounts.isIdentified(profile.account)) return fail('account not signed in yet; not sent');
     const expected = job.kind === 'action.submitComment' ? 'comment' : 'dm';
     if (d.type !== expected) throw new DispatchRefused(`a ${d.type} draft cannot be sent with ${job.kind}`);
 

@@ -4,7 +4,7 @@ import { type BrowserJob, type DraftType, browserJobId } from '@threadline/share
 import { type Job, UnrecoverableError } from 'bullmq';
 import { log } from '../log';
 import { NeedsBrowser, RedditClient, RedditError } from '../reddit/client';
-import { type BrowserQueues, sharedBrowserQueues } from './browser-health';
+import { type BrowserQueues, DISPATCH_REFUSED_PREFIX, sharedBrowserQueues } from './browser-health';
 
 /** What post.publish needs from Reddit. Injected so tests never call the live API. */
 export interface Poster {
@@ -20,6 +20,8 @@ export type PublishOutcome =
   | { status: 'posted'; postedRedditId: string }
   | { status: 'skipped'; reason: string }
   | { status: 'refused'; reason: string; failures: string[] }
+  /** Browser-mode account: the draft went to its node's browser queue; the gateway posts it (and re-checks). */
+  | { status: 'queued'; node: string; jobId: string }
   | {
       status: 'needs_human';
       reason: string;
@@ -38,11 +40,15 @@ export const BROWSER_FALLBACK_ACTION: Partial<
 /** Attempts for a browser action job: the agent replays a stored result per cmdId, so a retry never posts twice. */
 export const FALLBACK_ATTEMPTS = 3;
 
+/** Why a `post` draft of a browser-mode account fails (plan 0002: there is no browser action for new threads). */
+export const BROWSER_POST_UNSUPPORTED = 'New threads are not supported in browser mode; nothing was sent.';
+
 /** The draft's account with its pause state and its profile's node. */
 interface AccountForPublish {
   id: string;
   username: string;
   ownerMemberId: string;
+  authMode: string;
   oauthTokenEnc: string | null;
   pausedReason: string | null;
   browserProfile: { id: string; node: { name: string } | null } | null;
@@ -55,6 +61,7 @@ function loadAccountForPublish(accountId: string): Promise<AccountForPublish> {
       id: true,
       username: true,
       ownerMemberId: true,
+      authMode: true,
       oauthTokenEnc: true,
       pausedReason: true,
       browserProfile: { select: { id: true, node: { select: { name: true } } } },
@@ -107,6 +114,9 @@ export async function publishDraft(
     return { status: 'refused', reason: e.message, failures: e.failures };
   }
 
+  // Browser mode (plan 0002): the Reddit API is never called; the gateway's approval gate checks again.
+  if (account.authMode === 'browser') return publishInBrowser(d, account, browser);
+
   const poster = makePoster(account);
   let postedRedditId: string;
   try {
@@ -134,6 +144,90 @@ export async function publishDraft(
   await drafts.markPosted(d.id, postedRedditId, now);
   log.info({ draftId: d.id, postedRedditId }, 'draft posted');
   return { status: 'posted', postedRedditId };
+}
+
+/** How often a browser-mode draft is queued again after the gateway refused it before sending anything. */
+export const MAX_BROWSER_REQUEUES = 3;
+
+/**
+ * Browser-mode account, draft approved and publishable: a comment or DM goes to its node's browser queue with
+ * the same job id and attempts as the verification fallback (so the sweep and a fallback never queue it
+ * twice); a `post` is marked failed (no browser action for new threads).
+ *
+ * When that job id already finished and the draft is still approved: if the gateway refused it before sending
+ * anything (failedReason starts with DISPATCH_REFUSED_PREFIX, e.g. the account was paused at dispatch time and
+ * has been resumed since), it is queued again as `<id>-r<n>`, at most MAX_BROWSER_REQUEUES times. Anything
+ * else (it may have reached Reddit) is never re-sent: the owner is notified and the account paused with
+ * `needs_human`, as the fallback does. The same pause applies with no profile or no node. The draft stays
+ * approved in those cases.
+ */
+async function publishInBrowser(
+  d: { id: string; workspaceId: string; type: string; status: string },
+  account: AccountForPublish,
+  browser: BrowserQueues | undefined,
+): Promise<PublishOutcome> {
+  const profileId = account.browserProfile?.id ?? null;
+  const node = account.browserProfile?.node?.name ?? null;
+  if (!BROWSER_FALLBACK_ACTION[d.type as DraftType]) {
+    if (d.status === 'approved' || d.status === 'scheduled')
+      await drafts.markFailed(d.id, BROWSER_POST_UNSUPPORTED);
+    log.info({ draftId: d.id, type: d.type }, 'browser mode: draft type has no browser action');
+    return { status: 'refused', reason: BROWSER_POST_UNSUPPORTED, failures: ['browser_mode'] };
+  }
+  const job = profileId ? fallbackJob(d, profileId) : null;
+  if (job && profileId && node) {
+    const q = browser ?? sharedBrowserQueues();
+    for (let n = 0; n <= MAX_BROWSER_REQUEUES; n++) {
+      const jobId = browserJobId(job, n === 0 ? undefined : `r${n}`);
+      if (await q.add(node, job, jobId, { attempts: FALLBACK_ATTEMPTS })) {
+        log.info({ draftId: d.id, node, jobId }, 'browser mode: draft queued on its node');
+        return { status: 'queued', node, jobId };
+      }
+      const prev = await q.get(node, jobId);
+      if (prev?.state !== 'failed' || !prev.failedReason?.startsWith(DISPATCH_REFUSED_PREFIX)) break;
+    }
+    // Not in flight (checked above) and not a clean refusal: it may have reached Reddit. A human has to look.
+    return pauseForHuman(
+      d,
+      account,
+      `the browser on ${node} already tried this draft`,
+      `The browser on ${node} already tried this draft for u/${account.username}. Check the draft, then resume the account.`,
+      profileId,
+    );
+  }
+  return pauseForHuman(
+    d,
+    account,
+    profileId ? 'the browser profile has no node assigned' : 'the account has no browser profile',
+    `u/${account.username} has ${profileId ? 'no browser node assigned' : 'no browser profile'}; assign one on the Browsers screen, then resume the account.`,
+    profileId,
+  );
+}
+
+/** Notifies the owner and pauses the account with `needs_human` (the minute sweep then leaves it alone). */
+async function pauseForHuman(
+  d: { id: string; workspaceId: string },
+  account: AccountForPublish,
+  reason: string,
+  text: string,
+  profileId: string | null,
+): Promise<PublishOutcome> {
+  await prisma.notification.create({
+    data: {
+      workspaceId: d.workspaceId,
+      memberId: account.ownerMemberId,
+      kind: 'needs_human',
+      payload: { draftId: d.id, profileId, fallback: false, text },
+    },
+  });
+  await browsers.pauseAccount({
+    workspaceId: d.workspaceId,
+    accountId: account.id,
+    reason: 'needs_human',
+    detail: `draft ${d.id}: ${reason}`.slice(0, 500),
+  });
+  log.info({ draftId: d.id }, 'browser mode: account paused for a human');
+  return { status: 'needs_human', reason, fallback: null };
 }
 
 /**
