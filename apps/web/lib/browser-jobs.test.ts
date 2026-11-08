@@ -65,7 +65,11 @@ describe('enqueueProfileJob', () => {
     const suffix = (1_700_000_000_000).toString(36);
     expect(r).toEqual({ queued: true, jobId: `bj-profile.whoami-p1-${suffix}`, node: 'browser-1' });
     expect(q.added[0]).toMatchObject({ queue: 'browser-1', name: 'browser-1' });
-    expect(q.added[0]!.opts).toEqual({ ...BROWSER_JOB_OPTIONS, jobId: `bj-profile.whoami-p1-${suffix}` });
+    expect(q.added[0]!.opts).toEqual({
+      ...BROWSER_JOB_OPTIONS,
+      attempts: 2,
+      jobId: `bj-profile.whoami-p1-${suffix}`,
+    });
     for (const kind of ['profile.start', 'profile.stop'] as const)
       await enqueueProfileJob('ws', 'p1', kind, d);
     expect(q.added.map((a) => a.data)).toEqual([
