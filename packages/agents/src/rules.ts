@@ -25,6 +25,11 @@ export interface RuleContext {
     postedToday: number;
     karma: number;
     accountCreatedAt: Date | null;
+    /**
+     * When the Reddit identity was confirmed. Null = a browser-mode account nobody has signed in to yet:
+     * it fails `account_eligible` (block), so it can never be approved or posted.
+     */
+    identifiedAt: Date | null;
     health: AccountHealth;
     /** percent 0-100 */
     selfPromoMax: number;
@@ -191,6 +196,7 @@ export function evaluateDraft(ctx: RuleContext): RuleCheck[] {
       ? Math.floor((now.getTime() - account.accountCreatedAt.getTime()) / DAY)
       : 0;
     const problems: string[] = [];
+    if (!account.identifiedAt) problems.push('account not signed in yet');
     if (account.health === 'blocked') problems.push('account health is blocked');
     if (subreddit && account.karma < subreddit.minKarma)
       problems.push(`karma ${account.karma} < ${subreddit.minKarma}`);

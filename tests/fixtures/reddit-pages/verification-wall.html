@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Verify your email - Reddit</title>
+<style>
+  body { font-family: sans-serif; display: grid; place-items: center; min-height: 100vh; margin: 0; }
+  .card { max-width: 400px; padding: 24px; border: 1px solid #ddd; border-radius: 16px; }
+  input { width: 100%; box-sizing: border-box; font-size: 20px; letter-spacing: 6px; }
+</style>
+</head>
+<body>
+<main class="card" id="email-verification">
+  <h1>Verify it's you</h1>
+  <p>We noticed some unusual activity on your account. To keep your account safe, enter the 6-digit code we
+    sent to t*******@example.com.</p>
+  <form id="verify-form" action="/account/verify/" method="post">
+    <label for="otp">Verification code</label>
+    <input id="otp" name="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
+    <button type="submit">Verify</button>
+  </form>
+  <p><button type="button" id="resend">Resend code</button></p>
+</main>
+</body>
+</html>

@@ -36,12 +36,100 @@ jobs:
       - name: Migrations match schema
         run: pnpm --filter @threadline/db migrate:check
       - run: pnpm db:migrate:deploy && pnpm db:seed
-      - run: pnpm test
+      # Before the unit tests: the node-testkit and node-agent CDP tests skip themselves without a Chromium.
+      - run: pnpm --filter @threadline/web exec playwright install --with-deps chromium chromium-headless-shell
+      # One package at a time: db, worker, web and agents share the seeded database and move the same seeded
+      # rows (e.g. a profile's node), so parallel packages race.
+      - run: pnpm exec turbo run test --concurrency=1
       - name: E2E
         run: |
-          pnpm --filter @threadline/web exec playwright install --with-deps chromium
           (pnpm --filter @threadline/web dev > web.log 2>&1 &)
           npx wait-on -t 120000 http://localhost:3000/login
           pnpm test:e2e
       - if: failure()
         run: tail -200 web.log || true
+
+  # Browser-node packages on their own, with no Postgres, Redis or DATABASE_URL: the node agent must run
+  # without them (ADR-0001: a node holds no database URL, Redis URL or app secret). `check` above still runs
+  # them as part of the whole monorepo. A package that has not landed yet is skipped with a notice.
+  node-packages:
+    name: ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: '@threadline/node-agent'
+            dir: apps/node-agent
+          - package: '@threadline/node-testkit'
+            dir: packages/node-testkit
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package present
+        id: present
+        run: |
+          if [ -f "${{ matrix.dir }}/package.json" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"
+          else echo "::notice::${{ matrix.dir }} not in this tree yet; skipping"; echo "ok=false" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.present.outputs.ok == 'true'
+        uses: pnpm/action-setup@v4
+      - if: steps.present.outputs.ok == 'true'
+        uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - if: steps.present.outputs.ok == 'true'
+        run: pnpm install --frozen-lockfile --filter "${{ matrix.package }}..."
+      - name: Playwright browser (packages that launch a CDP target)
+        if: steps.present.outputs.ok == 'true'
+        working-directory: ${{ matrix.dir }}
+        run: |
+          if [ -x node_modules/.bin/playwright ]; then node_modules/.bin/playwright install --with-deps chromium
+          elif [ -x node_modules/.bin/playwright-core ]; then node_modules/.bin/playwright-core install --with-deps chromium
+          fi
+      - if: steps.present.outputs.ok == 'true'
+        run: pnpm --filter "${{ matrix.package }}" typecheck
+      - if: steps.present.outputs.ok == 'true'
+        run: pnpm --filter "${{ matrix.package }}" test
+
+  # The images Railway and the nodes run, built (not pushed) so a broken Dockerfile fails the PR, not the deploy.
+  docker:
+    name: image ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: railway (web, worker, node-gateway)
+            dockerfile: Dockerfile
+            target: railway
+          - name: gateway
+            dockerfile: Dockerfile
+            target: gateway
+          - name: node-agent
+            dockerfile: apps/node-agent/Dockerfile
+            target: ''
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dockerfile present
+        id: present
+        run: |
+          if [ -f "${{ matrix.dockerfile }}" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"
+          else echo "::notice::${{ matrix.dockerfile }} not in this tree yet; skipping"; echo "ok=false" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.present.outputs.ok == 'true'
+        uses: docker/setup-buildx-action@v3
+      - if: steps.present.outputs.ok == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
+          platforms: linux/amd64
+          push: false
+          load: ${{ matrix.target == 'railway' }}
+          tags: threadline:ci-${{ matrix.target || 'node-agent' }}
+          provenance: false
+          cache-from: type=gha,scope=ci-${{ matrix.target || 'node-agent' }}
+          cache-to: type=gha,mode=max,scope=ci-${{ matrix.target || 'node-agent' }}
+      - name: Railway default stage refuses to start without a config file
+        if: steps.present.outputs.ok == 'true' && matrix.target == 'railway'
+        run: |
+          set +e; docker run --rm threadline:ci-railway; code=$?; set -e
+          test "$code" -eq 64

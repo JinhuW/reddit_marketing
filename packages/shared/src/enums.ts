@@ -11,6 +11,10 @@ export type MemberRole = (typeof MemberRole)[number];
 export const AccountRoleLabel = ['founder', 'support', 'brand'] as const;
 export type AccountRoleLabel = (typeof AccountRoleLabel)[number];
 
+/** How Threadline talks to Reddit for an account: the Reddit API (OAuth app) or the account's own browser profile. */
+export const AccountAuthMode = ['oauth', 'browser'] as const;
+export type AccountAuthMode = (typeof AccountAuthMode)[number];
+
 export const AccountHealth = ['healthy', 'watch', 'blocked'] as const;
 export type AccountHealth = (typeof AccountHealth)[number];
 
@@ -87,6 +91,44 @@ export type AttributionModel = (typeof AttributionModel)[number];
 export const ModStatus = ['ok', 'watch', 'banned', 'unknown'] as const;
 export type ModStatus = (typeof ModStatus)[number];
 
+// ── browser nodes (docs/plans/0001-infra-implementation.md §3.2) ──
+
+export const BrowserNodeStatus = ['online', 'offline', 'draining'] as const;
+export type BrowserNodeStatus = (typeof BrowserNodeStatus)[number];
+
+/** Why a RedditAccount is paused. Mirrored in Prisma; any value means `post.publish` skips the account. */
+export const PauseReason = [
+  'needs_human',
+  'license_denied',
+  'node_offline',
+  'proxy_failed',
+  'manual',
+] as const;
+export type PauseReason = (typeof PauseReason)[number];
+
+/** Outcome of one command on a browser node. Not stored as a column, so not mirrored in Prisma. */
+export const BrowserOutcome = [
+  'ok',
+  'posted',
+  'needs_human',
+  'license_denied',
+  'proxy_failed',
+  'error',
+] as const;
+export type BrowserOutcome = (typeof BrowserOutcome)[number];
+
+/** CloakBrowser persona; stored as text in `BrowserProfile.cloakPersona`. */
+export const CloakPersona = ['windows', 'macos', 'linux'] as const;
+export type CloakPersona = (typeof CloakPersona)[number];
+
+/** CloakBrowser GPU family; stored as text in `BrowserProfile.cloakGpu`. */
+export const CloakGpu = ['nvidia', 'intel', 'amd'] as const;
+export type CloakGpu = (typeof CloakGpu)[number];
+
+/** `Event.kind` in the gateway ↔ agent protocol. */
+export const NodeEventKind = ['container.exited', 'session.activity', 'needs_human'] as const;
+export type NodeEventKind = (typeof NodeEventKind)[number];
+
 export const AuditAction = [
   'draft.created',
   'draft.requested',
@@ -111,6 +153,16 @@ export const AuditAction = [
   'member.invited',
   'member.role_changed',
   'workspace.report_updated',
+  'node.online',
+  'node.offline',
+  'profile.started',
+  'profile.stopped',
+  'profile.license_denied',
+  'profile.fingerprint_assigned',
+  'account.paused',
+  'account.resumed',
+  'account.connect_started',
+  'profile.node_assigned',
 ] as const;
 export type AuditAction = (typeof AuditAction)[number];
 

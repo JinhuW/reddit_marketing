@@ -11,3 +11,4 @@ playwright-report
 *.tsbuildinfo
 next-env.d.ts
 **/tests/e2e/.auth/
+.archify/

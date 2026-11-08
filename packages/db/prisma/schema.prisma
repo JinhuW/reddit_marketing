@@ -34,6 +34,11 @@ enum AccountRoleLabel {
   brand
 }
 
+enum AccountAuthMode {
+  oauth
+  browser
+}
+
 enum AccountHealth {
   healthy
   watch
@@ -184,6 +189,20 @@ enum AttributionModel {
   last_click
 }
 
+enum BrowserNodeStatus {
+  online
+  offline
+  draining
+}
+
+enum PauseReason {
+  needs_human
+  license_denied
+  node_offline
+  proxy_failed
+  manual
+}
+
 // ───────────────────────── tenancy and auth ─────────────────────────
 
 model Workspace {
@@ -201,6 +220,7 @@ model Workspace {
   members         WorkspaceMember[]
   redditAccounts  RedditAccount[]
   browserProfiles BrowserProfile[]
+  browserNodes    BrowserNode[]
   proxies         Proxy[]
   browserSessions BrowserSession[]
   agents          Agent[]
@@ -311,6 +331,8 @@ model RedditAccount {
   ownerMemberId    String           @unique
   roleLabel        AccountRoleLabel @default(founder)
   disclosureLine   String
+  /// oauth = Reddit API token; browser = driven through the account's BrowserProfile (docs/plans/0002-browser-mode.md)
+  authMode         AccountAuthMode  @default(oauth)
   oauthTokenEnc    String?
   scopes           String[]
   karma            Int              @default(0)
@@ -319,6 +341,12 @@ model RedditAccount {
   /// Max share of promotional items over 7 days, in percent.
   selfPromoMax     Int              @default(10)
   health           AccountHealth    @default(healthy)
+  /// Set = post.publish and browser dispatch skip this account (browsers.pauseAccount / resumeAccount).
+  pausedReason     PauseReason?
+  pausedAt         DateTime?
+  /// When the Reddit identity was confirmed (OAuth callback or profile.whoami). Null = a browser-mode account
+  /// whose owner has not signed in yet: never publishable, never dispatched (isIdentified).
+  identifiedAt     DateTime?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
@@ -347,13 +375,48 @@ model BrowserProfile {
   fingerprint   Json                 @default("{}")
   cookiesVolume String?
   lastSessionAt DateTime?
+  /// Browser node that runs this profile (browsers.assignNode).
+  nodeId        String?
+  /// CloakBrowser fingerprint, set once at connect time by browsers.ensureCloakFingerprint, never changed.
+  /// The salt the seed derives from is kept in `fingerprint.cloakSalt`.
+  cloakSeed     Int?
+  /// "windows" | "macos" | "linux" (CloakPersona)
+  cloakPersona  String?
+  /// "nvidia" | "intel" | "amd" (CloakGpu)
+  cloakGpu      String?
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
 
   workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   account   RedditAccount    @relation(fields: [accountId], references: [id], onDelete: Cascade)
   proxy     Proxy?           @relation(fields: [proxyId], references: [id])
+  node      BrowserNode?     @relation(fields: [nodeId], references: [id])
   sessions  BrowserSession[]
+}
+
+/// A local x86 VM running node-agent + CloakBrowser containers; dials the gateway outbound (ADR-0001).
+model BrowserNode {
+  id           String            @id @default(cuid())
+  workspaceId  String
+  /// "browser-1"; also the queue suffix (browserQueue) and the X-Node-Name header, so unique across workspaces
+  name         String            @unique
+  /// sha256 (hex) of the node token; the token itself lives only in Railway + the node's env
+  tokenHash    String
+  status       BrowserNodeStatus @default(offline)
+  agentVersion String?
+  /// browser-profile image digest the node reports
+  imageDigest  String?
+  seatsInUse   Int               @default(0)
+  seatsLimit   Int?
+  maxProfiles  Int               @default(8)
+  lastSeenAt   DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  profiles  BrowserProfile[]
+
+  @@index([workspaceId])
 }
 
 model Proxy {
@@ -447,7 +510,7 @@ model AgentSkill {
 }
 
 model ContextItem {
-  id          String                       @id @default(cuid())
+  id          String                      @id @default(cuid())
   workspaceId String
   agentId     String
   kind        ContextKind
@@ -456,9 +519,9 @@ model ContextItem {
   content     String
   /// voyage-3-lite = 512 dims (docs/DECISIONS.md). HNSW index created in raw SQL migration.
   embedding   Unsupported("vector(512)")?
-  freshAt     DateTime                     @default(now())
-  createdAt   DateTime                     @default(now())
-  updatedAt   DateTime                     @updatedAt
+  freshAt     DateTime                    @default(now())
+  createdAt   DateTime                    @default(now())
+  updatedAt   DateTime                    @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   agent     Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
@@ -506,21 +569,21 @@ model KeywordGroup {
 }
 
 model Subreddit {
-  id             String    @id @default(cuid())
-  workspaceId    String
-  name           String
-  members        Int       @default(0)
+  id                String    @id @default(cuid())
+  workspaceId       String
+  name              String
+  members           Int       @default(0)
   /// posts per day, rolling 7 days
-  activity       Float     @default(0)
-  selfPromoPolicy String?
-  linkRule       LinkRule  @default(one_per_comment)
-  modStatus      ModStatus @default(unknown)
-  minKarma       Int       @default(0)
-  minAccountAgeDays Int    @default(0)
-  notes          String?
-  rulesFetchedAt DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  activity          Float     @default(0)
+  selfPromoPolicy   String?
+  linkRule          LinkRule  @default(one_per_comment)
+  modStatus         ModStatus @default(unknown)
+  minKarma          Int       @default(0)
+  minAccountAgeDays Int       @default(0)
+  notes             String?
+  rulesFetchedAt    DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   workspace    Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   posts        Post[]

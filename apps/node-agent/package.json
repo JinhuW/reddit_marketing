@@ -1,0 +1,31 @@
+{
+  "name": "@threadline/node-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": ["dist"],
+  "scripts": {
+    "dev": "tsx watch --env-file=../../.env src/index.ts",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/index.mjs --external:ws --external:pino --external:dockerode --external:playwright-core --external:zod",
+    "start": "node dist/index.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@threadline/shared": "workspace:*",
+    "dockerode": "4.0.9",
+    "pino": "9.14.0",
+    "playwright-core": "1.63.0",
+    "ws": "8.18.3",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@threadline/node-testkit": "workspace:*",
+    "@types/dockerode": "3.3.44",
+    "@types/node": "22.18.0",
+    "@types/ws": "8.18.1",
+    "esbuild": "0.25.12",
+    "tsx": "4.20.6",
+    "vitest": "3.2.4"
+  }
+}

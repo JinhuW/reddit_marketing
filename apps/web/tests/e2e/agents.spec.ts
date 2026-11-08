@@ -69,7 +69,9 @@ test('only admins can create agents', async ({ browser }) => {
   const ctx = await browser.newContext({ storageState: 'tests/e2e/.auth/rhea.json' });
   const page = await ctx.newPage();
   await page.goto('/agents?new=1');
-  await expect(page.getByRole('alert')).toContainText('Only admins can create agents.');
+  await expect(page.getByRole('alert').filter({ hasText: 'Only admins' })).toContainText(
+    'Only admins can create agents.',
+  );
   await expect(page.getByRole('button', { name: 'Create agent' })).toHaveCount(0);
   await ctx.close();
 });

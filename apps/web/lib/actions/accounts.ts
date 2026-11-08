@@ -1,9 +1,10 @@
 'use server';
 
+import { enqueueProfileJob } from '@/lib/browser-jobs';
 import { PENDING_COOKIE, openPending } from '@/lib/reddit-oauth';
 import { ForbiddenError, requireRole } from '@/lib/session';
 import { PolicyError, assertOneAccountPerMember } from '@threadline/agents';
-import { accounts } from '@threadline/db';
+import { accounts, browsers } from '@threadline/db';
 import { AccountRoleLabel } from '@threadline/shared';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
@@ -89,6 +90,67 @@ export async function finishConnect(_: ActionState, f: FormData): Promise<Action
   }
   revalidatePath('/accounts');
   redirect('/accounts');
+}
+
+/**
+ * Browser mode, step 1 (docs/plans/0002-browser-mode.md): the signed-in member becomes the owner of a pending
+ * account + browser profile (node and optional proxy), `profile.start` is queued, and a take-over session opens
+ * so the owner can sign in to reddit.com themselves. The account cannot post until `profile.whoami` identifies it.
+ */
+export async function startBrowserConnect(_: ActionState, f: FormData): Promise<ActionState> {
+  let profileId: string;
+  try {
+    const me = await requireRole('editor');
+    assertOneAccountPerMember(await accounts.findByOwner(me.id));
+    const input = z
+      .object({
+        roleLabel: z.enum(AccountRoleLabel),
+        disclosureLine: Disclosure,
+        ...Limits,
+        proxyId: z.string().max(64),
+        fingerprint: z.string(),
+      })
+      .parse({
+        roleLabel: str(f, 'roleLabel'),
+        disclosureLine: str(f, 'disclosureLine'),
+        dailyPostLimit: f.get('dailyPostLimit'),
+        selfPromoMax: str(f, 'selfPromoMax').replace('%', ''),
+        proxyId: str(f, 'proxyId'),
+        fingerprint: str(f, 'fingerprint'),
+      });
+    if (input.proxyId && !(await browsers.listProxies(me.workspaceId)).some((p) => p.id === input.proxyId))
+      return { error: 'That proxy is not in this workspace.' };
+    let fpRaw: unknown = {};
+    try {
+      fpRaw = JSON.parse(input.fingerprint || '{}');
+    } catch {}
+    const fp = Fingerprint.safeParse(fpRaw);
+    const r = await accounts.startBrowserConnect({
+      workspaceId: me.workspaceId,
+      ownerMemberId: me.id,
+      roleLabel: input.roleLabel,
+      disclosureLine: input.disclosureLine,
+      dailyPostLimit: input.dailyPostLimit,
+      selfPromoMax: input.selfPromoMax,
+      proxyId: input.proxyId || null,
+      fingerprint: fp.success ? { ...fp.data, capturedAt: new Date().toISOString() } : {},
+    });
+    profileId = r.profileId;
+    // No node / node offline: nothing is queued; the session page says why.
+    await enqueueProfileJob(me.workspaceId, r.profileId, 'profile.start');
+    await browsers.startHumanSession({
+      workspaceId: me.workspaceId,
+      profileId: r.profileId,
+      memberId: me.id,
+      memberName: me.user.name ?? me.user.email,
+      reason: 'Sign in to Reddit',
+    });
+  } catch (e) {
+    return fail(e);
+  }
+  revalidatePath('/accounts');
+  revalidatePath('/browsers');
+  redirect(`/browsers/${profileId}/session?login=1`);
 }
 
 /** Admins, or the account owner, can edit limits and the disclosure line. */
