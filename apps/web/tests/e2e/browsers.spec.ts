@@ -167,6 +167,11 @@ test('a saved workspace proxy can be attached to a profile', async ({ page }) =>
     await editor.getByRole('button', { name: 'Use', exact: true }).click();
     await expect(editor.getByRole('status').filter({ hasText: 'Proxy attached.' })).toBeVisible();
     expect((await prisma.browserProfile.findUniqueOrThrow({ where: { id } })).proxyId).toBe(jane.proxyId);
+    // the picker keeps showing the proxy now in use, and the manual fields re-seed from it (a later Save
+    // must not write Sam's old Oxylabs values onto Jane's proxy)
+    await expect(picker).toHaveValue(jane.proxyId!);
+    await expect(picker.locator('option:checked')).toContainText('in use');
+    await expect(editor.getByLabel('Host')).toHaveValue('brd.superproxy.io');
     expect(await page.content()).not.toContain('tl-acme-');
   } finally {
     await prisma.browserProfile.update({ where: { id }, data: { proxyId: before.proxyId } });

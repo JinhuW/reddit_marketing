@@ -60,9 +60,15 @@ export function ProfileEditor({
     attachProxyAction,
     null,
   );
-  const others = savedProxies.filter((x) => x.id !== currentProxyId);
   const useFormId = `use-proxy-${p.id}`;
   const [protocol, setProtocol] = useState(p.proxy?.protocol ?? 'none');
+  // After "Use" the page re-renders with another proxy behind this profile: re-seed the manual fields from it,
+  // so a later Save cannot write the previous proxy's values onto the one just attached.
+  const [seededFor, setSeededFor] = useState(currentProxyId);
+  if (seededFor !== currentProxyId) {
+    setSeededFor(currentProxyId);
+    setProtocol(p.proxy?.protocol ?? 'none');
+  }
   // The per-profile proxy form is folded away by default; its inputs still submit while closed.
   const [customOpen, setCustomOpen] = useState(false);
   const provider = p.proxy?.provider ?? 'Own server';
@@ -92,7 +98,7 @@ export function ProfileEditor({
       <form id={useFormId} action={attachAction} className="hidden">
         <input type="hidden" name="profileId" value={p.id} />
       </form>
-      <form id={`proxy-form-${p.id}`} action={saveAction}>
+      <form key={currentProxyId ?? 'none'} id={`proxy-form-${p.id}`} action={saveAction}>
         <input type="hidden" name="profileId" value={p.id} />
         <div className="flex flex-col gap-4 px-[18px] py-4">
           {save ? (
@@ -113,16 +119,23 @@ export function ProfileEditor({
             <legend className="mb-2.5 flex items-center gap-2 p-0 text-[12.5px] font-semibold">
               Proxy<span className={`chip ${testChip}`}>{testLabel}</span>
             </legend>
-            {others.length ? (
+            {savedProxies.length ? (
               <div className="flex items-end gap-2">
                 <Field id="saved-proxy" label="Use a saved proxy">
-                  <select id="saved-proxy" name="proxyId" form={useFormId} className="field" defaultValue="">
+                  <select
+                    key={currentProxyId ?? 'none'}
+                    id="saved-proxy"
+                    name="proxyId"
+                    form={useFormId}
+                    className="field"
+                    defaultValue={currentProxyId ?? ''}
+                  >
                     <option value="" disabled>
                       Pick one of the workspace’s proxies
                     </option>
-                    {others.map((x) => (
+                    {savedProxies.map((x) => (
                       <option key={x.id} value={x.id}>
-                        {x.label}
+                        {x.id === currentProxyId ? `${x.label} · in use` : x.label}
                       </option>
                     ))}
                   </select>
@@ -153,7 +166,7 @@ export function ProfileEditor({
                 >
                   ›
                 </span>
-                {others.length ? 'Or enter a proxy for this profile' : 'Enter a proxy for this profile'}
+                {savedProxies.length ? 'Or enter a proxy for this profile' : 'Enter a proxy for this profile'}
                 {p.proxy?.host ? (
                   <span className="muted num ml-auto truncate text-xs font-normal">
                     {p.proxy.host}
