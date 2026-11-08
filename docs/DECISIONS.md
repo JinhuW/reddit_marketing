@@ -152,3 +152,13 @@ node reads the identity. Spec: `docs/plans/0002-browser-mode.md`.
 - The Browsers page **refreshes itself every 10 s** while the tab is visible.
 - The web app copies the gateway's browser job options (`BROWSER_JOB_OPTIONS`) because it cannot import
   apps/worker; moving them to packages/shared is a later clean-up.
+
+## 2026-11-08 · An unfinished browser connect is resumed, not counted as the owner's account
+
+- A browser-mode account that was started but never signed in to (`authMode` browser, `identifiedAt` null) used
+  to block its owner from connecting again ("You already own u/pending-…"), with no way to remove it.
+- `accounts.startBrowserConnect` now **resumes** it: role, disclosure line and limits are updated, the chosen proxy
+  is attached, a node is assigned if it has none, and `account.connect_started` is written with `resumed: true`.
+  The profile and its fingerprint are kept. The connect form says it picks up u/pending-… where it left off.
+- The one-account-per-person block rule is unchanged: once the account has a Reddit identity, a second connect
+  is refused. OAuth connect still refuses while a pending browser account exists (it cannot reuse it).

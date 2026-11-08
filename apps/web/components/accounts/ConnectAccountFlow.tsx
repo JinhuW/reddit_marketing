@@ -15,6 +15,8 @@ export interface ConnectProps {
   configured: boolean;
   ownerName: string;
   alreadyOwns: string | null;
+  /** the owner's unfinished browser connect (pending username), which the browser flow resumes */
+  resumes: string | null;
   canConnect: boolean;
   authorized: { username: string; scopes: string[] } | null;
   product: string;
@@ -53,7 +55,8 @@ export function ConnectAccountFlow(p: ConnectProps) {
   }, []);
 
   const browser = mode === 'browser';
-  const blocked = Boolean(p.alreadyOwns) || !p.canConnect;
+  // OAuth cannot reuse a pending browser account, so only the browser flow can resume it.
+  const blocked = Boolean(p.alreadyOwns) || (!browser && Boolean(p.resumes)) || !p.canConnect;
   const step1Done = !browser && Boolean(p.authorized);
   const later = browser ? blocked : !step1Done || blocked;
   const pending = browser ? browserPending : oauthPending;
@@ -134,6 +137,12 @@ export function ConnectAccountFlow(p: ConnectProps) {
               <p role="alert" className="m-0 text-xs text-bad">
                 Viewers can’t connect accounts.
               </p>
+            ) : p.resumes ? (
+              <div className="muted text-xs" data-testid="connect-resumes">
+                {browser
+                  ? `You started connecting an account but didn’t finish signing in. This picks up u/${p.resumes} where you left off.`
+                  : `You have an unfinished browser sign-in (u/${p.resumes}). Finish it through the browser instead.`}
+              </div>
             ) : (
               <div className="muted text-xs">
                 One account per real person. The account is connected to you, the person signing in.

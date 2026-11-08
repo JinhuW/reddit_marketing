@@ -120,12 +120,78 @@ describe('accounts.startBrowserConnect', () => {
     }
   });
 
+  it('resumes an unfinished pending connect instead of refusing it, keeping the profile', async () => {
+    const ws = await testWorkspace();
+    try {
+      const owner = await ws.member('Rae');
+      const first = await accounts.startBrowserConnect({
+        ...base,
+        workspaceId: ws.id,
+        ownerMemberId: owner.id,
+      });
+      expect(first.resumed).toBe(false);
+      const proxy = await prisma.proxy.create({
+        data: { workspaceId: ws.id, provider: 'x', protocol: 'http', host: 'p.test', port: 1 },
+      });
+      const again = await accounts.startBrowserConnect({
+        ...base,
+        workspaceId: ws.id,
+        ownerMemberId: owner.id,
+        roleLabel: 'support',
+        disclosureLine: 'I work on support at Acme',
+        dailyPostLimit: 3,
+        proxyId: proxy.id,
+      });
+      expect(again).toMatchObject({
+        resumed: true,
+        accountId: first.accountId,
+        profileId: first.profileId,
+        username: first.username,
+      });
+      const acct = await prisma.redditAccount.findUniqueOrThrow({ where: { id: first.accountId } });
+      expect(acct).toMatchObject({ roleLabel: 'support', dailyPostLimit: 3, identifiedAt: null });
+      expect(
+        (await prisma.browserProfile.findUniqueOrThrow({ where: { id: first.profileId } })).proxyId,
+      ).toBe(proxy.id);
+      expect(await prisma.redditAccount.count({ where: { workspaceId: ws.id } })).toBe(1);
+      const started = (await audits(ws.id)).filter((a) => a.action === 'account.connect_started');
+      expect(started).toHaveLength(2);
+      expect((started[1]?.meta as { resumed?: boolean }).resumed).toBe(true);
+      expect(accounts.isPendingConnect(acct)).toBe(true);
+    } finally {
+      await ws.cleanup();
+    }
+  });
+
+  it('still refuses a second connect once the account has a Reddit identity', async () => {
+    const ws = await testWorkspace();
+    try {
+      const owner = await ws.member('Ivo');
+      const { accountId } = await accounts.startBrowserConnect({
+        ...base,
+        workspaceId: ws.id,
+        ownerMemberId: owner.id,
+      });
+      await prisma.redditAccount.update({ where: { id: accountId }, data: { identifiedAt: new Date() } });
+      await expect(
+        accounts.startBrowserConnect({ ...base, workspaceId: ws.id, ownerMemberId: owner.id }),
+      ).rejects.toThrow(/already own/);
+    } finally {
+      await ws.cleanup();
+    }
+  });
+
   it('refuses a second account for the same owner, a non-member owner and a foreign proxy, atomically', async () => {
     const ws = await testWorkspace();
     const other = await testWorkspace();
     try {
       const owner = await ws.member('Leo');
-      await accounts.startBrowserConnect({ ...base, workspaceId: ws.id, ownerMemberId: owner.id });
+      const leo = await accounts.startBrowserConnect({
+        ...base,
+        workspaceId: ws.id,
+        ownerMemberId: owner.id,
+      });
+      await prisma.redditAccount.update({ where: { id: leo.accountId }, data: { identifiedAt: new Date() } });
       await expect(
         accounts.startBrowserConnect({ ...base, workspaceId: ws.id, ownerMemberId: owner.id }),
       ).rejects.toThrow(/already own/);

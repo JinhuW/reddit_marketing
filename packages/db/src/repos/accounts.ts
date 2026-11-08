@@ -16,6 +16,17 @@ export function isIdentified(account: { identifiedAt: Date | string | null | und
   return account.identifiedAt != null;
 }
 
+/**
+ * A browser-mode connect that was started but never signed in to (no Reddit identity yet). It does not count
+ * as the owner's one account: the next connect resumes it instead of being refused.
+ */
+export function isPendingConnect(account: {
+  authMode: string;
+  identifiedAt: Date | string | null | undefined;
+}): boolean {
+  return account.authMode === 'browser' && !isIdentified(account);
+}
+
 const DAY = 86_400_000;
 
 /** Posting activity for an account: items posted today, and over the last 7 days (all / promotional). */
@@ -85,7 +96,10 @@ export async function listCards(workspaceId: string, now = new Date()) {
 export type AccountCard = Awaited<ReturnType<typeof listCards>>[number];
 
 export function findByOwner(ownerMemberId: string) {
-  return prisma.redditAccount.findUnique({ where: { ownerMemberId }, select: { id: true, username: true } });
+  return prisma.redditAccount.findUnique({
+    where: { ownerMemberId },
+    select: { id: true, username: true, authMode: true, identifiedAt: true },
+  });
 }
 
 export interface ConnectInput {
@@ -189,6 +203,8 @@ export interface StartBrowserConnectResult {
   profileId: string;
   /** null when no online node had room: the profile waits for an assignment on the Browsers screen */
   node: { id: string; name: string } | null;
+  /** true when the owner's unfinished pending connect was resumed instead of a new account being created */
+  resumed: boolean;
 }
 
 /**
@@ -197,7 +213,10 @@ export interface StartBrowserConnectResult {
  * BrowserProfile with a CloakBrowser fingerprint, a node (least-loaded online node with room) and the
  * optional proxy. Audit: `account.connect_started`, `profile.fingerprint_assigned`, and
  * `profile.node_assigned` / `profile.proxy_updated` when a node / proxy was set.
- * Refuses when the owner already owns an account (one account per person).
+ * Refuses when the owner already owns an account (one account per person), except that an unfinished pending
+ * connect ({@link isPendingConnect}) is resumed: its role, disclosure and limits are updated, the proxy is
+ * attached when one is chosen, a node is assigned if it has none, and `account.connect_started` is written
+ * with `resumed: true`. The profile and its fingerprint are kept.
  */
 export async function startBrowserConnect(
   input: StartBrowserConnectInput,
@@ -208,11 +227,26 @@ export async function startBrowserConnect(
       where: { id: input.ownerMemberId, workspaceId: input.workspaceId },
       include: {
         user: { select: { name: true, email: true } },
-        ownedAccount: { select: { username: true } },
+        ownedAccount: {
+          select: {
+            id: true,
+            username: true,
+            authMode: true,
+            identifiedAt: true,
+            browserProfile: { select: { id: true, nodeId: true } },
+          },
+        },
       },
     });
     if (!owner) throw new Error('Owner is not a member of this workspace');
-    assertOneAccountPerMember(owner.ownedAccount);
+    const owned = owner.ownedAccount;
+    if (owned && isPendingConnect(owned) && owned.browserProfile)
+      return resumeBrowserConnectTx(tx, input, actor, {
+        id: owned.id,
+        username: owned.username,
+        profile: owned.browserProfile,
+      });
+    assertOneAccountPerMember(owned);
     if (input.proxyId) {
       const px = await tx.proxy.findFirst({
         where: { workspaceId: input.workspaceId, id: input.proxyId },
@@ -308,8 +342,89 @@ export async function startBrowserConnect(
       username: account.username,
       profileId: profile.id,
       node: node ? { id: node.id, name: node.name } : null,
+      resumed: false,
     };
   });
+}
+
+async function resumeBrowserConnectTx(
+  tx: Prisma.TransactionClient,
+  input: StartBrowserConnectInput,
+  actor: string,
+  account: { id: string; username: string; profile: { id: string; nodeId: string | null } },
+): Promise<StartBrowserConnectResult> {
+  if (input.proxyId) {
+    const px = await tx.proxy.findFirst({
+      where: { workspaceId: input.workspaceId, id: input.proxyId },
+      select: { id: true },
+    });
+    if (!px) throw new Error('Proxy not found');
+  }
+  await tx.redditAccount.update({
+    where: { id: account.id },
+    data: {
+      roleLabel: input.roleLabel,
+      disclosureLine: input.disclosureLine,
+      dailyPostLimit: input.dailyPostLimit,
+      selfPromoMax: input.selfPromoMax,
+    },
+  });
+  await writeAudit(
+    {
+      workspaceId: input.workspaceId,
+      actorMemberId: actor,
+      action: 'account.connect_started',
+      targetType: 'RedditAccount',
+      targetId: account.id,
+      accountId: account.id,
+      meta: {
+        item: `${account.username} waiting for sign-in (resumed)`,
+        authMode: 'browser',
+        roleLabel: input.roleLabel,
+        profileId: account.profile.id,
+        resumed: true,
+      },
+    },
+    tx,
+  );
+  let node: { id: string; name: string } | null = null;
+  if (account.profile.nodeId) {
+    node = await tx.browserNode.findUnique({
+      where: { id: account.profile.nodeId },
+      select: { id: true, name: true },
+    });
+  } else {
+    node = await pickForProfile(input.workspaceId, tx);
+    if (node) {
+      await tx.browserProfile.update({ where: { id: account.profile.id }, data: { nodeId: node.id } });
+      await writeAudit(
+        {
+          workspaceId: input.workspaceId,
+          actorMemberId: actor,
+          action: 'profile.node_assigned',
+          targetType: 'BrowserProfile',
+          targetId: account.profile.id,
+          accountId: account.id,
+          meta: {
+            item: `Resumed profile → ${node.name}`,
+            from: null,
+            to: node.name,
+            fromNodeId: null,
+            toNodeId: node.id,
+          },
+        },
+        tx,
+      );
+    }
+  }
+  if (input.proxyId) await attachProxyTx(tx, input.workspaceId, account.profile.id, input.proxyId, actor);
+  return {
+    accountId: account.id,
+    username: account.username,
+    profileId: account.profile.id,
+    node: node ? { id: node.id, name: node.name } : null,
+    resumed: true,
+  };
 }
 
 export interface BrowserIdentity {

@@ -101,7 +101,9 @@ export async function startBrowserConnect(_: ActionState, f: FormData): Promise<
   let profileId: string;
   try {
     const me = await requireRole('editor');
-    assertOneAccountPerMember(await accounts.findByOwner(me.id));
+    const owned = await accounts.findByOwner(me.id);
+    // An unfinished browser connect is resumed (accounts.startBrowserConnect), not refused.
+    if (!owned || !accounts.isPendingConnect(owned)) assertOneAccountPerMember(owned);
     const input = z
       .object({
         roleLabel: z.enum(AccountRoleLabel),
@@ -138,13 +140,18 @@ export async function startBrowserConnect(_: ActionState, f: FormData): Promise<
     profileId = r.profileId;
     // No node / node offline: nothing is queued; the session page says why.
     await enqueueProfileJob(me.workspaceId, r.profileId, 'profile.start');
-    await browsers.startHumanSession({
-      workspaceId: me.workspaceId,
-      profileId: r.profileId,
-      memberId: me.id,
-      memberName: me.user.name ?? me.user.email,
-      reason: 'Sign in to Reddit',
-    });
+    try {
+      await browsers.startHumanSession({
+        workspaceId: me.workspaceId,
+        profileId: r.profileId,
+        memberId: me.id,
+        memberName: me.user.name ?? me.user.email,
+        reason: 'Sign in to Reddit',
+      });
+    } catch (e) {
+      // Resuming: the owner's earlier sign-in session may still be open; the session page picks it up.
+      if (!(r.resumed && e instanceof browsers.SessionConflictError)) throw e;
+    }
   } catch (e) {
     return fail(e);
   }

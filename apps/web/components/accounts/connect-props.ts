@@ -25,7 +25,8 @@ export async function connectProps(me: CurrentMember, error?: string): Promise<C
   return {
     configured: redditConfigured(),
     ownerName: me.user.name ?? me.user.email,
-    alreadyOwns: owned?.username ?? null,
+    alreadyOwns: owned && !accounts.isPendingConnect(owned) ? owned.username : null,
+    resumes: owned && accounts.isPendingConnect(owned) ? owned.username : null,
     canConnect: members.roleAtLeast(me.role, 'editor'),
     authorized: pending ? { username: pending.username, scopes: pending.scopes } : null,
     product: settings.product ?? me.workspace.name,
