@@ -20,6 +20,7 @@ declare module '@novnc/novnc/lib/rfb' {
     sendCtrlAltDel(): void;
     sendCredentials(credentials: { username?: string; password?: string; target?: string }): void;
     clipboardPasteFrom(text: string): void;
+    sendKey(keysym: number, code: string | null, down?: boolean): void;
     toDataURL(type?: string, encoderOptions?: number): string;
     focus(): void;
   }

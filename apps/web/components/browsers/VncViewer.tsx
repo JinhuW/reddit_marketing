@@ -52,6 +52,23 @@ const QUALITY = [
   { level: 3, name: 'Fast' },
 ] as const;
 
+/** X keysyms for the clipboard shortcuts the viewer forwards itself. */
+const XK = { Control_L: 0xffe3, Super_L: 0xffeb } as const;
+/** Shortcut letters translated from Cmd to Ctrl, since the remote browser runs on Linux. */
+const SHORTCUT_KEYS = new Set(['a', 'c', 'v', 'x', 'z']);
+
+async function readLocalClipboard(): Promise<string> {
+  return (await navigator.clipboard?.readText?.().catch(() => '')) ?? '';
+}
+
+/** True when the page may read the clipboard without a prompt (so a passive sync stays silent). */
+async function clipboardReadGranted(): Promise<boolean> {
+  const status = await navigator.permissions
+    ?.query({ name: 'clipboard-read' as PermissionName })
+    .catch(() => null);
+  return status?.state === 'granted';
+}
+
 type View =
   | { kind: 'idle' }
   | { kind: 'connecting' }
@@ -91,6 +108,8 @@ export function VncViewer({
   const [view, setView] = useState<View>({ kind: 'idle' });
   const [quality, setQuality] = useState(0);
   const [attempt, setAttempt] = useState(0);
+  /** Last text known to be on both clipboards, so passive syncs do not resend it. */
+  const syncedRef = useRef('');
 
   useEffect(() => {
     if (!hasControl || attempt < 0) {
@@ -129,6 +148,13 @@ export function VncViewer({
             message: clean ? 'The remote view closed.' : 'Lost the connection to the browser.',
           });
       });
+      // Remote copy → local clipboard (on by default; x11vnc forwards the browser's CLIPBOARD selection).
+      rfb.addEventListener('clipboard', (e) => {
+        const text = (e as CustomEvent<{ text: string }>).detail?.text ?? '';
+        if (!text) return;
+        syncedRef.current = text;
+        void navigator.clipboard?.writeText?.(text).catch(() => {});
+      });
       rfb.addEventListener('securityfailure', () => {
         if (!cancelled) setView({ kind: 'closed', message: 'The browser refused the display connection.' });
       });
@@ -146,6 +172,57 @@ export function VncViewer({
 
   const live = view.kind === 'live';
 
+  // Local clipboard → remote, on by default: pasting (Cmd/Ctrl+V) sends the local clipboard first, and
+  // pointing at or returning to the view syncs it quietly when clipboard-read is already granted. On macOS,
+  // Cmd+A/C/V/X/Z are sent as Ctrl shortcuts because the remote browser runs on Linux.
+  useEffect(() => {
+    const target = screenRef.current;
+    if (!live || !target) return;
+    const push = (text: string) => {
+      const rfb = rfbRef.current;
+      if (!rfb || !text) return;
+      rfb.clipboardPasteFrom(text);
+      syncedRef.current = text;
+    };
+    const passiveSync = async () => {
+      if (!(await clipboardReadGranted())) return;
+      const text = await readLocalClipboard();
+      if (text && text !== syncedRef.current) push(text);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      if (e.altKey || e.shiftKey || !(e.metaKey || e.ctrlKey) || !SHORTCUT_KEYS.has(key)) return;
+      if (!e.metaKey && key !== 'v') return; // plain Ctrl shortcuts already reach the remote as-is
+      e.preventDefault();
+      e.stopPropagation();
+      const viaMeta = e.metaKey;
+      void (async () => {
+        if (key === 'v') push(await readLocalClipboard());
+        const rfb = rfbRef.current;
+        if (!rfb) return;
+        const keysym = key.charCodeAt(0);
+        const code = `Key${key.toUpperCase()}`;
+        if (viaMeta) {
+          rfb.sendKey(XK.Super_L, 'MetaLeft', false);
+          rfb.sendKey(XK.Control_L, 'ControlLeft', true);
+        }
+        rfb.sendKey(keysym, code, true);
+        rfb.sendKey(keysym, code, false);
+        if (viaMeta) rfb.sendKey(XK.Control_L, 'ControlLeft', false);
+      })();
+    };
+    const onEnter = () => void passiveSync();
+    target.addEventListener('keydown', onKeyDown, true);
+    target.addEventListener('pointerenter', onEnter);
+    window.addEventListener('focus', onEnter);
+    void passiveSync();
+    return () => {
+      target.removeEventListener('keydown', onKeyDown, true);
+      target.removeEventListener('pointerenter', onEnter);
+      window.removeEventListener('focus', onEnter);
+    };
+  }, [live]);
+
   const run = useCallback(
     async (id: ToolId) => {
       if (id === 'fullscreen') {
@@ -156,8 +233,11 @@ export function VncViewer({
       if (!rfb || !live) return;
       if (id === 'keys') rfb.sendCtrlAltDel();
       else if (id === 'paste') {
-        const text = await navigator.clipboard?.readText().catch(() => '');
-        if (text) rfb.clipboardPasteFrom(text);
+        const text = await readLocalClipboard();
+        if (text) {
+          rfb.clipboardPasteFrom(text);
+          syncedRef.current = text;
+        }
       } else if (id === 'shot') {
         const a = document.createElement('a');
         a.href = rfb.toDataURL('image/png');
