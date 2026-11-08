@@ -36,12 +36,15 @@ test('saving a proxy port persists and never echoes credentials', async ({ page 
   const before = await prisma.browserProfile.findUniqueOrThrow({ where: { id }, include: { proxy: true } });
   try {
     await page.goto(`/browsers?id=${id}`);
+    await expect(page.getByLabel('Port')).toBeHidden(); // custom proxy form starts folded
+    await page.getByText('enter a proxy for this profile').click();
     await expect(page.getByLabel('Password')).toHaveValue('');
     await expect(page.getByLabel('Password')).toHaveAttribute('placeholder', '•••• saved');
     await page.getByLabel('Port').fill('22226');
     await page.getByRole('button', { name: 'Save' }).click();
     await expect(page.getByRole('status').filter({ hasText: 'Proxy saved' })).toBeVisible();
     await page.reload();
+    await page.getByText('enter a proxy for this profile').click();
     await expect(page.getByLabel('Port')).toHaveValue('22226');
     const after = await prisma.proxy.findUniqueOrThrow({ where: { id: before.proxyId! } });
     expect(after.passwordEnc).toBe(before.proxy!.passwordEnc); // blank field kept the saved secret
