@@ -38,7 +38,9 @@ jobs:
       - run: pnpm db:migrate:deploy && pnpm db:seed
       # Before the unit tests: the node-testkit and node-agent CDP tests skip themselves without a Chromium.
       - run: pnpm --filter @threadline/web exec playwright install --with-deps chromium chromium-headless-shell
-      - run: pnpm test
+      # One package at a time: db, worker, web and agents share the seeded database and move the same seeded
+      # rows (e.g. a profile's node), so parallel packages race.
+      - run: pnpm exec turbo run test --concurrency=1
       - name: E2E
         run: |
           (pnpm --filter @threadline/web dev > web.log 2>&1 &)
