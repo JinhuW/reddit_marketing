@@ -11,10 +11,16 @@
  * human BrowserSession, which writes `session.started`) → dial the gateway with an HMAC-signed URL → only then
  * complete the browser's handshake and pipe frames both ways. Either side closing closes the other.
  */
-import { createHmac, timingSafeEqual } from 'node:crypto';
 import { type IncomingMessage, STATUS_CODES, request } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { VNC_TOKEN_TTL_SEC } from '@threadline/shared';
+import {
+  INTERNAL_URL_MAX_TTL_SEC,
+  INTERNAL_VNC_PREFIX,
+  type InternalCheck,
+  signInternalVncUrl,
+  verifyInternalVncUrl,
+} from '@threadline/shared/vnc-sign';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
 import { VNC_AUTHZ_HEADER, type VncGrant } from './vnc-authz';
 
@@ -29,19 +35,10 @@ export function vncProfileIdFromUrl(url: string | undefined): string | null {
 
 // ── web → gateway signature ───────────────────────────────────────────────────────────────────────────
 //
-// GET (websocket upgrade) ${NODE_GATEWAY_URL}/internal/vnc/<profileId>?session=<id>&member=<id>&exp=<unix s>&sig=<hex>
-//   sig = hex(HMAC-SHA256(key = GATEWAY_INTERNAL_SECRET as UTF-8 bytes,
-//                         "tl-vnc.v1\n<profileId>\n<session>\n<member>\n<exp>"))
-//   exp = now + VNC_TOKEN_TTL_SEC (60 s). The gateway refuses a missing/expired/mismatched signature with 401.
+// GET (websocket upgrade) ${NODE_GATEWAY_URL}/internal/vnc/<profileId>?session=<id>&exp=<unix s>&sig=<b64url>
+// The signature scheme lives in packages/shared/src/vnc-sign.ts and the gateway verifies with the same code.
 
-export const VNC_SIGNATURE_SCHEME = 'tl-vnc.v1';
-export const GATEWAY_VNC_PATH = '/internal/vnc/';
-
-function canonical(p: { profileId: string; sessionId: string; memberId: string; exp: number }) {
-  return [VNC_SIGNATURE_SCHEME, p.profileId, p.sessionId, p.memberId, String(p.exp)].join('\n');
-}
-
-const hmac = (secret: string, data: string) => createHmac('sha256', secret).update(data).digest('hex');
+export const GATEWAY_VNC_PATH = INTERNAL_VNC_PREFIX;
 
 /** The gateway URL for one VNC connection, as a ws:// or wss:// URL. */
 export function signGatewayVncUrl(input: {
@@ -49,46 +46,32 @@ export function signGatewayVncUrl(input: {
   secret: string;
   profileId: string;
   sessionId: string;
-  memberId: string;
   nowMs?: number;
   ttlSec?: number;
 }): string {
-  const exp = Math.floor((input.nowMs ?? Date.now()) / 1000) + (input.ttlSec ?? VNC_TOKEN_TTL_SEC);
   const url = new URL(input.gatewayUrl);
   if (url.protocol === 'http:') url.protocol = 'ws:';
   else if (url.protocol === 'https:') url.protocol = 'wss:';
-  url.pathname = `${url.pathname.replace(/\/+$/, '')}${GATEWAY_VNC_PATH}${encodeURIComponent(input.profileId)}`;
-  url.search = '';
-  url.searchParams.set('session', input.sessionId);
-  url.searchParams.set('member', input.memberId);
-  url.searchParams.set('exp', String(exp));
-  url.searchParams.set('sig', hmac(input.secret, canonical({ ...input, exp })));
+  const signed = new URL(
+    signInternalVncUrl(input.secret, {
+      profileId: input.profileId,
+      sessionId: input.sessionId,
+      now: input.nowMs,
+      ttlSec: input.ttlSec ?? Math.min(VNC_TOKEN_TTL_SEC, INTERNAL_URL_MAX_TTL_SEC),
+    }),
+    'ws://gateway.local',
+  );
+  url.pathname = `${url.pathname.replace(/\/+$/, '')}${signed.pathname}`;
+  url.search = signed.search;
   return url.toString();
 }
 
-export type VncSignatureCheck =
-  | { ok: true; profileId: string; sessionId: string; memberId: string; exp: number }
-  | { ok: false; reason: 'malformed' | 'expired' | 'bad_signature' };
-
-/** Reference verifier for the gateway side (T24) and the tests. */
-export function verifyGatewayVncUrl(
-  url: string | URL,
-  secret: string,
-  nowMs = Date.now(),
-): VncSignatureCheck {
+/** Checks a URL from {@link signGatewayVncUrl} exactly as the gateway does (tests, diagnostics). */
+export function verifyGatewayVncUrl(url: string | URL, secret: string, nowMs = Date.now()): InternalCheck {
   const u = typeof url === 'string' ? new URL(url, 'ws://gateway.local') : url;
   const idx = u.pathname.lastIndexOf(GATEWAY_VNC_PATH);
-  const profileId = idx >= 0 ? decodeURIComponent(u.pathname.slice(idx + GATEWAY_VNC_PATH.length)) : '';
-  const sessionId = u.searchParams.get('session') ?? '';
-  const memberId = u.searchParams.get('member') ?? '';
-  const exp = Number(u.searchParams.get('exp'));
-  const sig = u.searchParams.get('sig') ?? '';
-  if (!profileId || !sessionId || !memberId || !Number.isInteger(exp) || !/^[0-9a-f]{64}$/.test(sig))
-    return { ok: false, reason: 'malformed' };
-  const expected = Buffer.from(hmac(secret, canonical({ profileId, sessionId, memberId, exp })), 'hex');
-  if (!timingSafeEqual(expected, Buffer.from(sig, 'hex'))) return { ok: false, reason: 'bad_signature' };
-  if (exp * 1000 < nowMs) return { ok: false, reason: 'expired' };
-  return { ok: true, profileId, sessionId, memberId, exp };
+  const local = new URL(`${idx >= 0 ? u.pathname.slice(idx) : u.pathname}${u.search}`, 'ws://gateway.local');
+  return verifyInternalVncUrl(secret, local, nowMs);
 }
 
 // ── upgrade handling ──────────────────────────────────────────────────────────────────────────────────
@@ -207,7 +190,6 @@ export function createVncProxy(opts: VncProxyOptions): VncProxy {
       secret: opts.secret,
       profileId,
       sessionId: grant.sessionId,
-      memberId: grant.memberId,
     });
     const upstream = new WebSocket(upstreamUrl, { handshakeTimeout: timeoutMs, perMessageDeflate: false });
     const early: [RawData, boolean][] = [];

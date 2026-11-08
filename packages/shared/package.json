@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./enums": "./src/enums.ts",
     "./crypto": "./src/crypto.ts",
-    "./utm": "./src/utm.ts"
+    "./utm": "./src/utm.ts",
+    "./vnc-sign": "./src/vnc-sign.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
