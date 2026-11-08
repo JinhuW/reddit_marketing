@@ -350,6 +350,13 @@ export interface DockerManagerOptions {
   reconcileMs?: number;
   stopTimeoutSec?: number;
   now?: () => number;
+  /**
+   * The profile's browser answers CDP (fresh start or adopted by `profile.start`). `proxy` is the one it was
+   * started with. The profile module uses it to begin answering proxy challenges before anyone browses.
+   */
+  onUp?: (profileId: string, proxy: ProxySpec | null) => void;
+  /** The agent forgot the profile (stopped, exited, removed, or start failed). */
+  onDown?: (profileId: string) => void;
 }
 
 interface Tracked {
@@ -597,6 +604,7 @@ export class DockerManager {
 
   private started(profileId: string, startedAt: number, adopted: boolean): HandlerResult {
     this.crashedAt.delete(profileId);
+    this.o.onUp?.(profileId, this.proxies.get(profileId) ?? null);
     const data: StartData = { profileId, startedAt, adopted, imageDigest: this.digest };
     return { outcome: 'ok', data };
   }
@@ -638,6 +646,7 @@ export class DockerManager {
   private async drop(profileId: string, crashed: boolean): Promise<void> {
     this.tracked.delete(profileId);
     this.proxies.delete(profileId);
+    this.o.onDown?.(profileId);
     if (crashed) this.crashedAt.set(profileId, this.now());
     await this.o.backend.remove(profileResourceName(profileId)).catch(() => undefined);
   }
@@ -654,6 +663,7 @@ export class DockerManager {
     }
     this.tracked.delete(profileId);
     this.proxies.delete(profileId);
+    this.o.onDown?.(profileId);
     this.o.log.info({ profileId, was }, 'profile container stopped');
     return { outcome: 'ok', data: { profileId, stopped: was } };
   }
@@ -690,6 +700,7 @@ export class DockerManager {
       if (!wasTracked) return;
       this.tracked.delete(profileId);
       this.proxies.delete(profileId);
+      this.o.onDown?.(profileId);
       this.o.log.warn({ profileId }, 'profile container disappeared');
       this.exited(profileId, { exitCode: null, reason: 'removed' });
       return;

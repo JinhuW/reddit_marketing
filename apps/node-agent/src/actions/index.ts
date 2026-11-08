@@ -10,6 +10,7 @@
 import type { CmdKind, CmdOf } from '@threadline/shared';
 import type { HandlerContext, HandlerMap, HandlerResult } from '../registry';
 import { type ProxyLookup, profileProxies } from './proxy-store';
+import { proxyAuthWatchers } from './proxy-watch';
 import { sendDm } from './send-dm';
 import { ActionError, type Session, defaultCdpUrl, errMessage, openSession } from './session';
 import { submitComment } from './submit-comment';
@@ -18,6 +19,7 @@ import { whoami } from './whoami';
 
 export { profileProxies, ProfileProxies, type ProxyLookup } from './proxy-store';
 export { attachProxyAuth } from './proxy-auth';
+export { ProxyAuthWatchers, proxyAuthWatchers } from './proxy-watch';
 export { fetchViaProxy, openTunnel } from './proxy-fetch';
 export { ActionError, defaultCdpUrl } from './session';
 export { detectWall, type Wall } from './walls';
@@ -27,6 +29,8 @@ export interface ActionOptions {
   cdpUrlFor?: (profileId: string) => string;
   /** Proxy a profile was started with; default {@link profileProxies}. */
   proxyFor?: ProxyLookup;
+  /** Whether the profile-lifetime proxy-auth watcher covers a profile; default {@link proxyAuthWatchers}. */
+  proxyWatched?: (profileId: string) => boolean;
   /** Where DMs are composed and `me.json` is read; default `https://www.reddit.com`. */
   redditOrigin?: string;
   /** IP echo for the connection test; default {@link DEFAULT_IP_URL}. */
@@ -46,6 +50,8 @@ export function createActionHandlers(options: ActionOptions = {}): Pick<HandlerM
   const o = {
     cdpUrlFor: options.cdpUrlFor ?? defaultCdpUrl,
     proxyFor: options.proxyFor ?? profileProxies.lookup,
+    proxyWatched:
+      options.proxyWatched ?? (options.proxyFor ? () => false : (id: string) => proxyAuthWatchers.covers(id)),
     redditOrigin: options.redditOrigin ?? 'https://www.reddit.com',
     ipUrl: options.ipUrl ?? DEFAULT_IP_URL,
     stepTimeoutMs: options.stepTimeoutMs ?? 15_000,

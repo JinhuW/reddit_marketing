@@ -28,6 +28,8 @@ export class ActionError extends Error {
 export interface SessionOptions {
   cdpUrlFor: (profileId: string) => string;
   proxyFor: ProxyLookup;
+  /** True when the profile-lifetime watcher (`proxy-watch.ts`) already answers proxy challenges for new tabs. */
+  proxyWatched?: (profileId: string) => boolean;
   /** Upper bound for one Playwright step (click, wait, navigation). */
   stepTimeoutMs: number;
 }
@@ -79,7 +81,9 @@ export async function openSession(
     page.setDefaultTimeout(stepTimeout());
     page.setDefaultNavigationTimeout(stepTimeout());
     const proxy = opts.proxyFor(profileId);
-    if (proxy?.username) {
+    if (proxy?.username && opts.proxyWatched?.(profileId)) {
+      // The watcher enabled Fetch on this tab before it ran; a second Fetch client would answer twice.
+    } else if (proxy?.username) {
       detachAuth = (await attachProxyAuth(page, { username: proxy.username, password: proxy.password ?? '' }))
         .detach;
     } else if (proxy === undefined) {

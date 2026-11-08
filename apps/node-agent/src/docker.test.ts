@@ -271,6 +271,32 @@ describe('DockerManager', () => {
     expect(await m.stop('p1')).toEqual({ outcome: 'ok', data: { profileId: 'p1', stopped: false } });
   });
 
+  it('reports up with the proxy once CDP answers, and down on stop', async () => {
+    const seen: string[] = [];
+    const { m, signal } = setup({
+      onUp: (id, proxy) => seen.push(`up ${id} ${proxy?.username ?? '-'}`),
+      onDown: (id) => seen.push(`down ${id}`),
+    });
+    await m.start(startCmd(), signal);
+    await m.start(startCmd(), signal); // adopted: up again, so a restarted agent resumes proxy auth
+    await m.stop('p1');
+    expect(seen).toEqual(['up p1 u1', 'up p1 u1', 'down p1']);
+  });
+
+  it('reports down when the container exits during start, never up', async () => {
+    const seen: string[] = [];
+    const { m, docker, signal } = setup({
+      ready: () => {
+        docker.kill('tl-profile-p1', 1);
+        return false;
+      },
+      onUp: (id) => seen.push(`up ${id}`),
+      onDown: (id) => seen.push(`down ${id}`),
+    });
+    expect((await m.start(startCmd(), signal)).outcome).toBe('error');
+    expect(seen).toEqual(['down p1']);
+  });
+
   it('reconcile reports a crash as container.exited, frees the seat and starts the relaunch backoff', async () => {
     const { m, docker, signal, events } = setup({ crashBackoffMs: 60_000 });
     await m.start(startCmd(), signal);
