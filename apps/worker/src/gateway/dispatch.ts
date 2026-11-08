@@ -312,6 +312,37 @@ export class Dispatcher {
     );
     this.slots.set(info.name, { worker, info });
     this.log.info({ node: info.name, concurrency: info.maxProfiles }, 'dispatching browser jobs');
+    // Not awaited: a slow start must not hold up this node's online/offline chain.
+    void this.resyncRunning(info);
+  }
+
+  /**
+   * The agent keeps proxy credentials only in memory. A browser it adopted after a restart (a deploy) therefore
+   * has none: Chromium shows its proxy sign-in dialog to the owner over VNC, and actions cannot answer the 407.
+   * `profile.start` on a running profile is idempotent (the agent adopts it, never relaunches), so re-sending it
+   * for every running profile behind an authenticated proxy hands the credentials back.
+   */
+  private async resyncRunning(info: NodeInfo): Promise<void> {
+    for (const { profileId } of info.running) {
+      if (!this.running) return;
+      try {
+        const p = await this.deps.getProfile(info.workspaceId, profileId);
+        if (!p || p.node?.id !== info.nodeId || !p.proxy?.username || !p.cloak) continue;
+        const cmdId = `resync-${profileId}-${this.now().getTime().toString(36)}`;
+        const r = await this.send(info.name, startCmd(p), cmdId, 'profile.start');
+        if (r.outcome === 'ok') this.log.info({ node: info.name, profileId }, 'proxy credentials re-sent');
+        else
+          this.log.warn(
+            { node: info.name, profileId, outcome: r.outcome, code: r.error?.code },
+            'proxy credentials not re-sent',
+          );
+      } catch (e) {
+        this.log.warn(
+          { node: info.name, profileId, err: (e as Error).message },
+          'proxy credentials not re-sent',
+        );
+      }
+    }
   }
 
   private async nodeOffline(info: OfflineInfo): Promise<void> {

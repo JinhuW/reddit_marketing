@@ -318,3 +318,50 @@ describe('browsers with no account (plan 0003)', () => {
     expect(await internals.accountsOf('w1', () => true)).toEqual(['a1']);
   });
 });
+
+describe('proxy credentials after an agent restart', () => {
+  const withProxy = (over: Partial<browsers.DispatchProfile> = {}): browsers.DispatchProfile => ({
+    ...profile(null),
+    proxy: { protocol: 'http', host: 'isp.example', port: 10001, username: 'user', password: PASSWORD },
+    ...over,
+  });
+  const resync = (d: Dispatcher, running: string[]) => {
+    const internals = d as unknown as { running: boolean; resyncRunning: (i: NodeInfo) => Promise<void> };
+    internals.running = true;
+    return internals.resyncRunning(nodeInfo(running));
+  };
+
+  it('re-sends profile.start with the proxy for a running profile', async () => {
+    const t = setup({ account: null, deps: { getProfile: vi.fn(async () => withProxy()) } });
+    await resync(t.d, ['p1']);
+    expect(t.hub.sent).toHaveLength(1);
+    expect(t.hub.sent[0]?.cmd).toMatchObject({
+      kind: 'profile.start',
+      profileId: 'p1',
+      proxy: { username: 'user', password: PASSWORD },
+    });
+    expect(t.lines.join('\n')).not.toContain(PASSWORD);
+  });
+
+  it('skips profiles with no proxy login, on another node, or unknown', async () => {
+    const byId: Record<string, browsers.DispatchProfile | null> = {
+      plain: withProxy({ id: 'plain', proxy: null }),
+      anon: withProxy({ id: 'anon', proxy: { protocol: 'http', host: 'h', port: 1 } }),
+      moved: withProxy({ id: 'moved', node: { id: 'n2', name: 'browser-2', status: 'online' } }),
+      gone: null,
+    };
+    const t = setup({ account: null, deps: { getProfile: vi.fn(async (_w, id) => byId[id] ?? null) } });
+    await resync(t.d, Object.keys(byId));
+    expect(t.hub.sent).toHaveLength(0);
+  });
+
+  it('one failing profile does not stop the others', async () => {
+    const getProfile = vi.fn(async (_w: string, id: string) => {
+      if (id === 'bad') throw new Error('db down');
+      return withProxy({ id });
+    });
+    const t = setup({ account: null, deps: { getProfile } });
+    await resync(t.d, ['bad', 'p2']);
+    expect(t.hub.sent.map((s) => s.cmd)).toEqual([expect.objectContaining({ profileId: 'p2' })]);
+  });
+});
