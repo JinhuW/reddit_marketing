@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/JinhuW/reddit_marketing/compare/v0.1.1...v0.2.0) (2026-11-08)
+
+
+### Features
+
+* **accounts:** let one person own several Reddit accounts ([7c4a957](https://github.com/JinhuW/reddit_marketing/commit/7c4a957d8b9fc7c230208d0f40f793f1fd996538))
+
 ## [0.1.1](https://github.com/JinhuW/reddit_marketing/compare/v0.1.0...v0.1.1) (2026-11-08)
 
 
