@@ -91,6 +91,91 @@ test('VNC proxy: admin gets 503 (not running), viewer gets 403 and cannot take o
   await ctx.close();
 });
 
+test('table shows the node and pause reason; an admin resumes the account', async ({ page }) => {
+  const id = await profileId('Sam · Chrome');
+  const p = await prisma.browserProfile.findUniqueOrThrow({ where: { id } });
+  await prisma.redditAccount.update({
+    where: { id: p.accountId },
+    data: { pausedReason: 'needs_human', pausedAt: new Date() },
+  });
+  try {
+    await page.goto(`/browsers?id=${id}`);
+    const sam = page.locator('tr[data-profile="Sam · Chrome"]');
+    await expect(sam.getByTestId('node-cell')).toContainText('browser-1');
+    await expect(sam.getByTestId('node-cell')).toContainText('Offline');
+    await expect(sam.getByTestId('pause-reason')).toHaveText('Paused · Needs a human');
+    const controls = page.getByTestId('browser-controls');
+    await expect(controls.getByTestId('pause-chip')).toHaveText('Paused · Needs a human');
+    await controls.getByRole('button', { name: 'Resume' }).click();
+    await expect(controls.getByRole('status').filter({ hasText: 'Account resumed.' })).toBeVisible();
+    const after = await prisma.redditAccount.findUniqueOrThrow({ where: { id: p.accountId } });
+    expect(after.pausedReason).toBeNull();
+    await expect(sam.getByTestId('pause-reason')).toHaveCount(0);
+  } finally {
+    await prisma.redditAccount.update({
+      where: { id: p.accountId },
+      data: { pausedReason: null, pausedAt: null },
+    });
+  }
+});
+
+test('Start on an offline node queues nothing; admin assigns a node', async ({ page }) => {
+  const id = await profileId('Jane · Chrome');
+  const before = await prisma.browserProfile.findUniqueOrThrow({ where: { id } });
+  try {
+    await page.goto(`/browsers?id=${id}`);
+    const controls = page.getByTestId('browser-controls');
+    await expect(controls.getByTestId('node-chip')).toHaveText('Offline');
+    await controls.getByRole('button', { name: 'Start' }).click();
+    await expect(controls.getByRole('status').filter({ hasText: 'browser-1 is offline' })).toBeVisible();
+    await expect(controls.getByRole('link', { name: 'Open browser' })).toHaveAttribute(
+      'href',
+      `/browsers/${id}/session`,
+    );
+    // Only Unassigned and the (offline) current node: no online node in the seed.
+    const select = controls.getByRole('combobox', { name: 'Assign node' });
+    await expect(select.locator('option')).toHaveText(['Unassigned', 'browser-1 (offline)']);
+    await select.selectOption('');
+    await controls.getByRole('button', { name: 'Assign' }).click();
+    await expect(controls.getByRole('status').filter({ hasText: 'Profile unassigned.' })).toBeVisible();
+    expect((await prisma.browserProfile.findUniqueOrThrow({ where: { id } })).nodeId).toBeNull();
+    await expect(page.locator('tr[data-profile="Jane · Chrome"]').getByTestId('node-cell')).toContainText(
+      'Unassigned',
+    );
+  } finally {
+    await prisma.browserProfile.update({ where: { id }, data: { nodeId: before.nodeId } });
+  }
+});
+
+test('a saved workspace proxy can be attached to a profile', async ({ page }) => {
+  const id = await profileId('Sam · Chrome');
+  const before = await prisma.browserProfile.findUniqueOrThrow({ where: { id } });
+  const jane = await prisma.browserProfile.findFirstOrThrow({ where: { name: 'Jane · Chrome' } });
+  try {
+    await page.goto(`/browsers?id=${id}`);
+    const editor = page.getByTestId('profile-editor');
+    const picker = editor.getByLabel('Use a saved proxy');
+    await picker.selectOption(jane.proxyId!);
+    await editor.getByRole('button', { name: 'Use', exact: true }).click();
+    await expect(editor.getByRole('status').filter({ hasText: 'Proxy attached.' })).toBeVisible();
+    expect((await prisma.browserProfile.findUniqueOrThrow({ where: { id } })).proxyId).toBe(jane.proxyId);
+    expect(await page.content()).not.toContain('tl-acme-');
+  } finally {
+    await prisma.browserProfile.update({ where: { id }, data: { proxyId: before.proxyId } });
+  }
+});
+
+test('a viewer sees node and status but no Start, Stop, Assign or Resume', async ({ browser }) => {
+  const ctx = await browser.newContext({ storageState: RHEA });
+  const viewer = await ctx.newPage();
+  await viewer.goto(`/browsers?id=${await profileId('Leo · Chrome')}`);
+  const controls = viewer.getByTestId('browser-controls');
+  await expect(controls).toContainText('browser-1');
+  for (const name of ['Start', 'Stop', 'Assign', 'Resume'])
+    await expect(controls.getByRole('button', { name, exact: true })).toHaveCount(0);
+  await ctx.close();
+});
+
 test.afterAll(async () => {
   await prisma.$disconnect();
 });

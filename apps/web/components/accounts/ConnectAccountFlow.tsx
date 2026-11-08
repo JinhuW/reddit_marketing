@@ -1,8 +1,9 @@
 'use client';
 
 import { FormMessage } from '@/components/agents/FormMessage';
-import { type ActionState, finishConnect } from '@/lib/actions/accounts';
+import { type ActionState, finishConnect, startBrowserConnect } from '@/lib/actions/accounts';
 import { useActionState, useEffect, useState } from 'react';
+import { connectModes } from './connect-mode';
 
 const ROLES = [
   { v: 'founder', l: 'Founder', example: 'I’m a founder at' },
@@ -18,11 +19,19 @@ export interface ConnectProps {
   authorized: { username: string; scopes: string[] } | null;
   product: string;
   error: string | null;
+  /** the workspace's proxies (safe labels only) for a browser-mode profile */
+  proxies: { id: string; label: string }[];
   compact?: boolean;
 }
 
 export function ConnectAccountFlow(p: ConnectProps) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(finishConnect, {});
+  const [oauthState, oauthAction, oauthPending] = useActionState<ActionState, FormData>(finishConnect, {});
+  const [browserState, browserAction, browserPending] = useActionState<ActionState, FormData>(
+    startBrowserConnect,
+    {},
+  );
+  const modes = connectModes(p.configured);
+  const [mode, setMode] = useState(p.authorized ? 'oauth' : modes[0]!);
   const [role, setRole] = useState<(typeof ROLES)[number]['v']>('founder');
   const [fingerprint, setFingerprint] = useState('');
 
@@ -43,9 +52,12 @@ export function ConnectAccountFlow(p: ConnectProps) {
     } catch {}
   }, []);
 
+  const browser = mode === 'browser';
   const blocked = Boolean(p.alreadyOwns) || !p.canConnect;
-  const step1Done = Boolean(p.authorized);
-  const later = !step1Done || blocked;
+  const step1Done = !browser && Boolean(p.authorized);
+  const later = browser ? blocked : !step1Done || blocked;
+  const pending = browser ? browserPending : oauthPending;
+  const state = browser ? browserState : oauthState;
   const roleMeta = ROLES.find((r) => r.v === role)!;
 
   return (
@@ -56,7 +68,11 @@ export function ConnectAccountFlow(p: ConnectProps) {
         </h2>
         <div className="muted mt-0.5 text-xs">Four steps · about two minutes</div>
       </div>
-      <div className="flex flex-col gap-4 px-[18px] py-4 text-[13px]">
+      <form
+        action={browser ? browserAction : oauthAction}
+        className="flex flex-col gap-4 px-[18px] py-4 text-[13px]"
+      >
+        <input type="hidden" name="fingerprint" value={fingerprint} />
         {p.error ? (
           <p role="alert" className="m-0 rounded-[9px] bg-bad-soft px-3 py-2 text-[12.5px] text-bad">
             {p.error}
@@ -64,136 +80,173 @@ export function ConnectAccountFlow(p: ConnectProps) {
         ) : null}
 
         <Step n={1} done={step1Done}>
-          <div className="font-semibold">Sign in with Reddit</div>
-          {step1Done ? (
-            <div className="muted mt-0.5 text-[12.5px]">
-              Authorized u/{p.authorized!.username} · {p.authorized!.scopes.join(', ')}
-            </div>
-          ) : !p.configured ? (
-            <div className="flex flex-col gap-2">
-              <p
-                role="status"
-                className="m-0 mt-1 rounded-[9px] bg-warn-soft px-3 py-2 text-[12.5px] text-warn"
-                data-testid="reddit-not-configured"
-              >
-                Reddit app not configured — set REDDIT_CLIENT_ID/SECRET
-              </p>
-              <button type="button" className="btn self-start" disabled>
-                Sign in with Reddit
-              </button>
+          {browser ? (
+            <div className="flex w-full flex-col gap-2" data-testid="connect-browser">
+              <div className="font-semibold">Connect through the browser</div>
+              <div className="muted text-[12.5px]">
+                Threadline opens this account’s own browser. You sign in to reddit.com in it yourself;
+                Threadline reads the username when you’re done.
+              </div>
+              {!p.configured ? (
+                <p className="muted m-0 text-xs" data-testid="reddit-not-configured">
+                  No Reddit app is configured, so accounts connect through their browser.
+                </p>
+              ) : null}
+              <label className="muted flex flex-col gap-1 text-xs">
+                Proxy
+                <select name="proxyId" className="field !h-9" defaultValue="" disabled={blocked}>
+                  <option value="">No proxy · direct connection</option>
+                  {p.proxies.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {modes.includes('oauth') ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost !h-7 self-start !px-2"
+                  onClick={() => setMode('oauth')}
+                >
+                  Use Reddit sign-in instead
+                </button>
+              ) : null}
             </div>
           ) : (
-            <div className="flex flex-col gap-2">
-              <div className="muted mt-0.5 text-[12.5px]">
-                The account owner signs in themselves. Threadline asks for identity, read, submit,
-                privatemessages, history and edit.
-              </div>
-              {blocked ? (
-                <button type="button" className="btn self-start" disabled>
-                  Sign in with Reddit
-                </button>
-              ) : (
-                <a href="/api/auth/reddit/start" className="btn btn-dark self-start">
-                  Sign in with Reddit
-                </a>
-              )}
-            </div>
+            <OAuthStep p={p} blocked={blocked} onBrowser={() => setMode('browser')} />
           )}
         </Step>
 
-        <form action={action} className="flex flex-col gap-4">
-          <input type="hidden" name="fingerprint" value={fingerprint} />
-          <Step n={2}>
+        <Step n={2}>
+          <div className="flex w-full flex-col gap-2">
+            <div className="font-semibold">Who owns this account?</div>
+            <input className="field" value={p.ownerName} readOnly aria-label="Owner" />
+            {p.alreadyOwns ? (
+              <p
+                role="alert"
+                className="m-0 rounded-[9px] bg-bad-soft px-3 py-2 text-[12.5px] text-bad"
+                data-testid="one-account-refusal"
+              >
+                You already own u/{p.alreadyOwns}. Each person can connect one Reddit account.
+              </p>
+            ) : !p.canConnect ? (
+              <p role="alert" className="m-0 text-xs text-bad">
+                Viewers can’t connect accounts.
+              </p>
+            ) : (
+              <div className="muted text-xs">
+                One account per real person. The account is connected to you, the person signing in.
+              </div>
+            )}
+          </div>
+        </Step>
+        <fieldset disabled={later || pending} className="contents">
+          <Step n={3}>
             <div className="flex w-full flex-col gap-2">
-              <div className="font-semibold">Who owns this account?</div>
-              <input className="field" value={p.ownerName} readOnly aria-label="Owner" />
-              {p.alreadyOwns ? (
-                <p
-                  role="alert"
-                  className="m-0 rounded-[9px] bg-bad-soft px-3 py-2 text-[12.5px] text-bad"
-                  data-testid="one-account-refusal"
-                >
-                  You already own u/{p.alreadyOwns}. Each person can connect one Reddit account.
-                </p>
-              ) : !p.canConnect ? (
-                <p role="alert" className="m-0 text-xs text-bad">
-                  Viewers can’t connect accounts.
-                </p>
-              ) : (
-                <div className="muted text-xs">
-                  One account per real person. The account is connected to you, the person signing in.
-                </div>
-              )}
+              <div className="font-semibold">Role and disclosure line</div>
+              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Role">
+                {ROLES.map((r) => (
+                  <label
+                    key={r.v}
+                    className={`chip chip-line cursor-pointer ${role === r.v ? '!border-ink !text-ink' : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name="roleLabel"
+                      value={r.v}
+                      checked={role === r.v}
+                      onChange={() => setRole(r.v)}
+                      className="sr-only"
+                    />
+                    {r.l}
+                  </label>
+                ))}
+              </div>
+              <input
+                name="disclosureLine"
+                className="field !h-9"
+                key={role}
+                defaultValue={`${roleMeta.example} ${p.product}.`}
+                aria-label="Disclosure line"
+              />
             </div>
           </Step>
-          <fieldset disabled={later || pending} className="contents">
-            <Step n={3}>
-              <div className="flex w-full flex-col gap-2">
-                <div className="font-semibold">Role and disclosure line</div>
-                <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Role">
-                  {ROLES.map((r) => (
-                    <label
-                      key={r.v}
-                      className={`chip chip-line cursor-pointer ${role === r.v ? '!border-ink !text-ink' : ''}`}
-                    >
-                      <input
-                        type="radio"
-                        name="roleLabel"
-                        value={r.v}
-                        checked={role === r.v}
-                        onChange={() => setRole(r.v)}
-                        className="sr-only"
-                      />
-                      {r.l}
-                    </label>
-                  ))}
-                </div>
-                <input
-                  name="disclosureLine"
-                  className="field !h-9"
-                  key={role}
-                  defaultValue={`${roleMeta.example} ${p.product}.`}
-                  aria-label="Disclosure line"
-                />
+          <Step n={4}>
+            <div className="flex w-full flex-col gap-2">
+              <div className="font-semibold">Limits</div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="muted flex flex-col gap-1 text-xs">
+                  Posts per day
+                  <input
+                    name="dailyPostLimit"
+                    type="number"
+                    min={1}
+                    max={50}
+                    defaultValue={3}
+                    className="field !h-9"
+                  />
+                </label>
+                <label className="muted flex flex-col gap-1 text-xs">
+                  Self-promo max %
+                  <input
+                    name="selfPromoMax"
+                    type="number"
+                    min={0}
+                    max={100}
+                    defaultValue={10}
+                    className="field !h-9"
+                  />
+                </label>
               </div>
-            </Step>
-            <Step n={4}>
-              <div className="flex w-full flex-col gap-2">
-                <div className="font-semibold">Limits</div>
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="muted flex flex-col gap-1 text-xs">
-                    Posts per day
-                    <input
-                      name="dailyPostLimit"
-                      type="number"
-                      min={1}
-                      max={50}
-                      defaultValue={3}
-                      className="field !h-9"
-                    />
-                  </label>
-                  <label className="muted flex flex-col gap-1 text-xs">
-                    Self-promo max %
-                    <input
-                      name="selfPromoMax"
-                      type="number"
-                      min={0}
-                      max={100}
-                      defaultValue={10}
-                      className="field !h-9"
-                    />
-                  </label>
-                </div>
-              </div>
-            </Step>
-            <button type="submit" className="btn btn-primary !h-[38px] !rounded-card text-sm">
-              Finish connecting
-            </button>
-          </fieldset>
-          <FormMessage state={state} />
-        </form>
-      </div>
+            </div>
+          </Step>
+          <button type="submit" className="btn btn-primary !h-[38px] !rounded-card text-sm">
+            {browser
+              ? pending
+                ? 'Opening the browser…'
+                : 'Open the browser to sign in'
+              : 'Finish connecting'}
+          </button>
+        </fieldset>
+        <FormMessage state={state} />
+      </form>
     </aside>
+  );
+}
+
+function OAuthStep({ p, blocked, onBrowser }: { p: ConnectProps; blocked: boolean; onBrowser: () => void }) {
+  if (p.authorized)
+    return (
+      <>
+        <div className="font-semibold">Sign in with Reddit</div>
+        <div className="muted mt-0.5 text-[12.5px]">
+          Authorized u/{p.authorized.username} · {p.authorized.scopes.join(', ')}
+        </div>
+      </>
+    );
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="font-semibold">Sign in with Reddit</div>
+      <div className="muted mt-0.5 text-[12.5px]">
+        The account owner signs in themselves. Threadline asks for identity, read, submit, privatemessages,
+        history and edit.
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {blocked ? (
+          <button type="button" className="btn" disabled>
+            Sign in with Reddit
+          </button>
+        ) : (
+          <a href="/api/auth/reddit/start" className="btn btn-dark">
+            Sign in with Reddit
+          </a>
+        )}
+        <button type="button" className="btn" onClick={onBrowser} disabled={blocked}>
+          Connect through the browser
+        </button>
+      </div>
+    </div>
   );
 }
 

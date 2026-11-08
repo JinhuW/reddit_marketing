@@ -1,11 +1,13 @@
 import { SessionClock } from '@/components/browsers/SessionClock';
+import { SignInPanel } from '@/components/browsers/SignInPanel';
 import { TakeoverForm } from '@/components/browsers/TakeoverForm';
 import { VncViewer } from '@/components/browsers/VncViewer';
-import { profileView } from '@/components/browsers/view';
+import { profileView, showSignIn } from '@/components/browsers/view';
 import { Avatar } from '@/components/ui/avatar';
 import { handBackAction } from '@/lib/actions/browsers';
+import { nodeProblem } from '@/lib/browser-jobs';
 import { requireMember } from '@/lib/session';
-import { browsers } from '@threadline/db';
+import { browsers, nodes } from '@threadline/db';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -15,12 +17,21 @@ export const metadata: Metadata = { title: 'Remote session' };
 const time = (d: Date) =>
   d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
 
-export default async function SessionPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SessionPage({
+  params,
+  searchParams,
+}: { params: Promise<{ id: string }>; searchParams: Promise<{ login?: string }> }) {
   const { id } = await params;
+  const { login } = await searchParams;
   const me = await requireMember();
   const row = await browsers.getProfile(me.workspaceId, id);
   if (!row) notFound();
-  const p = profileView(row);
+  const nodeRow = row.nodeId ? await nodes.getById(row.nodeId) : null;
+  const node = nodeRow && nodeRow.workspaceId === me.workspaceId ? nodeRow : null;
+  const p = profileView(row, new Date(), node);
+  const signIn = showSignIn(login, row.account);
+  const identified = row.account.identifiedAt != null;
+  const problem = nodeProblem(node);
   const canControl = browsers.canControlProfile(me, row);
   const open = await browsers.openSession(id);
   const shown = open ?? (await browsers.latestSession(id));
@@ -72,6 +83,20 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
           </span>
         )}
       </div>
+
+      {signIn ? (
+        <SignInPanel
+          profileId={p.id}
+          username={identified ? row.account.username : null}
+          canControl={canControl}
+          hasControl={Boolean(humanOpen && mine)}
+        />
+      ) : null}
+      {problem && (signIn || humanOpen) ? (
+        <p role="note" className="m-0 rounded-[9px] bg-warn-soft px-3 py-2 text-[12.5px] text-warn">
+          The browser cannot open right now. {problem}
+        </p>
+      ) : null}
 
       <div className="grid items-stretch gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <VncViewer
@@ -149,7 +174,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
               <div className="sect-h">
                 <h2 id="take-h">Take over</h2>
               </div>
-              <TakeoverForm profileId={p.id} agentName={agent?.name ?? null} />
+              <TakeoverForm profileId={p.id} agentName={agent?.name ?? null} login={signIn && !identified} />
             </section>
           ) : (
             <section className="panel muted px-[18px] py-3.5 text-[12.5px]">

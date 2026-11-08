@@ -15,7 +15,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ e
     <>
       <PageHeader
         title="Connect a Reddit account"
-        sub="OAuth, owner, role and disclosure, limits. The owner signs in to Reddit themselves."
+        sub="Sign-in, owner, role and disclosure, limits. The owner signs in to Reddit themselves."
         actions={
           <Link href="/accounts" className="btn">
             Back to accounts

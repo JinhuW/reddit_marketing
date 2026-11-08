@@ -1,8 +1,9 @@
 'use client';
 
-import { runProxyTestAction, saveProxyAction } from '@/lib/actions/browsers';
+import { attachProxyAction, runProxyTestAction, saveProxyAction } from '@/lib/actions/browsers';
 import Link from 'next/link';
 import { useActionState, useState } from 'react';
+import { BrowserControls } from './BrowserControls';
 import type { ActionState } from './action-state';
 import type { ProfileView } from './view';
 
@@ -32,9 +33,35 @@ function Field({ id, label, children }: { id: string; label: string; children: R
   );
 }
 
-export function ProfileEditor({ p, canEdit }: { p: ProfileView; canEdit: boolean }) {
+export interface SavedProxy {
+  id: string;
+  label: string;
+}
+
+export function ProfileEditor({
+  p,
+  canEdit,
+  isAdmin = false,
+  nodeOptions = [],
+  savedProxies = [],
+  currentProxyId = null,
+}: {
+  p: ProfileView;
+  canEdit: boolean;
+  isAdmin?: boolean;
+  nodeOptions?: { id: string; label: string }[];
+  /** the workspace's proxies (safe fields only), for "Use a saved proxy" */
+  savedProxies?: SavedProxy[];
+  currentProxyId?: string | null;
+}) {
   const [save, saveAction, saving] = useActionState<ActionState | null, FormData>(saveProxyAction, null);
   const [test, testAction, testing] = useActionState<ActionState | null, FormData>(runProxyTestAction, null);
+  const [attach, attachAction, attaching] = useActionState<ActionState | null, FormData>(
+    attachProxyAction,
+    null,
+  );
+  const others = savedProxies.filter((x) => x.id !== currentProxyId);
+  const useFormId = `use-proxy-${p.id}`;
   const [protocol, setProtocol] = useState(p.proxy?.protocol ?? 'none');
   const provider = p.proxy?.provider ?? 'Own server';
   const providers = PROVIDERS.includes(provider) ? PROVIDERS : [provider, ...PROVIDERS];
@@ -44,18 +71,27 @@ export function ProfileEditor({ p, canEdit }: { p: ProfileView; canEdit: boolean
 
   return (
     <aside className="panel flex min-w-0 flex-col" aria-labelledby="editor-h" data-testid="profile-editor">
-      <form action={saveAction}>
+      <div className="sect-h">
+        <h2 id="editor-h">{p.name}</h2>
+        <span className="muted text-xs">{p.account}</span>
+        <div className="flex-1" />
+        {canEdit ? (
+          <button
+            type="submit"
+            form={`proxy-form-${p.id}`}
+            className="btn btn-primary !h-7"
+            disabled={saving}
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        ) : null}
+      </div>
+      <BrowserControls p={p} canEdit={canEdit} isAdmin={isAdmin} nodeOptions={nodeOptions} />
+      <form id={useFormId} action={attachAction} className="hidden">
         <input type="hidden" name="profileId" value={p.id} />
-        <div className="sect-h">
-          <h2 id="editor-h">{p.name}</h2>
-          <span className="muted text-xs">{p.account}</span>
-          <div className="flex-1" />
-          {canEdit ? (
-            <button type="submit" className="btn btn-primary !h-7" disabled={saving}>
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-          ) : null}
-        </div>
+      </form>
+      <form id={`proxy-form-${p.id}`} action={saveAction}>
+        <input type="hidden" name="profileId" value={p.id} />
         <div className="flex flex-col gap-4 px-[18px] py-4">
           {save ? (
             <p
@@ -75,6 +111,36 @@ export function ProfileEditor({ p, canEdit }: { p: ProfileView; canEdit: boolean
             <legend className="mb-2.5 flex items-center gap-2 p-0 text-[12.5px] font-semibold">
               Proxy<span className={`chip ${testChip}`}>{testLabel}</span>
             </legend>
+            {others.length ? (
+              <div className="flex items-end gap-2">
+                <Field id="saved-proxy" label="Use a saved proxy">
+                  <select id="saved-proxy" name="proxyId" form={useFormId} className="field" defaultValue="">
+                    <option value="" disabled>
+                      Pick one of the workspace’s proxies
+                    </option>
+                    {others.map((x) => (
+                      <option key={x.id} value={x.id}>
+                        {x.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <button type="submit" form={useFormId} className="btn !h-[34px]" disabled={attaching}>
+                  Use
+                </button>
+              </div>
+            ) : null}
+            {attach ? (
+              <p
+                role="status"
+                className={`m-0 rounded-[9px] px-3 py-2 text-[12.5px] ${attach.ok ? 'bg-ok-soft text-ok' : 'bg-bad-soft text-bad'}`}
+              >
+                {attach.message}
+              </p>
+            ) : null}
+            {others.length ? (
+              <p className="muted m-0 text-[11.5px]">Or enter a proxy for this profile:</p>
+            ) : null}
             <div
               role="radiogroup"
               aria-label="Protocol"
