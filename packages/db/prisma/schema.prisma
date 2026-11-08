@@ -222,6 +222,7 @@ model Workspace {
   browserProfiles BrowserProfile[]
   browserNodes    BrowserNode[]
   proxies         Proxy[]
+  proxyProviders  ProxyProvider[]
   browserSessions BrowserSession[]
   agents          Agent[]
   keywordGroups   KeywordGroup[]
@@ -432,11 +433,38 @@ model Proxy {
   region      String?
   /// { ip, city, country, latencyMs, redditOk, testedAt }
   lastTest    Json?
+  /// set: host, protocol and credentials come from the provider at dispatch time (this row's are ignored)
+  providerId  String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
-  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  profiles  BrowserProfile[]
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  proxyProvider ProxyProvider?   @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  profiles      BrowserProfile[]
+
+  @@index([providerId])
+}
+
+/// A workspace's proxy account (e.g. Decodo ISP): one host and one set of credentials for a range of ports.
+/// Each profile uses one port of it through its own Proxy row (Proxy.providerId + port).
+model ProxyProvider {
+  id          String        @id @default(cuid())
+  workspaceId String
+  name        String
+  protocol    ProxyProtocol @default(http)
+  host        String
+  usernameEnc String?
+  passwordEnc String?
+  portFrom    Int?
+  portTo      Int?
+  region      String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  proxies   Proxy[]
+
+  @@unique([workspaceId, name])
 }
 
 model BrowserSession {

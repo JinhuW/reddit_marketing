@@ -94,7 +94,7 @@ export async function finishConnect(_: ActionState, f: FormData): Promise<Action
 
 /**
  * Browser mode, step 1 (docs/plans/0002-browser-mode.md): the signed-in member becomes the owner of a pending
- * account + browser profile (node and optional proxy), `profile.start` is queued, and a take-over session opens
+ * account + browser profile (node and optional provider port), `profile.start` is queued, and a take-over session opens
  * so the owner can sign in to reddit.com themselves. The account cannot post until `profile.whoami` identifies it.
  */
 export async function startBrowserConnect(_: ActionState, f: FormData): Promise<ActionState> {
@@ -107,7 +107,8 @@ export async function startBrowserConnect(_: ActionState, f: FormData): Promise<
         roleLabel: z.enum(AccountRoleLabel),
         disclosureLine: Disclosure,
         ...Limits,
-        proxyId: z.string().max(64),
+        providerId: z.string().max(64),
+        port: z.string().max(5),
         fingerprint: z.string(),
       })
       .parse({
@@ -115,11 +116,19 @@ export async function startBrowserConnect(_: ActionState, f: FormData): Promise<
         disclosureLine: str(f, 'disclosureLine'),
         dailyPostLimit: f.get('dailyPostLimit'),
         selfPromoMax: str(f, 'selfPromoMax').replace('%', ''),
-        proxyId: str(f, 'proxyId'),
+        providerId: str(f, 'providerId'),
+        port: str(f, 'port'),
         fingerprint: str(f, 'fingerprint'),
       });
-    if (input.proxyId && !(await browsers.listProxies(me.workspaceId)).some((p) => p.id === input.proxyId))
-      return { error: 'That proxy is not in this workspace.' };
+    let providerPort: { providerId: string; port: number } | null = null;
+    if (input.providerId) {
+      const port = Number(input.port);
+      if (!input.port || !Number.isInteger(port) || port < 1 || port > 65535)
+        return { error: 'Pick a port for the proxy.' };
+      if (!(await browsers.listProviders(me.workspaceId)).some((p) => p.id === input.providerId))
+        return { error: 'That proxy provider is not in this workspace.' };
+      providerPort = { providerId: input.providerId, port };
+    }
     let fpRaw: unknown = {};
     try {
       fpRaw = JSON.parse(input.fingerprint || '{}');
@@ -132,7 +141,7 @@ export async function startBrowserConnect(_: ActionState, f: FormData): Promise<
       disclosureLine: input.disclosureLine,
       dailyPostLimit: input.dailyPostLimit,
       selfPromoMax: input.selfPromoMax,
-      proxyId: input.proxyId || null,
+      providerPort,
       fingerprint: fp.success ? { ...fp.data, capturedAt: new Date().toISOString() } : {},
     });
     profileId = r.profileId;

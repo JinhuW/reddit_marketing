@@ -13,7 +13,8 @@ if (!process.env.DATABASE_URL) {
     if (m && !process.env[m[1]!]) process.env[m[1]!] = m[2];
   }
 }
-const { prisma } = await import('@threadline/db');
+const { prisma, browsers } = await import('@threadline/db');
+const { encrypt } = await import('@threadline/shared/crypto');
 
 const profileId = async (name: string) =>
   (await prisma.browserProfile.findFirstOrThrow({ where: { name, workspace: { slug: 'acme' } } })).id;
@@ -36,13 +37,15 @@ test('saving a proxy port persists and never echoes credentials', async ({ page 
   const before = await prisma.browserProfile.findUniqueOrThrow({ where: { id }, include: { proxy: true } });
   try {
     await page.goto(`/browsers?id=${id}`);
-    await expect(page.getByLabel('Password')).toHaveValue('');
-    await expect(page.getByLabel('Password')).toHaveAttribute('placeholder', '•••• saved');
-    await page.getByLabel('Port').fill('22226');
-    await page.getByRole('button', { name: 'Save' }).click();
+    // Leo's seeded proxy is a one-off, so "Custom proxy" is open.
+    const custom = page.getByTestId('custom-proxy');
+    await expect(custom.getByLabel('Password')).toHaveValue('');
+    await expect(custom.getByLabel('Password')).toHaveAttribute('placeholder', '•••• saved');
+    await custom.getByLabel('Port').fill('22226');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByRole('status').filter({ hasText: 'Proxy saved' })).toBeVisible();
     await page.reload();
-    await expect(page.getByLabel('Port')).toHaveValue('22226');
+    await expect(page.getByTestId('custom-proxy').getByLabel('Port')).toHaveValue('22226');
     const after = await prisma.proxy.findUniqueOrThrow({ where: { id: before.proxyId! } });
     expect(after.passwordEnc).toBe(before.proxy!.passwordEnc); // blank field kept the saved secret
     expect(await page.content()).not.toContain('tl-acme-leo');
@@ -54,7 +57,9 @@ test('saving a proxy port persists and never echoes credentials', async ({ page 
 test('session page shows the viewer area and the session log', async ({ page }) => {
   const id = await profileId('Jane · Chrome');
   await page.goto(`/browsers/${id}/session`);
-  await expect(page.getByTestId('vnc-viewer')).toContainText('Connecting to the profile’s display');
+  // Without control the viewer does not dial, and says so instead of showing a spinner.
+  await expect(page.getByTestId('vnc-heading')).toHaveText('Not connected');
+  await expect(page.getByTestId('vnc-message')).toContainText('Take over');
   await expect(page.getByRole('button', { name: 'Full screen' })).toBeVisible();
   await expect(page.getByTestId('session-log').locator('li')).not.toHaveCount(0);
   await expect(page.getByTestId('session-log')).toContainText('verification');
@@ -150,23 +155,43 @@ test('Start on an offline node queues nothing; admin assigns a node', async ({ p
   }
 });
 
-test('a saved workspace proxy can be attached to a profile', async ({ page }) => {
+test('a profile picks a port of the workspace provider; ports in use are disabled', async ({ page }) => {
   const id = await profileId('Sam · Chrome');
-  const before = await prisma.browserProfile.findUniqueOrThrow({ where: { id } });
   const jane = await prisma.browserProfile.findFirstOrThrow({
     where: { name: 'Jane · Chrome', workspace: { slug: 'acme' } },
+    include: { account: true },
+  });
+  const sam = await prisma.browserProfile.findUniqueOrThrow({ where: { id } });
+  const actor = jane.account.ownerMemberId;
+  const { id: providerId } = await browsers.saveProvider(jane.workspaceId, actor, {
+    name: `E2E Decodo ${Date.now().toString(36)}`,
+    protocol: 'http',
+    host: 'isp.decodo.e2e',
+    portFrom: 10001,
+    portTo: 10004,
+    region: null,
+    usernameEnc: encrypt('e2e-provider-user'),
+    passwordEnc: encrypt('e2e-provider-pass'),
   });
   try {
+    await browsers.assignProviderPort(jane.workspaceId, jane.id, providerId, 10002, actor);
     await page.goto(`/browsers?id=${id}`);
-    const editor = page.getByTestId('profile-editor');
-    const picker = editor.getByLabel('Use a saved proxy');
-    await picker.selectOption(jane.proxyId!);
-    await editor.getByRole('button', { name: 'Use', exact: true }).click();
-    await expect(editor.getByRole('status').filter({ hasText: 'Proxy attached.' })).toBeVisible();
-    expect((await prisma.browserProfile.findUniqueOrThrow({ where: { id } })).proxyId).toBe(jane.proxyId);
-    expect(await page.content()).not.toContain('tl-acme-');
+    const box = page.getByTestId('provider-proxy');
+    await box.getByLabel('Provider').selectOption(providerId);
+    const port = box.getByLabel('Port');
+    await expect(port.locator('option[value="10002"]')).toHaveText('10002 · Jane · Chrome');
+    await expect(port.locator('option[value="10002"]')).toBeDisabled();
+    await page.getByText('Custom proxy').click(); // Sam's seeded proxy is a one-off: close it to use the provider
+    await port.selectOption('10003');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'Proxy saved · port 10003' })).toBeVisible();
+    const after = await prisma.browserProfile.findUniqueOrThrow({ where: { id }, include: { proxy: true } });
+    expect(after.proxy).toMatchObject({ providerId, port: 10003 });
+    expect(await page.content()).not.toContain('e2e-provider-');
   } finally {
-    await prisma.browserProfile.update({ where: { id }, data: { proxyId: before.proxyId } });
+    await prisma.browserProfile.update({ where: { id }, data: { proxyId: sam.proxyId } });
+    await prisma.browserProfile.update({ where: { id: jane.id }, data: { proxyId: jane.proxyId } });
+    await browsers.deleteProvider(jane.workspaceId, actor, providerId);
   }
 });
 

@@ -1,11 +1,11 @@
 'use client';
 
-import { attachProxyAction, runProxyTestAction, saveProxyAction } from '@/lib/actions/browsers';
+import { assignProviderPortAction, runProxyTestAction, saveProxyAction } from '@/lib/actions/browsers';
 import Link from 'next/link';
 import { useActionState, useState } from 'react';
 import { BrowserControls } from './BrowserControls';
 import type { ActionState } from './action-state';
-import type { ProfileView } from './view';
+import { type ProfileView, type ProviderChoice, firstFreePort } from './view';
 
 const PROVIDERS = ['Bright Data', 'Oxylabs', 'Own server'];
 
@@ -33,9 +33,99 @@ function Field({ id, label, children }: { id: string; label: string; children: R
   );
 }
 
-export interface SavedProxy {
-  id: string;
-  label: string;
+function Status({ s }: { s: ActionState | null }) {
+  if (!s) return null;
+  return (
+    <p
+      role="status"
+      className={`m-0 rounded-[9px] px-3 py-2 text-[12.5px] ${s.ok ? 'bg-ok-soft text-ok' : 'bg-bad-soft text-bad'}`}
+    >
+      {s.message}
+    </p>
+  );
+}
+
+/** Provider + port: the profile's port of a workspace provider (Settings → Proxies). */
+function ProviderPort({
+  formId,
+  profileId,
+  providers,
+  current,
+  action,
+}: {
+  formId: string;
+  profileId: string;
+  providers: ProviderChoice[];
+  current: { providerId: string; port: string } | null;
+  action: (f: FormData) => void;
+}) {
+  const [providerId, setProviderId] = useState(current?.providerId ?? providers[0]?.id ?? '');
+  const choice = providers.find((x) => x.id === providerId);
+  const ownPort = (id: string) => (current?.providerId === id ? current.port : '');
+  const [port, setPort] = useState(ownPort(providerId) || firstFreePort(choice));
+  return (
+    <form id={formId} action={action} className="flex flex-col gap-2" data-testid="provider-proxy">
+      <input type="hidden" name="profileId" value={profileId} />
+      <div className="grid grid-cols-[minmax(0,1fr)_168px] gap-2">
+        <Field id="proxy-provider" label="Provider">
+          <select
+            id="proxy-provider"
+            name="providerId"
+            className="field"
+            value={providerId}
+            onChange={(e) => {
+              const id = e.currentTarget.value;
+              setProviderId(id);
+              setPort(ownPort(id) || firstFreePort(providers.find((x) => x.id === id)));
+            }}
+          >
+            {providers.map((x) => (
+              <option key={x.id} value={x.id} title={x.label}>
+                {x.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field id="proxy-port" label="Port">
+          {choice?.ports ? (
+            <select
+              id="proxy-port"
+              name="port"
+              className="field num"
+              value={port}
+              onChange={(e) => setPort(e.currentTarget.value)}
+            >
+              <option value="" disabled>
+                Pick a port
+              </option>
+              {choice.ports.map((o) => (
+                <option key={o.port} value={o.port} disabled={o.disabled}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              id="proxy-port"
+              name="port"
+              className="field num"
+              inputMode="numeric"
+              value={port}
+              onChange={(e) => setPort(e.currentTarget.value)}
+            />
+          )}
+        </Field>
+      </div>
+      {choice && !choice.ports && choice.usedPorts.length ? (
+        <p className="muted m-0 text-[11.5px]">
+          In use: {choice.usedPorts.map((u) => `${u.port} · ${u.profileName}`).join(', ')}
+        </p>
+      ) : null}
+      <p className="muted m-0 text-[11.5px]">
+        Host and credentials come from the provider in Settings → Proxies. One port per account.
+      </p>
+    </form>
+  );
 }
 
 export function ProfileEditor({
@@ -43,31 +133,35 @@ export function ProfileEditor({
   canEdit,
   isAdmin = false,
   nodeOptions = [],
-  savedProxies = [],
-  currentProxyId = null,
+  providers = [],
 }: {
   p: ProfileView;
   canEdit: boolean;
   isAdmin?: boolean;
   nodeOptions?: { id: string; label: string }[];
-  /** the workspace's proxies (safe fields only), for "Use a saved proxy" */
-  savedProxies?: SavedProxy[];
-  currentProxyId?: string | null;
+  /** the workspace's proxy providers (safe fields only) with this profile's port options */
+  providers?: ProviderChoice[];
 }) {
   const [save, saveAction, saving] = useActionState<ActionState | null, FormData>(saveProxyAction, null);
   const [test, testAction, testing] = useActionState<ActionState | null, FormData>(runProxyTestAction, null);
-  const [attach, attachAction, attaching] = useActionState<ActionState | null, FormData>(
-    attachProxyAction,
+  const [assign, assignAction, assigning] = useActionState<ActionState | null, FormData>(
+    assignProviderPortAction,
     null,
   );
-  const others = savedProxies.filter((x) => x.id !== currentProxyId);
-  const useFormId = `use-proxy-${p.id}`;
-  const [protocol, setProtocol] = useState(p.proxy?.protocol ?? 'none');
-  const provider = p.proxy?.provider ?? 'Own server';
-  const providers = PROVIDERS.includes(provider) ? PROVIDERS : [provider, ...PROVIDERS];
+  const providerId = p.proxy?.providerId ?? null;
+  // Custom proxy is open when there is no provider, or the profile already uses a one-off proxy.
+  const [custom, setCustom] = useState(!providers.length || (p.proxy != null && !providerId));
+  const providerFormId = `provider-form-${p.id}`;
+  const customFormId = `proxy-form-${p.id}`;
+  const own = providerId ? null : p.proxy;
+  const [protocol, setProtocol] = useState(own?.protocol ?? (p.proxy ? 'http' : 'none'));
+  const provider = own?.provider || 'Own server';
+  const services = PROVIDERS.includes(provider) ? PROVIDERS : [provider, ...PROVIDERS];
   const testChip = !p.test ? 'chip-mid' : p.region.mismatch ? 'chip-warn' : 'chip-ok';
   const testLabel = !p.test ? 'Not tested' : p.region.mismatch ? 'Region mismatch' : 'Healthy';
   const disabled = !canEdit;
+  const pending = saving || assigning;
+  const useCustom = custom || !providers.length;
 
   return (
     <aside className="panel flex min-w-0 flex-col" aria-labelledby="editor-h" data-testid="profile-editor">
@@ -78,176 +172,160 @@ export function ProfileEditor({
         {canEdit ? (
           <button
             type="submit"
-            form={`proxy-form-${p.id}`}
+            form={useCustom ? customFormId : providerFormId}
             className="btn btn-primary !h-7"
-            disabled={saving}
+            disabled={pending}
           >
-            {saving ? 'Saving…' : 'Save'}
+            {pending ? 'Saving…' : 'Save'}
           </button>
         ) : null}
       </div>
       <BrowserControls p={p} canEdit={canEdit} isAdmin={isAdmin} nodeOptions={nodeOptions} />
-      <form id={useFormId} action={attachAction} className="hidden">
-        <input type="hidden" name="profileId" value={p.id} />
-      </form>
-      <form id={`proxy-form-${p.id}`} action={saveAction}>
-        <input type="hidden" name="profileId" value={p.id} />
-        <div className="flex flex-col gap-4 px-[18px] py-4">
-          {save ? (
-            <p
-              role="status"
-              className={`m-0 rounded-[9px] px-3 py-2 text-[12.5px] ${save.ok ? 'bg-ok-soft text-ok' : 'bg-bad-soft text-bad'}`}
-            >
-              {save.message}
-            </p>
-          ) : null}
-          {!canEdit ? (
-            <p className="muted m-0 text-[12.5px]">
-              Only an admin or {p.ownerFirst} can change this profile.
-            </p>
-          ) : null}
+      <div className="flex flex-col gap-4 px-[18px] py-4">
+        <Status s={useCustom ? save : assign} />
+        {!canEdit ? (
+          <p className="muted m-0 text-[12.5px]">Only an admin or {p.ownerFirst} can change this profile.</p>
+        ) : null}
 
-          <fieldset className="m-0 flex flex-col gap-2.5 border-0 p-0" disabled={disabled}>
-            <legend className="mb-2.5 flex items-center gap-2 p-0 text-[12.5px] font-semibold">
-              Proxy<span className={`chip ${testChip}`}>{testLabel}</span>
-            </legend>
-            {others.length ? (
-              <div className="flex items-end gap-2">
-                <Field id="saved-proxy" label="Use a saved proxy">
-                  <select id="saved-proxy" name="proxyId" form={useFormId} className="field" defaultValue="">
-                    <option value="" disabled>
-                      Pick one of the workspace’s proxies
-                    </option>
-                    {others.map((x) => (
-                      <option key={x.id} value={x.id}>
-                        {x.label}
-                      </option>
+        <fieldset className="m-0 flex flex-col gap-2.5 border-0 p-0" disabled={disabled}>
+          <legend className="mb-2.5 flex items-center gap-2 p-0 text-[12.5px] font-semibold">
+            Proxy<span className={`chip ${testChip}`}>{testLabel}</span>
+          </legend>
+          {providers.length ? (
+            <ProviderPort
+              formId={providerFormId}
+              profileId={p.id}
+              providers={providers}
+              current={providerId ? { providerId, port: p.proxy?.port ?? '' } : null}
+              action={assignAction}
+            />
+          ) : (
+            <p className="muted m-0 text-[11.5px]">
+              No proxy provider yet{isAdmin ? ' (add one in Settings → Proxies)' : ''}. Enter a proxy for this
+              profile below.
+            </p>
+          )}
+          <details
+            open={useCustom}
+            onToggle={(e) => setCustom(e.currentTarget.open)}
+            className="rounded-[10px] border border-line-soft px-3 py-2"
+          >
+            <summary className="cursor-pointer text-xs font-semibold">Custom proxy</summary>
+            <form
+              id={customFormId}
+              action={saveAction}
+              className="mt-2.5 flex flex-col gap-2.5"
+              data-testid="custom-proxy"
+            >
+              <input type="hidden" name="profileId" value={p.id} />
+              <div
+                role="radiogroup"
+                aria-label="Protocol"
+                className="inline-flex gap-0.5 rounded-[9px] bg-surface-3 p-[3px]"
+              >
+                {(['http', 'socks5', 'none'] as const).map((v) => (
+                  <label
+                    key={v}
+                    className={`relative flex h-[26px] flex-1 cursor-pointer items-center justify-center rounded-[7px] px-2.5 text-xs font-medium ${protocol === v ? 'bg-surface text-ink' : 'text-ink-3'}`}
+                  >
+                    <input
+                      type="radio"
+                      name="protocol"
+                      value={v}
+                      checked={protocol === v}
+                      onChange={() => setProtocol(v)}
+                      className="absolute h-0 w-0 opacity-0"
+                    />
+                    {v === 'http' ? 'HTTP' : v === 'socks5' ? 'SOCKS5' : 'None'}
+                  </label>
+                ))}
+              </div>
+              <div className="grid grid-cols-[minmax(0,1fr)_88px] gap-2">
+                <Field id="host" label="Host">
+                  <input
+                    id="host"
+                    name="host"
+                    className="field"
+                    defaultValue={own?.host}
+                    disabled={protocol === 'none'}
+                  />
+                </Field>
+                <Field id="port" label="Port">
+                  <input
+                    id="port"
+                    name="port"
+                    className="field num"
+                    inputMode="numeric"
+                    defaultValue={own?.port}
+                    disabled={protocol === 'none'}
+                  />
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Field id="pu" label="Username">
+                  <input
+                    id="pu"
+                    name="username"
+                    className="field"
+                    autoComplete="off"
+                    placeholder={own?.hasUsername ? '•••• saved' : 'Not set'}
+                    aria-describedby="cred-note"
+                  />
+                </Field>
+                <Field id="pp" label="Password">
+                  <input
+                    id="pp"
+                    name="password"
+                    type="password"
+                    className="field"
+                    autoComplete="new-password"
+                    placeholder={own?.hasPassword ? '•••• saved' : 'Not set'}
+                    aria-describedby="cred-note"
+                  />
+                </Field>
+              </div>
+              <p id="cred-note" className="muted m-0 text-[11.5px]">
+                Credentials are encrypted and never shown. Leave blank to keep the saved value.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <Field id="prov" label="Service">
+                  <select id="prov" name="provider" className="field" defaultValue={provider}>
+                    {services.map((o) => (
+                      <option key={o}>{o}</option>
                     ))}
                   </select>
                 </Field>
-                <button type="submit" form={useFormId} className="btn !h-[34px]" disabled={attaching}>
-                  Use
-                </button>
+                <Field id="sess" label="Session">
+                  <select
+                    id="sess"
+                    name="sticky"
+                    className="field"
+                    defaultValue={own?.sticky === false ? 'rotate' : 'sticky'}
+                  >
+                    <option value="sticky">Sticky · same IP 30 days</option>
+                    <option value="rotate">Rotate per login</option>
+                  </select>
+                </Field>
               </div>
-            ) : null}
-            {attach ? (
-              <p
-                role="status"
-                className={`m-0 rounded-[9px] px-3 py-2 text-[12.5px] ${attach.ok ? 'bg-ok-soft text-ok' : 'bg-bad-soft text-bad'}`}
-              >
-                {attach.message}
-              </p>
-            ) : null}
-            {others.length ? (
-              <p className="muted m-0 text-[11.5px]">Or enter a proxy for this profile:</p>
-            ) : null}
-            <div
-              role="radiogroup"
-              aria-label="Protocol"
-              className="inline-flex gap-0.5 rounded-[9px] bg-surface-3 p-[3px]"
-            >
-              {(['http', 'socks5', 'none'] as const).map((v) => (
-                <label
-                  key={v}
-                  className={`relative flex h-[26px] flex-1 cursor-pointer items-center justify-center rounded-[7px] px-2.5 text-xs font-medium ${protocol === v ? 'bg-surface text-ink' : 'text-ink-3'}`}
-                >
-                  <input
-                    type="radio"
-                    name="protocol"
-                    value={v}
-                    checked={protocol === v}
-                    onChange={() => setProtocol(v)}
-                    className="absolute h-0 w-0 opacity-0"
-                  />
-                  {v === 'http' ? 'HTTP' : v === 'socks5' ? 'SOCKS5' : 'None'}
-                </label>
-              ))}
-            </div>
-            <div className="grid grid-cols-[minmax(0,1fr)_88px] gap-2">
-              <Field id="host" label="Host">
+              <Field id="region" label="Region">
                 <input
-                  id="host"
-                  name="host"
+                  id="region"
+                  name="region"
                   className="field"
-                  defaultValue={p.proxy?.host}
-                  disabled={protocol === 'none'}
+                  defaultValue={own?.region}
+                  placeholder="e.g. Boston, US"
                 />
               </Field>
-              <Field id="port" label="Port">
-                <input
-                  id="port"
-                  name="port"
-                  className="field num"
-                  inputMode="numeric"
-                  defaultValue={p.proxy?.port}
-                  disabled={protocol === 'none'}
-                />
-              </Field>
+            </form>
+          </details>
+          {p.ownerPlace ? (
+            <div className="rounded-[10px] bg-surface-2 px-3 py-2.5 text-[12.5px] leading-snug">
+              <div className="font-medium">Keep region where {p.ownerFirst} actually is</div>
+              <div className="muted text-xs">{p.ownerPlace} · from their account settings</div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <Field id="pu" label="Username">
-                <input
-                  id="pu"
-                  name="username"
-                  className="field"
-                  autoComplete="off"
-                  placeholder={p.proxy?.hasUsername ? '•••• saved' : 'Not set'}
-                  aria-describedby="cred-note"
-                />
-              </Field>
-              <Field id="pp" label="Password">
-                <input
-                  id="pp"
-                  name="password"
-                  type="password"
-                  className="field"
-                  autoComplete="new-password"
-                  placeholder={p.proxy?.hasPassword ? '•••• saved' : 'Not set'}
-                  aria-describedby="cred-note"
-                />
-              </Field>
-            </div>
-            <p id="cred-note" className="muted m-0 text-[11.5px]">
-              Credentials are encrypted and never shown. Leave blank to keep the saved value.
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <Field id="prov" label="Provider">
-                <select id="prov" name="provider" className="field" defaultValue={provider}>
-                  {providers.map((o) => (
-                    <option key={o}>{o}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field id="sess" label="Session">
-                <select
-                  id="sess"
-                  name="sticky"
-                  className="field"
-                  defaultValue={p.proxy?.sticky === false ? 'rotate' : 'sticky'}
-                >
-                  <option value="sticky">Sticky · same IP 30 days</option>
-                  <option value="rotate">Rotate per login</option>
-                </select>
-              </Field>
-            </div>
-            <Field id="region" label="Region">
-              <input
-                id="region"
-                name="region"
-                className="field"
-                defaultValue={p.proxy?.region}
-                placeholder="e.g. Boston, US"
-              />
-            </Field>
-            {p.ownerPlace ? (
-              <div className="rounded-[10px] bg-surface-2 px-3 py-2.5 text-[12.5px] leading-snug">
-                <div className="font-medium">Keep region where {p.ownerFirst} actually is</div>
-                <div className="muted text-xs">{p.ownerPlace} · from their account settings</div>
-              </div>
-            ) : null}
-          </fieldset>
-        </div>
-      </form>
+          ) : null}
+        </fieldset>
+      </div>
 
       <div className="flex flex-col gap-4 px-[18px] pb-4">
         <div

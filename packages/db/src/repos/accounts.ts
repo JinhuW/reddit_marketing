@@ -5,7 +5,7 @@ import { assertOneAccountPerMember } from '@threadline/agents';
 import type { AccountAuthMode, AccountRoleLabel } from '@threadline/shared';
 import { prisma } from '../client';
 import { writeAudit } from './audit';
-import { attachProxyTx, ensureCloakFingerprintTx } from './browsers';
+import { assignProviderPortTx, attachProxyTx, ensureCloakFingerprintTx } from './browsers';
 import { pickForProfile } from './nodes';
 
 /**
@@ -179,6 +179,8 @@ export interface StartBrowserConnectInput {
   fingerprint: Prisma.InputJsonValue;
   /** an existing proxy of the workspace to attach to the new profile */
   proxyId?: string | null;
+  /** or one port of a workspace proxy provider (Settings → Proxies); wins over `proxyId` */
+  providerPort?: { providerId: string; port: number } | null;
   /** who pressed the button; defaults to the owner */
   actorMemberId?: string;
 }
@@ -301,7 +303,16 @@ export async function startBrowserConnect(
         tx,
       );
     }
-    if (input.proxyId) await attachProxyTx(tx, input.workspaceId, profile.id, input.proxyId, actor);
+    if (input.providerPort)
+      await assignProviderPortTx(
+        tx,
+        input.workspaceId,
+        profile.id,
+        input.providerPort.providerId,
+        input.providerPort.port,
+        actor,
+      );
+    else if (input.proxyId) await attachProxyTx(tx, input.workspaceId, profile.id, input.proxyId, actor);
 
     return {
       accountId: account.id,

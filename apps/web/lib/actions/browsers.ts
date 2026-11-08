@@ -60,6 +60,7 @@ export async function saveProxyAction(_prev: ActionState | null, form: FormData)
     throw e;
   }
   revalidatePath('/browsers');
+  revalidatePath('/settings/proxies');
   return { ok: true, message: 'Proxy saved.' };
 }
 
@@ -194,20 +195,32 @@ export async function assignNodeAction(_prev: ActionState | null, form: FormData
   }
 }
 
-/** Points the profile at a proxy the workspace already has. Nothing is decrypted. */
-export async function attachProxyAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+/**
+ * Puts the profile on one port of a workspace proxy provider (Settings → Proxies). Host, protocol and
+ * credentials come from the provider; nothing is decrypted here.
+ */
+export async function assignProviderPortAction(
+  _prev: ActionState | null,
+  form: FormData,
+): Promise<ActionState> {
   try {
     const { me, profile } = await controllable(fid(form, 'profileId'));
-    const proxyId = fid(form, 'proxyId');
-    if (!proxyId) return { ok: false, message: 'Pick a saved proxy.' };
-    const proxies = await browsers.listProxies(me.workspaceId);
-    if (!proxies.some((p) => p.id === proxyId)) return { ok: false, message: 'Proxy not found.' };
-    const r = await browsers.attachProxy(me.workspaceId, profile.id, proxyId, me.id);
+    const providerId = fid(form, 'providerId');
+    const port = Number(fid(form, 'port'));
+    if (!providerId) return { ok: false, message: 'Pick a provider.' };
+    if (!Number.isInteger(port) || port < 1 || port > 65535)
+      return { ok: false, message: 'Pick a port (1–65535).' };
+    const r = await browsers.assignProviderPort(me.workspaceId, profile.id, providerId, port, me.id);
     revalidatePath('/browsers');
-    return { ok: true, message: r.changed ? 'Proxy attached.' : 'The profile already uses that proxy.' };
+    revalidatePath('/settings/proxies');
+    return {
+      ok: true,
+      message: r.changed ? `Proxy saved · port ${port}.` : 'The profile already uses that port.',
+    };
   } catch (e) {
     const f = forbidden(e);
     if (f) return f;
+    if (e instanceof browsers.ProxyProviderError) return { ok: false, message: e.message };
     throw e;
   }
 }

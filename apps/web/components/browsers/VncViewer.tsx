@@ -1,6 +1,7 @@
 'use client';
 
 import type RFB from '@novnc/novnc/lib/rfb';
+import { useRouter } from 'next/navigation';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 
 type ToolId = 'keys' | 'paste' | 'shot' | 'quality' | 'fullscreen';
@@ -91,6 +92,7 @@ export function VncViewer({
   const [view, setView] = useState<View>({ kind: 'idle' });
   const [quality, setQuality] = useState(0);
   const [attempt, setAttempt] = useState(0);
+  const router = useRouter();
 
   useEffect(() => {
     if (!hasControl || attempt < 0) {
@@ -128,6 +130,8 @@ export function VncViewer({
             kind: 'closed',
             message: clean ? 'The remote view closed.' : 'Lost the connection to the browser.',
           });
+        // The session may have ended (hand-back, or 15 min idle): re-render so the page shows Take over again.
+        if (!cancelled) router.refresh();
       });
       rfb.addEventListener('securityfailure', () => {
         if (!cancelled) setView({ kind: 'closed', message: 'The browser refused the display connection.' });
@@ -142,7 +146,7 @@ export function VncViewer({
       rfbRef.current = null;
       rfb?.disconnect();
     };
-  }, [profileId, hasControl, attempt]);
+  }, [profileId, hasControl, attempt, router]);
 
   const live = view.kind === 'live';
 
@@ -232,11 +236,25 @@ export function VncViewer({
           <div className="absolute inset-0 flex items-center justify-center p-[18px]">
             <div className="flex max-w-[460px] flex-col items-center gap-2 text-center">
               <div
-                className={`h-8 w-8 rounded-full border-2 border-[#3F4248] ${view.kind === 'connecting' || view.kind === 'idle' ? 'animate-pulse' : ''}`}
+                className={`h-8 w-8 rounded-full border-2 border-[#3F4248] ${view.kind === 'connecting' ? 'animate-pulse' : ''}`}
                 aria-hidden="true"
               />
-              <div className="text-sm font-semibold">Connecting to the profile’s display…</div>
-              {view.kind === 'unavailable' || view.kind === 'closed' ? (
+              <div className="text-sm font-semibold" data-testid="vnc-heading">
+                {view.kind === 'connecting'
+                  ? 'Connecting to the profile’s display…'
+                  : view.kind === 'idle'
+                    ? 'Not connected'
+                    : 'Disconnected'}
+              </div>
+              {view.kind === 'idle' ? (
+                <p className="m-0 text-[12.5px] leading-relaxed text-[#E6E6E2]" data-testid="vnc-message">
+                  You don’t have control of this browser, so the live view is off.{' '}
+                  <a href="#take-h" className="underline">
+                    Take over
+                  </a>{' '}
+                  to start the browser and open it here.
+                </p>
+              ) : view.kind === 'unavailable' || view.kind === 'closed' ? (
                 <>
                   <p className="m-0 text-[12.5px] leading-relaxed text-[#E6E6E2]" data-testid="vnc-message">
                     {view.message}
@@ -252,10 +270,8 @@ export function VncViewer({
               ) : (
                 <p className="m-0 text-[12.5px] leading-relaxed text-[#9A9DA4]">
                   The worker starts this profile’s browser container (Chromium with its own proxy and saved
-                  login for {account}). The live view appears here once the container is running.{' '}
-                  {hasControl
-                    ? 'You have control; the agent stays paused until you hand back.'
-                    : 'Take over to open the live view.'}
+                  login for {account}). The live view appears here once the container is running. You have
+                  control; the agent stays paused until you hand back.
                 </p>
               )}
             </div>

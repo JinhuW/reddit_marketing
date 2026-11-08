@@ -73,6 +73,11 @@ describe('browser node enums', () => {
     }
   });
 
+  it('AuditAction has the proxy provider actions', () => {
+    expect(E.AuditAction).toContain('settings.proxy_provider_saved');
+    expect(E.AuditAction).toContain('settings.proxy_provider_deleted');
+  });
+
   it('BrowserOutcome covers every pause reason the gateway maps', () => {
     for (const r of ['needs_human', 'license_denied', 'proxy_failed'] as const) {
       expect(E.BrowserOutcome).toContain(r);
