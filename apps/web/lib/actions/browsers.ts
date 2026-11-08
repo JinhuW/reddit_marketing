@@ -1,8 +1,10 @@
 'use server';
 
 import type { ActionState } from '@/components/browsers/action-state';
+import { type SignInCheck, signInView } from '@/components/browsers/view';
+import { type WebBrowserJobKind, enqueueProfileJob, whoamiStatus } from '@/lib/browser-jobs';
 import { ForbiddenError, requireMember } from '@/lib/session';
-import { browsers } from '@threadline/db';
+import { browsers, nodes } from '@threadline/db';
 import { encrypt } from '@threadline/shared/crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -77,6 +79,7 @@ export async function startSessionAction(_prev: ActionState | null, form: FormDa
   const reason = String(form.get('reason') ?? '').trim();
   if (reason.length < 3)
     return { ok: false, message: 'Say why you are taking over (at least 3 characters).' };
+  const login = form.get('login') === '1';
   try {
     const { me } = await controllable(profileId);
     await browsers.startHumanSession({
@@ -86,13 +89,15 @@ export async function startSessionAction(_prev: ActionState | null, form: FormDa
       memberName: me.user.name ?? me.user.email,
       reason,
     });
+    // The viewer needs the profile's browser running; a node problem is shown on the session page.
+    await enqueueProfileJob(me.workspaceId, profileId, 'profile.start');
   } catch (e) {
     if (e instanceof ForbiddenError || e instanceof browsers.SessionConflictError)
       return { ok: false, message: e.message };
     throw e;
   }
   revalidatePath(`/browsers/${profileId}/session`);
-  redirect(`/browsers/${profileId}/session`);
+  redirect(`/browsers/${profileId}/session${login ? '?login=1' : ''}`);
 }
 
 export async function handBackAction(form: FormData): Promise<void> {
@@ -107,4 +112,143 @@ export async function handBackAction(form: FormData): Promise<void> {
   });
   revalidatePath(`/browsers/${profileId}/session`);
   revalidatePath('/browsers');
+}
+
+const fid = (form: FormData, k: string) => String(form.get(k) ?? '').trim();
+const forbidden = (e: unknown): ActionState | null =>
+  e instanceof ForbiddenError ? { ok: false, message: e.message } : null;
+
+async function admin() {
+  const me = await requireMember();
+  if (me.role !== 'admin') throw new ForbiddenError('Only an admin can do that.');
+  return me;
+}
+
+const JOB_DONE: Record<WebBrowserJobKind, string> = {
+  'profile.start': 'Start queued. The browser opens on its node in a few seconds.',
+  'profile.stop': 'Stop queued.',
+  'profile.whoami': 'Checking the sign-in…',
+};
+
+async function queueJob(form: FormData, kind: WebBrowserJobKind): Promise<ActionState> {
+  try {
+    const { me, profile } = await controllable(fid(form, 'profileId'));
+    const r = await enqueueProfileJob(me.workspaceId, profile.id, kind);
+    revalidatePath('/browsers');
+    return r.queued ? { ok: true, message: JOB_DONE[kind] } : { ok: false, message: r.reason };
+  } catch (e) {
+    const f = forbidden(e);
+    if (f) return f;
+    throw e;
+  }
+}
+
+/** Start / Stop on the Browsers screen: Admin or the account owner. */
+export async function startProfileAction(_prev: ActionState | null, form: FormData) {
+  return queueJob(form, 'profile.start');
+}
+export async function stopProfileAction(_prev: ActionState | null, form: FormData) {
+  return queueJob(form, 'profile.stop');
+}
+
+/** Admin: clears the account's pause (any reason). Writes `account.resumed`. */
+export async function resumeAccountAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  try {
+    const me = await admin();
+    const profile = await browsers.getProfile(me.workspaceId, fid(form, 'profileId'));
+    if (!profile) return { ok: false, message: 'Profile not found.' };
+    const r = await browsers.resumeAccount({
+      workspaceId: me.workspaceId,
+      accountId: profile.accountId,
+      actorMemberId: me.id,
+    });
+    revalidatePath('/browsers');
+    return { ok: true, message: r.changed ? 'Account resumed.' : 'The account was not paused.' };
+  } catch (e) {
+    const f = forbidden(e);
+    if (f) return f;
+    throw e;
+  }
+}
+
+/** Admin: runs the profile on another online node of the workspace, or detaches it ('' = Unassigned). */
+export async function assignNodeAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  try {
+    const me = await admin();
+    const profileId = fid(form, 'profileId');
+    const nodeId = fid(form, 'nodeId') || null;
+    if (!(await browsers.getProfile(me.workspaceId, profileId)))
+      return { ok: false, message: 'Profile not found.' };
+    if (nodeId) {
+      const online = await nodes.listOnline(me.workspaceId);
+      if (!online.some((n) => n.id === nodeId))
+        return { ok: false, message: 'Pick an online node of this workspace.' };
+    }
+    await browsers.assignNode(me.workspaceId, profileId, nodeId, me.id);
+    revalidatePath('/browsers');
+    return { ok: true, message: nodeId ? 'Node assigned.' : 'Profile unassigned.' };
+  } catch (e) {
+    const f = forbidden(e);
+    if (f) return f;
+    throw e;
+  }
+}
+
+/** Points the profile at a proxy the workspace already has. Nothing is decrypted. */
+export async function attachProxyAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  try {
+    const { me, profile } = await controllable(fid(form, 'profileId'));
+    const proxyId = fid(form, 'proxyId');
+    if (!proxyId) return { ok: false, message: 'Pick a saved proxy.' };
+    const proxies = await browsers.listProxies(me.workspaceId);
+    if (!proxies.some((p) => p.id === proxyId)) return { ok: false, message: 'Proxy not found.' };
+    const r = await browsers.attachProxy(me.workspaceId, profile.id, proxyId, me.id);
+    revalidatePath('/browsers');
+    return { ok: true, message: r.changed ? 'Proxy attached.' : 'The profile already uses that proxy.' };
+  } catch (e) {
+    const f = forbidden(e);
+    if (f) return f;
+    throw e;
+  }
+}
+
+// ── browser-mode sign-in (docs/plans/0002-browser-mode.md, Flow step 3) ──
+
+/** "I'm signed in": queues `profile.whoami` on the profile's node. */
+export async function checkSignInAction(
+  profileId: string,
+): Promise<{ ok: true; jobId: string } | { ok: false; message: string }> {
+  try {
+    const { me } = await controllable(profileId);
+    const r = await enqueueProfileJob(me.workspaceId, profileId, 'profile.whoami');
+    return r.queued ? { ok: true, jobId: r.jobId } : { ok: false, message: r.reason };
+  } catch (e) {
+    if (e instanceof ForbiddenError) return { ok: false, message: e.message };
+    throw e;
+  }
+}
+
+/** Polled every 3 s by the session page: the account's identity, else the whoami job's answer. */
+export async function signInStatusAction(profileId: string, jobId: string | null): Promise<SignInCheck> {
+  const { me, profile } = await controllable(profileId);
+  const identified = profile.account.identifiedAt != null;
+  const status = !identified && jobId ? await whoamiStatus(me.workspaceId, profile.id, jobId) : null;
+  return signInView({ identified, username: profile.account.username }, status);
+}
+
+/** "Hand back and finish": ends the sign-in take-over, then back to the accounts list. */
+export async function finishSignInAction(form: FormData): Promise<void> {
+  const profileId = fid(form, 'profileId');
+  const { me } = await controllable(profileId);
+  const open = await browsers.openSession(profileId);
+  if (open?.driver === 'human')
+    await browsers.handBack({
+      workspaceId: me.workspaceId,
+      sessionId: open.id,
+      memberId: me.id,
+      memberName: me.user.name ?? me.user.email,
+    });
+  revalidatePath('/accounts');
+  revalidatePath('/browsers');
+  redirect('/accounts');
 }

@@ -1,9 +1,10 @@
+import { AutoRefresh } from '@/components/browsers/AutoRefresh';
 import { ProfileEditor } from '@/components/browsers/ProfileEditor';
 import { Dot, ProfileTable } from '@/components/browsers/ProfileTable';
-import { profileView } from '@/components/browsers/view';
+import { type NodeInfo, nodeOptions, profileView, savedProxyLabel } from '@/components/browsers/view';
 import { PageHeader } from '@/components/ui/page-header';
 import { requireMember } from '@/lib/session';
-import { browsers, shell } from '@threadline/db';
+import { browsers, nodes, shell } from '@threadline/db';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = { title: 'Browsers and proxies' };
@@ -22,10 +23,21 @@ function Kpi({ label, children }: { label: string; children: React.ReactNode }) 
 export default async function BrowsersPage({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
   const me = await requireMember();
   const sp = await searchParams;
-  const rows = await browsers.listProfiles(me.workspaceId);
-  const profiles = rows.map((r) => profileView(r));
+  const [rows, online, proxies] = await Promise.all([
+    browsers.listProfiles(me.workspaceId),
+    nodes.listOnline(me.workspaceId),
+    browsers.listProxies(me.workspaceId),
+  ]);
+  const nodeIds = [...new Set(rows.map((r) => r.nodeId).filter((v): v is string => Boolean(v)))];
+  const nodeById = new Map<string, NodeInfo>();
+  for (const n of await Promise.all(nodeIds.map((id) => nodes.getById(id))))
+    if (n && n.workspaceId === me.workspaceId) nodeById.set(n.id, n);
+  const now = new Date();
+  const profiles = rows.map((r) => profileView(r, now, r.nodeId ? (nodeById.get(r.nodeId) ?? null) : null));
   const sel = profiles.find((p) => p.id === sp.id) ?? profiles[0] ?? null;
   const selRow = rows.find((r) => r.id === sel?.id);
+  const isAdmin = me.role === 'admin';
+  const savedProxies = proxies.map((x) => ({ id: x.id, label: savedProxyLabel(x) }));
   const running = profiles.filter((p) => p.status.key === 'running');
   const attention = profiles.filter((p) => p.needsAttention);
   const latencies = profiles
@@ -65,15 +77,31 @@ export default async function BrowsersPage({ searchParams }: { searchParams: Pro
           {attention.length}
           {attention.map((p) => (
             <span key={p.id} className="chip chip-warn">
-              {p.ownerFirst} · {p.region.mismatch ? 'proxy region mismatch' : p.status.label.toLowerCase()}
+              {p.ownerFirst} ·{' '}
+              {p.region.mismatch
+                ? 'proxy region mismatch'
+                : p.paused
+                  ? p.paused.label.toLowerCase()
+                  : !p.signedIn
+                    ? 'waiting for sign-in'
+                    : p.status.label.toLowerCase()}
             </span>
           ))}
         </Kpi>
       </div>
+      <AutoRefresh />
       {sel && selRow ? (
         <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.55fr)_420px]">
           <ProfileTable profiles={profiles} selectedId={sel.id} />
-          <ProfileEditor key={sel.id} p={sel} canEdit={browsers.canControlProfile(me, selRow)} />
+          <ProfileEditor
+            key={sel.id}
+            p={sel}
+            canEdit={browsers.canControlProfile(me, selRow)}
+            isAdmin={isAdmin}
+            nodeOptions={nodeOptions(online, selRow.nodeId ? (nodeById.get(selRow.nodeId) ?? null) : null)}
+            savedProxies={savedProxies}
+            currentProxyId={selRow.proxyId}
+          />
         </div>
       ) : (
         <div className="panel muted p-6 text-[13px]">

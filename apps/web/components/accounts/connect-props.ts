@@ -1,6 +1,7 @@
 import 'server-only';
+import { savedProxyLabel } from '@/components/browsers/view';
 import { PENDING_COOKIE, openPending, redditConfigured } from '@/lib/reddit-oauth';
-import { accounts, members } from '@threadline/db';
+import { accounts, browsers, members } from '@threadline/db';
 import type { CurrentMember } from '@threadline/db/repos/members';
 import { cookies } from 'next/headers';
 import type { ConnectProps } from './ConnectAccountFlow';
@@ -15,7 +16,10 @@ const ERRORS: Record<string, string> = {
 };
 
 export async function connectProps(me: CurrentMember, error?: string): Promise<ConnectProps> {
-  const owned = await accounts.findByOwner(me.id);
+  const [owned, proxies] = await Promise.all([
+    accounts.findByOwner(me.id),
+    browsers.listProxies(me.workspaceId),
+  ]);
   const pending = openPending((await cookies()).get(PENDING_COOKIE)?.value, me.id);
   const settings = (me.workspace.settings ?? {}) as { product?: string };
   return {
@@ -26,5 +30,6 @@ export async function connectProps(me: CurrentMember, error?: string): Promise<C
     authorized: pending ? { username: pending.username, scopes: pending.scopes } : null,
     product: settings.product ?? me.workspace.name,
     error: error ? (ERRORS[error] ?? 'Something went wrong.') : null,
+    proxies: proxies.map((x) => ({ id: x.id, label: savedProxyLabel(x) })),
   };
 }

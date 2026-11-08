@@ -1,6 +1,7 @@
 import { proxyRegionMismatch } from '@threadline/agents';
 import type { browsers } from '@threadline/db';
-import { ago } from '@threadline/shared';
+import { type PauseReason, ago } from '@threadline/shared';
+import type { WhoamiStatus } from '../../lib/browser-jobs';
 
 type Row = browsers.ProfileRow;
 
@@ -13,8 +14,95 @@ export const STATUS = {
 
 const ROLE = { founder: 'Founder', support: 'Support', brand: 'Brand' } as const;
 
+/** Why the account is paused (`RedditAccount.pausedReason`), as the Browsers screen says it. */
+export const PAUSE_LABEL: Record<PauseReason, string> = {
+  needs_human: 'Needs a human',
+  license_denied: 'No browser seat',
+  node_offline: 'Node offline',
+  proxy_failed: 'Proxy failed',
+  manual: 'Paused by an admin',
+};
+
+export interface NodeInfo {
+  id: string;
+  name: string;
+  status: string;
+}
+
+/** Node cell: name + online/offline (draining counts as not online). */
+export function nodeView(node: NodeInfo | null) {
+  if (!node) return { id: null, name: 'Unassigned', online: false, label: 'No node', chip: 'chip-mid' };
+  const online = node.status === 'online';
+  return {
+    id: node.id,
+    name: node.name,
+    online,
+    label: online ? 'Online' : node.status === 'draining' ? 'Draining' : 'Offline',
+    chip: online ? 'chip-ok' : 'chip-warn',
+  };
+}
+
+/** Options for the Admin "Assign node" select: online nodes, plus the current one when it is not online. */
+export function nodeOptions(online: NodeInfo[], current: NodeInfo | null) {
+  const opts = online.map((n) => ({ id: n.id, label: n.name }));
+  if (current && !online.some((n) => n.id === current.id))
+    opts.unshift({ id: current.id, label: `${current.name} (${current.status})` });
+  return [{ id: '', label: 'Unassigned' }, ...opts];
+}
+
+/** "Decodo · gate.decodo.com:10001 · 2 profiles" — safe fields only, never credentials. */
+export function savedProxyLabel(x: {
+  provider: string;
+  protocol: string;
+  host: string | null;
+  port: number | null;
+  profileCount: number;
+}) {
+  const where = x.protocol === 'none' || !x.host ? 'direct' : `${x.host}${x.port ? `:${x.port}` : ''}`;
+  const used = x.profileCount === 1 ? '1 profile' : `${x.profileCount} profiles`;
+  return `${x.provider} · ${where} · ${used}`;
+}
+
+/** What the session page shows for a browser-mode sign-in check. */
+export type SignInCheck =
+  | { state: 'signed_in'; username: string }
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'not_signed_in'; message: string }
+  | { state: 'failed'; message: string };
+
+/** Account identity first; otherwise the `profile.whoami` job's answer (null = nothing asked yet). */
+export function signInView(
+  account: { identified: boolean; username: string },
+  status: WhoamiStatus | null,
+): SignInCheck {
+  if (account.identified) return { state: 'signed_in', username: account.username };
+  if (!status) return { state: 'idle' };
+  switch (status.state) {
+    case 'pending':
+      return { state: 'checking' };
+    case 'gone':
+      return { state: 'failed', message: 'The check expired. Press I’m signed in again.' };
+    case 'failed':
+      return { state: 'failed', message: status.reason };
+    case 'done':
+      return status.whoami.loggedIn
+        ? {
+            // The gateway links the identity before the job completes; still unlinked = it was refused.
+            state: 'failed',
+            message: `The browser is signed in as u/${status.whoami.name}, but it could not be linked. Is that account already connected?`,
+          }
+        : { state: 'not_signed_in', message: 'Not signed in yet' };
+  }
+}
+
+/** Show the sign-in banner: asked for (`?login=1`), or a browser-mode account nobody has signed in to yet. */
+export function showSignIn(login: string | undefined, account: { authMode: string; identifiedAt: unknown }) {
+  return login === '1' || (account.authMode === 'browser' && account.identifiedAt == null);
+}
+
 /** Plain, client-safe view of a profile. Never includes proxy credentials. */
-export function profileView(p: Row, now = new Date()) {
+export function profileView(p: Row, now = new Date(), node: NodeInfo | null = null) {
   const fp = (p.fingerprint ?? {}) as browsers.Fingerprint;
   const test = (p.proxy?.lastTest ?? null) as browsers.ProxyTest | null;
   const region = proxyRegionMismatch(test ? { country: test.country, timeZone: test.timeZone } : null, fp.tz);
@@ -29,10 +117,20 @@ export function profileView(p: Row, now = new Date()) {
       ? `${test?.kind ?? p.proxy.protocol.toUpperCase()} · ${p.proxy.sticky ? 'sticky' : 'rotating'}`
       : 'Direct connection';
   const status = STATUS[p.status];
-  const needsAttention = region.mismatch || p.status === 'check' || p.status === 'error';
+  const paused = p.account.pausedReason
+    ? { reason: p.account.pausedReason, label: PAUSE_LABEL[p.account.pausedReason] }
+    : null;
+  const signedIn = p.account.authMode !== 'browser' || p.account.identifiedAt != null;
+  const needsAttention =
+    region.mismatch || p.status === 'check' || p.status === 'error' || paused !== null || !signedIn;
   return {
     id: p.id,
     name: p.name,
+    node: nodeView(node),
+    paused,
+    /** false for a browser-mode account nobody has signed in to yet */
+    signedIn,
+    accountId: p.accountId,
     device: [fp.os, fp.screen].filter(Boolean).join(' · ') || 'Not captured',
     os: fp.os ?? '—',
     screen: fp.screen ?? '—',
@@ -40,7 +138,7 @@ export function profileView(p: Row, now = new Date()) {
     locale: fp.locale ?? '—',
     capturedAt: fp.capturedAt ?? null,
     ownerPlace: fp.ownerPlace ?? null,
-    account: `u/${p.account.username}`,
+    account: signedIn ? `u/${p.account.username}` : 'Waiting for sign-in',
     accountOwnerMemberId: p.account.ownerMemberId,
     owner: `${ownerName} · ${ROLE[p.account.roleLabel]}`,
     ownerFirst: ownerName.split(' ')[0] ?? ownerName,

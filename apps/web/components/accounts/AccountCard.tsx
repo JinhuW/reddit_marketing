@@ -6,6 +6,7 @@ import { type ActionState, disconnectAccount, saveLimits } from '@/lib/actions/a
 import type { AccountCard as Card } from '@threadline/db/repos/accounts';
 import Link from 'next/link';
 import { useActionState, useState } from 'react';
+import { connectionView } from './connect-mode';
 
 const HEALTH = {
   healthy: { label: 'Healthy', chip: 'chip-ok' },
@@ -26,16 +27,14 @@ export function AccountCard({ a, canManage }: { a: Card; canManage: boolean }) {
         ? 'var(--warn)'
         : 'var(--ok)';
   const h = HEALTH[a.health];
+  const conn = connectionView(a);
+  const title = a.identified ? `u/${a.username}` : 'Waiting for sign-in';
   return (
-    <article
-      className="panel flex flex-col gap-3 p-4"
-      data-testid="account-card"
-      aria-label={`u/${a.username}`}
-    >
+    <article className="panel flex flex-col gap-3 p-4" data-testid="account-card" aria-label={title}>
       <div className="flex items-center gap-3">
         <Avatar name={a.ownerName} size={40} />
         <div className="min-w-0 flex-1 leading-tight">
-          <div className="text-[15px] font-semibold">u/{a.username}</div>
+          <div className="text-[15px] font-semibold">{title}</div>
           <div className="muted text-[12.5px]">
             {a.ownerName} · {ROLE[a.roleLabel]}
           </div>
@@ -44,10 +43,20 @@ export function AccountCard({ a, canManage }: { a: Card; canManage: boolean }) {
       </div>
       <div className="flex flex-wrap gap-1.5">
         <span className="chip chip-ok">Discloses: “{a.disclosureLine}”</span>
-        <span className={`chip ${a.connected ? 'chip-line' : 'chip-bad'}`}>
-          {a.connected ? 'Reddit OAuth' : 'Disconnected'}
+        <span className={`chip ${conn.chip}`} data-testid="connection-chip">
+          {conn.label}
         </span>
       </div>
+      {conn.signInHref ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-[9px] bg-warn-soft px-3 py-2 text-xs text-warn">
+          <span className="flex-1">Nobody has signed in to Reddit in this account’s browser yet.</span>
+          {canManage ? (
+            <Link href={conn.signInHref} className="btn !h-[26px] !px-2">
+              Open sign-in
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
       <div className="grid grid-cols-3 gap-2 border-t border-line-soft pt-3">
         <Stat v={a.karma.toLocaleString('en-US')} l="Karma" />
         <Stat v={a.age} l="Account age" />

@@ -33,6 +33,7 @@ export function ProfileTable({
               <th>Proxy</th>
               <th>Region</th>
               <th>Status</th>
+              <th>Node</th>
               <th>Last session</th>
               <th>
                 <span className="sr-only">Action</span>
@@ -93,10 +94,25 @@ export function ProfileTable({
                   </span>
                 </td>
                 <td>
-                  <span className={`chip ${p.status.chip}`}>
-                    <Dot color={p.status.dot} />
-                    {p.status.label}
-                  </span>
+                  <div className="flex flex-col items-start gap-1">
+                    <span className={`chip ${p.status.chip}`}>
+                      <Dot color={p.status.dot} />
+                      {p.status.label}
+                    </span>
+                    {p.paused ? (
+                      <span className="chip chip-warn" data-testid="pause-reason">
+                        Paused · {p.paused.label}
+                      </span>
+                    ) : null}
+                  </div>
+                </td>
+                <td data-testid="node-cell">
+                  <div className="leading-tight">
+                    <div className="font-medium">{p.node.name}</div>
+                    <div className={`text-[11.5px] ${p.node.online ? 'text-ok' : 'text-muted'}`}>
+                      {p.node.label}
+                    </div>
+                  </div>
                 </td>
                 <td className="muted whitespace-nowrap">{p.lastSession}</td>
                 <td className="text-right">
