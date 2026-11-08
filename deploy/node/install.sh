@@ -21,9 +21,13 @@
 #   --rebuild-browser       rebuild the browser image even if the tag already exists
 #   --wait SECONDS          how long to wait for the gateway connection (default 180; 0 skips the wait)
 #   --skip-timer            do not install the weekly backup timer (also skipped when not root)
+#   --instance NAME         a further node on a host that already runs one (node.env NODE_INSTANCE): project
+#                           threadline-node-NAME, container tl-node-agent-NAME, timer threadline-node-backup-NAME.
+#                           Use its own --prefix too. Browser containers stay tl-profile-<id>, owned by NODE_NAME.
 #
 # Touches only: the install dir, the network tl-browsers, images tl.invalid/* (local builds, never pullable),
-# the container tl-node-agent (project threadline-node), throwaway checks named tl-*-check, and systemd units threadline-node-*.
+# the container tl-node-agent (project threadline-node; both get a -NAME suffix with --instance), throwaway checks
+# named tl-*-check, and systemd units threadline-node-*.
 # Never prints NODE_TOKEN, CLOAKBROWSER_LICENSE_KEY or any other value from node.env.
 set -euo pipefail
 
@@ -50,6 +54,7 @@ engine=cloak
 rebuild_browser=0
 wait_secs=180
 skip_timer=0
+opt_instance=''
 
 need_arg() { if [ "$#" -lt 2 ] || [ -z "$2" ]; then die "$1 needs a value"; fi; }
 while [ "$#" -gt 0 ]; do
@@ -66,7 +71,8 @@ while [ "$#" -gt 0 ]; do
     --rebuild-browser) rebuild_browser=1; shift ;;
     --wait) need_arg "$@"; wait_secs="$2"; shift 2 ;;
     --skip-timer) skip_timer=1; shift ;;
-    -h | --help) sed -n '2,26p' "$0"; exit 0 ;;
+    --instance) need_arg "$@"; opt_instance="$2"; shift 2 ;;
+    -h | --help) sed -n '2,30p' "$0"; exit 0 ;;
     *) die "unknown option: $1 (see --help)" ;;
   esac
 done
@@ -122,6 +128,15 @@ valid_node_name "$node_name" || die "NODE_NAME in $env_file must be lowercase le
 token="$(env_value NODE_TOKEN "$env_file")"
 [ "${#token}" -ge 16 ] || die "NODE_TOKEN in $env_file must be at least 16 characters"
 unset token
+instance="${opt_instance:-$(env_value NODE_INSTANCE "$env_file")}"
+TL_PROJECT=threadline-node
+backup_unit=threadline-node-backup
+if [ -n "$instance" ]; then
+  valid_node_name "$instance" || die "--instance / NODE_INSTANCE must be lowercase letters, digits and dashes"
+  TL_PROJECT="threadline-node-$instance"
+  TL_AGENT_CONTAINER="tl-node-agent-$instance"
+  backup_unit="threadline-node-backup-$instance"
+fi
 # The agent's zod schema rejects these when present but empty (env_file passes "" through).
 for key in CLOAKBROWSER_LICENSE_KEY NODE_SEAT_LIMIT NODE_MAX_PROFILES LOG_LEVEL AGENT_VERSION; do
   if env_get "$key" "$env_file" >/dev/null && [ -z "$(env_value "$key" "$env_file")" ]; then
@@ -238,6 +253,8 @@ tmp="$(mktemp "$prefix/.compose.env.XXXXXX")"
   echo "TL_DOCKER_GID=$docker_gid"
   echo "TL_AGENT_IMAGE=$agent_image"
   echo "TL_BROWSER_IMAGE=$browser_image"
+  echo "TL_PROJECT=$TL_PROJECT"
+  echo "TL_AGENT_CONTAINER=$TL_AGENT_CONTAINER"
 } >"$tmp"
 chmod 644 "$tmp"
 mv "$tmp" "$compose_env"
@@ -279,11 +296,11 @@ elif [ "$(id -u)" -ne 0 ] || ! command -v systemctl >/dev/null || [ ! -d /run/sy
   log "backup timer: not installed (needs root and systemd); cron alternative in deploy/node/README.md"
 else
   sed "s#@PREFIX@#$prefix#g" "$here/systemd/threadline-node-backup.service" \
-    >/etc/systemd/system/threadline-node-backup.service
-  install -m 644 "$here/systemd/threadline-node-backup.timer" /etc/systemd/system/threadline-node-backup.timer
+    >"/etc/systemd/system/$backup_unit.service"
+  install -m 644 "$here/systemd/threadline-node-backup.timer" "/etc/systemd/system/$backup_unit.timer"
   systemctl daemon-reload
-  systemctl enable --now threadline-node-backup.timer >/dev/null 2>&1
-  log "backup timer: threadline-node-backup.timer enabled (weekly)"
+  systemctl enable --now "$backup_unit.timer" >/dev/null 2>&1
+  log "backup timer: $backup_unit.timer enabled (weekly)"
 fi
 # Whoever redeploys later (e.g. the GitHub runner user) must own the install dir; node.env stays mode 600.
 if [ -n "$owner" ]; then

@@ -179,6 +179,18 @@ describe(
       });
     };
 
+    test('a further instance gets its own project and container name', () => {
+      const r = config({
+        TL_PROJECT: 'threadline-node-browser-2',
+        TL_AGENT_CONTAINER: 'tl-node-agent-browser-2',
+      });
+      assert.equal(r.status, 0, r.stderr);
+      const c = JSON.parse(r.stdout);
+      assert.equal(c.name, 'threadline-node-browser-2');
+      assert.equal(c.services.agent.container_name, 'tl-node-agent-browser-2');
+      assert.deepEqual(Object.keys(c.networks), ['tl-browsers'], 'instances share the browser network');
+    });
+
     test('agent service: socket, network, restart, no ports, namespaced', () => {
       const r = config();
       assert.equal(r.status, 0, r.stderr);
@@ -388,6 +400,32 @@ describe('install.sh with a fake docker', { skip: noBash }, () => {
     assert.doesNotMatch(calls(), /^network create/m);
     assert.doesNotMatch(calls(), /^build /m);
     assert.match(r2.stdout, /exists \(pass --rebuild-browser to rebuild\)/);
+  });
+
+  test('--instance namespaces the agent so a second node can share the host', async () => {
+    const { install, prefix, calls } = await setup();
+    run('mkdir', ['-p', prefix]);
+    fill(prefix, 'NODE_INSTANCE=browser-2\n');
+    const r = install(['--engine', 'chromium']);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const composeEnv = readFileSync(join(prefix, 'compose.env'), 'utf8');
+    assert.match(composeEnv, /^TL_PROJECT=threadline-node-browser-2$/m);
+    assert.match(composeEnv, /^TL_AGENT_CONTAINER=tl-node-agent-browser-2$/m);
+    assert.match(r.stdout, /tl-node-agent-browser-2 is connected/);
+    assert.match(calls(), /^logs --since \S+ tl-node-agent-browser-2$/m);
+    const bad = install(['--engine', 'chromium', '--instance', 'Bad_Name']);
+    assert.equal(bad.status, 1);
+    assert.match(bad.stderr, /--instance/);
+  });
+
+  test("no instance keeps the first node's names", async () => {
+    const { install, prefix } = await setup();
+    run('mkdir', ['-p', prefix]);
+    fill(prefix);
+    assert.equal(install(['--engine', 'chromium']).status, 0);
+    const composeEnv = readFileSync(join(prefix, 'compose.env'), 'utf8');
+    assert.match(composeEnv, /^TL_PROJECT=threadline-node$/m);
+    assert.match(composeEnv, /^TL_AGENT_CONTAINER=tl-node-agent$/m);
   });
 
   test('registry images are pulled, not built', async () => {

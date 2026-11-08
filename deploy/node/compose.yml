@@ -7,7 +7,9 @@
 #
 # Shared-host rules: project `threadline-node`, one container `tl-node-agent`, the external network
 # `tl-browsers` and no published ports. Nothing here names another project's containers, networks or ports.
-name: threadline-node
+# A second node on the same host (install.sh --instance <name>) gets project threadline-node-<name> and container
+# tl-node-agent-<name> through compose.env; the default names stay those of the first node.
+name: ${TL_PROJECT:-threadline-node}
 
 services:
   agent:
@@ -19,7 +21,7 @@ services:
     build:
       context: ${TL_REPO_DIR:-../..}
       dockerfile: apps/node-agent/Dockerfile
-    container_name: tl-node-agent
+    container_name: ${TL_AGENT_CONTAINER:-tl-node-agent}
     restart: unless-stopped
     # GATEWAY_URL, NODE_NAME, NODE_TOKEN, CLOAKBROWSER_LICENSE_KEY, … (mode 600, outside the repo).
     env_file:

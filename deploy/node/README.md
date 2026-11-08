@@ -72,6 +72,23 @@ Prerequisites (G3): Ubuntu 24.04 x86_64, Docker 29 with the compose plugin, outb
 Smoke test without a CloakBrowser build: `--engine chromium` builds the stock-Chromium image (no fingerprinting;
 never for real accounts).
 
+## A second node on the same host
+
+One VM can run more than one node (e.g. `browser-2` next to `browser-1`). Each agent only adopts and reports the
+`tl-profile-*` containers labelled with its own `NODE_NAME`, and all of them share the `tl-browsers` network. Give the
+new node its own install dir and an instance name:
+
+```sh
+sudo deploy/node/install.sh --prefix /opt/threadline-node-browser-2 --instance browser-2 --owner "$USER"
+# fill in node.env as above with NODE_NAME=browser-2, its own NODE_TOKEN, and NODE_INSTANCE=browser-2 so later
+# runs keep the names; then run the same command again
+```
+
+That gives compose project `threadline-node-browser-2`, container `tl-node-agent-browser-2` and timer
+`threadline-node-backup-browser-2`. CloakBrowser seats are counted per license, so the `NODE_SEAT_LIMIT` values of
+all nodes on one license should add up to its seats. The backup still copies every `tl-profile-*` volume on the host;
+enable it on one node only.
+
 ## Update
 
 From the checkout: `git pull && deploy/node/install.sh` (no sudo needed once `--owner` was used and the user is in
