@@ -1,11 +1,14 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 if (!process.env.DATABASE_URL) {
-  for (const line of readFileSync(join(HERE, '../../../../.env'), 'utf8').split('\n')) {
+  for (const line of (existsSync(join(HERE, '../../../../.env'))
+    ? readFileSync(join(HERE, '../../../../.env'), 'utf8')
+    : ''
+  ).split('\n')) {
     const m = line.match(/^([A-Z_]+)=(\S*)/);
     if (m && !process.env[m[1]!]) process.env[m[1]!] = m[2];
   }
