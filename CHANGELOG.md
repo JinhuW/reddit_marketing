@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/JinhuW/reddit_marketing/compare/v0.2.0...v0.3.0) (2026-11-08)
+
+
+### Features
+
+* **browsers:** fold the per-profile proxy form away by default ([dfd46d9](https://github.com/JinhuW/reddit_marketing/commit/dfd46d9400bd6d041c624f3e73a966c4aec317ef))
+
 ## [0.2.0](https://github.com/JinhuW/reddit_marketing/compare/v0.1.1...v0.2.0) (2026-11-08)
 
 
