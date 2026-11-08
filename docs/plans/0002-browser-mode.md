@@ -11,7 +11,7 @@ planned. The OAuth path stays in the code and is used only when an app is config
 | Connect an account | Reddit consent screen → token | Create the profile first → owner signs in to reddit.com over VNC → `profile.whoami` reads the identity from the logged-in browser |
 | Post a comment / DM | Reddit API; browser only as fallback | Straight to the browser action (`action.submitComment` / `action.sendDm`) through the existing approval gate |
 | Post a new thread (`post` drafts) | Reddit API | Not supported in browser mode: refused with a clear reason, never sent |
-| Find conversations (`reddit.poll`) | App token (client credentials) | Public JSON listings (`/r/<sub>/new.json`) fetched by the worker through `REDDIT_READ_PROXY_URL` |
+| Find conversations (`reddit.poll`) | App token (client credentials) | The public Atom feed (`/r/<sub>/new/.rss`) fetched by the worker through `REDDIT_READ_PROXY_URL` (anonymous `new.json` returns 403) |
 | Profile → node | Manual (`register-node --assign`) | Assigned at creation to the least-loaded online node in the workspace that has room (`maxProfiles`); changeable on the Browsers screen |
 | Proxy | Per profile, saved on the Browsers screen | Same. Production profile 1 uses a Decodo ISP port not used by the ERP fleet |
 

@@ -394,6 +394,12 @@ describe('post.publish for a browser-mode account (plan 0002)', () => {
     );
     const second = await publishDraft(d.workspaceId, d.id, () => noApi, new Date(), mem);
     expect(second).toEqual({ status: 'queued', node, jobId: `bj-action.sendDm-${d.id}-r1` });
+    // the re-queued job is still waiting: the next sweep skips it and does not pause the account
+    const waiting = await publishDraft(d.workspaceId, d.id, () => noApi, new Date(), mem);
+    expect(waiting.status).toBe('skipped');
+    expect(
+      (await prisma.redditAccount.findUniqueOrThrow({ where: { id: d.accountId } })).pausedReason,
+    ).toBeNull();
 
     // A failure that may have reached the node (e.g. retries exhausted on a timeout) is never re-sent.
     mem.fail(node, `bj-action.sendDm-${d.id}-r1`, 'node timed out');

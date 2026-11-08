@@ -184,6 +184,11 @@ async function publishInBrowser(
         return { status: 'queued', node, jobId };
       }
       const prev = await q.get(node, jobId);
+      // Still queued or running: the sweep runs every minute, so this is the normal case while a job waits.
+      if (prev && prev.state !== 'failed' && prev.state !== 'completed') {
+        log.info({ draftId: d.id, node, jobId, state: prev.state }, 'browser mode: draft already queued');
+        return { status: 'skipped', reason: `already queued on ${node}` };
+      }
       if (prev?.state !== 'failed' || !prev.failedReason?.startsWith(DISPATCH_REFUSED_PREFIX)) break;
     }
     // Not in flight (checked above) and not a clean refusal: it may have reached Reddit. A human has to look.

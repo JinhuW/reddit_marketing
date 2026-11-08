@@ -113,7 +113,9 @@ export async function enqueueProfileJob(
         : { kind, workspaceId, profileId };
   const jobId = browserJobId(job, deps.now().toString(36));
   try {
-    await withTimeout(deps.queue(node.name).add(node.name, job, { ...BROWSER_JOB_OPTIONS, jobId }));
+    // A sign-in check is a quick read the person is waiting on: retry twice, not for minutes after the page gave up.
+    const opts = kind === 'profile.whoami' ? { ...BROWSER_JOB_OPTIONS, attempts: 2 } : BROWSER_JOB_OPTIONS;
+    await withTimeout(deps.queue(node.name).add(node.name, job, { ...opts, jobId }));
   } catch {
     return { queued: false, reason: 'Could not reach the job queue. Try again in a minute.' };
   }
@@ -160,9 +162,19 @@ export async function whoamiStatus(
   } catch {
     return { state: 'pending' };
   }
-  if (state === 'failed') return { state: 'failed', reason: 'The browser could not check the sign-in.' };
+  if (state === 'failed') return { state: 'failed', reason: whoamiFailure(job.failedReason) };
   if (state !== 'completed') return { state: 'pending' };
   return readWhoamiResult(job.returnvalue);
+}
+
+/** A failed whoami job's reason → a message for the page. Only known codes are mapped; nothing else is echoed. */
+export function whoamiFailure(failedReason: string | undefined): string {
+  const r = failedReason ?? '';
+  if (r.includes('identity_conflict'))
+    return 'This Reddit user is already connected in this workspace, or the browser is signed in as a different user.';
+  if (r.includes('bad_whoami_data')) return 'The browser returned an answer Threadline could not read.';
+  if (r.includes('not signed in') || r.includes('not identified')) return 'Not signed in yet.';
+  return 'The browser could not check the sign-in.';
 }
 
 /** Gateway return value → status. `{ outcome: 'ok', data: WhoamiData }`, or a skipped / error outcome. */
