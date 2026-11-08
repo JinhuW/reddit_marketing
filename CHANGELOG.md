@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/JinhuW/reddit_marketing/compare/v0.4.0...v0.5.0) (2026-11-08)
+
+
+### Features
+
+* **browsers:** create standalone browsers and assign an account to one ([6e3a682](https://github.com/JinhuW/reddit_marketing/commit/6e3a6829b618f67075be1e1f7d7af5277eb7b096))
+
 ## [0.4.0](https://github.com/JinhuW/reddit_marketing/compare/v0.3.0...v0.4.0) (2026-11-08)
 
 
