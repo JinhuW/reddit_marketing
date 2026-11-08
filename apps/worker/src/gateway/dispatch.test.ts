@@ -111,6 +111,7 @@ beforeAll(async () => {
       'action.sendDm': 2_000,
       'profile.testProxy': 2_000,
       'profile.whoami': 2_000,
+      'profile.signIn': 2_000,
       'health.check': 2_000,
     },
   });
@@ -629,6 +630,102 @@ describe('gateway dispatch', () => {
         expect(acc.identifiedAt).toBeNull();
       } finally {
         agent.setScript('profile.whoami', { outcome: 'ok', data: { loggedIn: false } });
+      }
+    });
+
+    it('profile.signIn sends the stored credentials and cookies, imports them once and records the identity', async () => {
+      const p = prof.dm;
+      await pendingBrowserAccount(p.accountId);
+      const name = `b3sign_${randomBytes(3).toString('hex')}`;
+      const redditId = randomBytes(4).toString('hex');
+      const password = `pw-${randomBytes(6).toString('hex')}`;
+      const totpSecret = 'JBSWY3DPEHPK3PXP';
+      const cookieValue = `cv-${randomBytes(6).toString('hex')}`;
+      const cookieJson = JSON.stringify([
+        {
+          name: 'reddit_session',
+          value: cookieValue,
+          domain: '.reddit.com',
+          path: '/',
+          httpOnly: true,
+          secure: true,
+        },
+      ]);
+      const cookiesEnc = encrypt(cookieJson);
+      // A real username (not pending-…) so the gateway sends credentials.
+      await prisma.redditAccount.update({
+        where: { id: p.accountId },
+        data: { username: name, loginPasswordEnc: encrypt(password), totpSecretEnc: encrypt(totpSecret) },
+      });
+      await prisma.browserProfile.update({
+        where: { id: p.id },
+        data: { cookiesEnc, startUrl: 'https://www.reddit.com/r/startups/' },
+      });
+      try {
+        agent.next('profile.signIn', { outcome: 'ok', data: { loggedIn: true, name, id: redditId } });
+        const job = await enqueue({ kind: 'profile.signIn', workspaceId, profileId: p.id });
+        const out = await settle(job);
+        expect(out).toEqual({
+          ok: true,
+          value: {
+            outcome: 'ok',
+            kind: 'profile.signIn',
+            data: { loggedIn: true, changed: true, username: name },
+          },
+        });
+        const cmd = agent.commands.items.find((c) => c.cmdId === job.id)?.cmd;
+        expect(cmd).toMatchObject({
+          kind: 'profile.signIn',
+          profileId: p.id,
+          startUrl: 'https://www.reddit.com/r/startups/',
+          credentials: { username: name, password, totpSecret },
+          cookies: [expect.objectContaining({ name: 'reddit_session', value: cookieValue })],
+        });
+        // Secrets never in the job payload, its stored result or audit rows.
+        const stored = await queue.getJob(job.id!);
+        const where = JSON.stringify([stored?.data, stored?.returnvalue]);
+        for (const secret of [password, totpSecret, cookieValue, cookiesEnc])
+          expect(where).not.toContain(secret);
+        const row = await prisma.browserProfile.findUniqueOrThrow({ where: { id: p.id } });
+        expect(row.cookiesEnc).toBeNull();
+        expect(row.cookiesImportedAt).not.toBeNull();
+        const acc = await prisma.redditAccount.findUniqueOrThrow({ where: { id: p.accountId } });
+        expect(acc).toMatchObject({ username: name, redditId: `t2_${redditId}` });
+        expect(acc.identifiedAt).not.toBeNull();
+        const evs = await prisma.auditEvent.findMany({
+          where: {
+            OR: [{ targetId: p.id }, { targetId: p.accountId }],
+            at: { gte: new Date(Date.now() - 60_000) },
+          },
+        });
+        const audit = JSON.stringify(evs.map((e) => e.meta));
+        for (const secret of [password, totpSecret, cookieValue]) expect(audit).not.toContain(secret);
+      } finally {
+        await prisma.redditAccount.update({
+          where: { id: p.accountId },
+          data: { loginPasswordEnc: null, totpSecretEnc: null },
+        });
+        await prisma.browserProfile.update({
+          where: { id: p.id },
+          data: { cookiesEnc: null, cookiesImportedAt: null, startUrl: null },
+        });
+      }
+    });
+
+    it('an action for a browser whose account was unassigned is refused, nothing sent', async () => {
+      const d = await draftCopy('dm');
+      const p = prof.dm;
+      await prisma.browserProfile.update({ where: { id: p.id }, data: { accountId: null } });
+      try {
+        const before = agent.commands.items.length;
+        const out = await settle(
+          await enqueue({ kind: 'action.sendDm', workspaceId, profileId: p.id, draftId: d.id }),
+        );
+        expect(out.ok).toBe(false);
+        expect(!out.ok && out.error).toMatch(/^refused: no account assigned to this browser/);
+        expect(agent.commands.items.length).toBe(before);
+      } finally {
+        await prisma.browserProfile.update({ where: { id: p.id }, data: { accountId: p.accountId } });
       }
     });
 

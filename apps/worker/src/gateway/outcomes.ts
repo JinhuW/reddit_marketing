@@ -2,10 +2,13 @@
  * Maps an agent `result` to Threadline state (docs/plans/0001-infra-implementation.md §4 T20).
  *
  *   ok            → `profile.started` / `profile.stopped` audit for start/stop; for `profile.whoami` the signed-in
- *                   identity is recorded on a browser-mode account (applyWhoami; a duplicate is final)
+ *                   identity is recorded on a browser-mode account (applyWhoami; a duplicate is final); for
+ *                   `profile.signIn` (plan 0003) the cookies that were sent are marked imported first, then the
+ *                   same identity handling runs
  *   posted        → `drafts.markPosted` (writes `draft.posted`), once: a replayed result for a draft that is
  *                   already posted changes nothing
- *   needs_human   → pause the account (`needs_human`) and notify its owner; the draft stays approved
+ *   needs_human   → pause the account (`needs_human`) and notify its owner; the draft stays approved. A browser
+ *                   with no account (plan 0003) has nothing to pause: logged only
  *   license_denied→ pause the account (`license_denied`) and write `profile.license_denied`
  *   proxy_failed  → pause the account (`proxy_failed`)
  *   error (action)→ final failure: the agent caches action results (errors included) per cmdId and replays them,
@@ -45,6 +48,8 @@ export interface OutcomeDeps {
     accountId: string,
     who: accounts.BrowserIdentity,
   ) => Promise<{ changed: boolean; username: string }>;
+  /** browsers.markCookiesImported: clears the pending cookies only if they are still the ones that were sent. */
+  markCookiesImported: (workspaceId: string, profileId: string, cookiesEnc: string) => Promise<unknown>;
   notifyNeedsHuman: (input: {
     workspaceId: string;
     memberId: string;
@@ -63,6 +68,7 @@ export const defaultOutcomeDeps: OutcomeDeps = {
   writeAudit: (input) => audit.writeAudit(input),
   // Same shape post.publish writes for NeedsBrowser (there is no notifications repo yet; see DECISIONS).
   completeIdentity: (ws, accountId, who) => accounts.completeBrowserIdentity(ws, accountId, who),
+  markCookiesImported: (ws, profileId, cookiesEnc) => browsers.markCookiesImported(ws, profileId, cookiesEnc),
   notifyNeedsHuman: (n) =>
     prisma.notification.create({
       data: {
@@ -81,6 +87,11 @@ export interface OutcomeContext {
   node: string;
   /** null only for `health.check` */
   profile: Pick<browsers.DispatchProfile, 'id' | 'name' | 'accountId' | 'account'> | null;
+  /**
+   * `profile.signIn` only: the encrypted cookie JSON that went out in the command (null = none were sent). Still
+   * encrypted; never logged. Passed to markCookiesImported on `ok`.
+   */
+  sentCookiesEnc?: string | null;
 }
 
 /** Refusals and failures that must not be retried. The dispatcher turns these into BullMQ UnrecoverableError. */
@@ -115,6 +126,18 @@ export const FINAL_NON_ACTION_CODES: ReadonlySet<string> = new Set([
   'max_profiles',
 ]);
 
+/**
+ * `profile.signIn` error codes a retry cannot fix (plan 0003). Final, so BullMQ never repeats a rejected login:
+ * re-submitting a wrong password or 2FA code risks Reddit locking the account. The account is not paused; the
+ * owner fixes the stored credentials or cookies and signs in again. `login_form_not_found` and `aborted` stay
+ * retryable (nothing was submitted).
+ */
+export const FINAL_SIGN_IN_CODES: ReadonlySet<string> = new Set([
+  'signin_rejected',
+  'totp_secret_invalid',
+  'cookies_rejected',
+]);
+
 const PAUSE_TEXT: Record<'needs_human' | 'license_denied' | 'proxy_failed', string> = {
   needs_human: 'Reddit asked for verification in the browser',
   license_denied: 'CloakBrowser license check failed on the node',
@@ -147,6 +170,14 @@ export async function applyOutcome(
         });
       }
       if (job.kind === 'profile.whoami') return applyWhoami(ctx, result.data, deps, l);
+      if (job.kind === 'profile.signIn') {
+        // The agent imports cookies before anything else, so `ok` means they are in the profile's own volume.
+        if (ctx.profile && ctx.sentCookiesEnc) {
+          await deps.markCookiesImported(job.workspaceId, ctx.profile.id, ctx.sentCookiesEnc);
+          l.info({ profileId: ctx.profile.id }, 'cookies imported');
+        }
+        return applyWhoami(ctx, result.data, deps, l);
+      }
       if (isAction(job)) {
         // An action that "succeeded" without posting is a contract breach: never guess, let a human look.
         l.error('action returned ok instead of posted');
@@ -184,12 +215,6 @@ export async function applyOutcome(
         l.warn({ outcome: reason }, 'pause outcome without a profile');
         return { outcome: reason, paused: false, accountId: null };
       }
-      const paused = await deps.pauseAccount({
-        workspaceId: job.workspaceId,
-        accountId: p.accountId,
-        reason,
-        detail: result.error?.code ? `${ctx.node}: ${result.error.code}` : ctx.node,
-      });
       if (reason === 'license_denied') {
         await deps.writeAudit({
           workspaceId: job.workspaceId,
@@ -201,18 +226,31 @@ export async function applyOutcome(
           meta: { item: p.name, node: ctx.node, ...(result.error?.code ? { code: result.error.code } : {}) },
         });
       }
+      const account = p.account;
+      if (!account) {
+        // Plan 0003: a browser with no account (e.g. a sign-in run that only imported cookies). Nothing to pause.
+        l.warn({ outcome: reason, profileId: p.id }, 'browser has no account; nothing paused');
+        return { outcome: reason, paused: false, accountId: null };
+      }
+      const accountId = account.id;
+      const paused = await deps.pauseAccount({
+        workspaceId: job.workspaceId,
+        accountId,
+        reason,
+        detail: result.error?.code ? `${ctx.node}: ${result.error.code}` : ctx.node,
+      });
       if (reason === 'needs_human') {
         await deps.notifyNeedsHuman({
           workspaceId: job.workspaceId,
-          memberId: p.account.ownerMemberId,
+          memberId: account.ownerMemberId,
           draftId: isAction(job) ? job.draftId : null,
           profileId: p.id,
           node: ctx.node,
-          text: `${PAUSE_TEXT.needs_human} for u/${p.account.username}. Take over the browser to continue.`,
+          text: `${PAUSE_TEXT.needs_human} for u/${account.username}. Take over the browser to continue.`,
         });
       }
-      l.warn({ outcome: reason, accountId: p.accountId, changed: paused.changed }, 'account paused');
-      return { outcome: reason, paused: paused.changed, accountId: p.accountId };
+      l.warn({ outcome: reason, accountId, changed: paused.changed }, 'account paused');
+      return { outcome: reason, paused: paused.changed, accountId };
     }
 
     case 'error': {
@@ -224,6 +262,14 @@ export async function applyOutcome(
       }
       l.warn({ code }, 'agent returned error');
       if (!isAction(job)) {
+        if (job.kind === 'profile.signIn' && FINAL_SIGN_IN_CODES.has(code)) {
+          if (code === 'signin_rejected')
+            l.warn(
+              { profileId: ctx.profile?.id, accountId: ctx.profile?.accountId, code },
+              'Reddit rejected the stored password or 2FA code; not retried, update the credentials',
+            );
+          throw new FinalOutcomeError(code, `sign-in failed on ${ctx.node}: ${code}`);
+        }
         // Not cached by the agent: a retry really retries. Only refusals a retry cannot fix are final.
         if (FINAL_NON_ACTION_CODES.has(code))
           throw new FinalOutcomeError(code, `agent error on ${ctx.node}: ${code}`);
@@ -239,7 +285,8 @@ export async function applyOutcome(
 }
 
 /**
- * `profile.whoami` → `ok`. Nobody signed in: no change. Signed in: a browser-mode account gets its identity
+ * `profile.whoami` / `profile.signIn` → `ok`. Nobody signed in: no change. A browser with no account (plan 0003):
+ * logged only. Signed in: a browser-mode account gets its identity
  * (`accounts.completeBrowserIdentity`, idempotent; writes `account.connected`); an OAuth account keeps the
  * identity from its token. A refusal (that Reddit user is already connected in the workspace, or the profile
  * is signed in as another user than the account) is final. Logs carry codes only, never the username.
@@ -251,7 +298,8 @@ async function applyWhoami(
   l: typeof rootLog,
 ): Promise<BrowserJobOutcome> {
   const p = ctx.profile;
-  if (!p) throw new FinalOutcomeError('unexpected_outcome', 'profile.whoami without a profile');
+  const kind = ctx.job.kind === 'profile.signIn' ? 'profile.signIn' : 'profile.whoami';
+  if (!p) throw new FinalOutcomeError('unexpected_outcome', `${kind} without a profile`);
   const parsed = WhoamiData.safeParse(data);
   if (!parsed.success) {
     l.error({ code: 'bad_whoami_data' }, 'whoami result does not match the protocol');
@@ -260,17 +308,24 @@ async function applyWhoami(
   const who = parsed.data;
   if (!who.loggedIn) {
     l.info({ accountId: p.accountId }, 'not signed in');
-    return { outcome: 'ok', kind: 'profile.whoami', data: { loggedIn: false } };
+    return { outcome: 'ok', kind, data: { loggedIn: false } };
+  }
+  if (!p.account) {
+    l.info(
+      { profileId: p.id, code: 'no_account' },
+      'signed in, but the browser has no account; nothing recorded',
+    );
+    return { outcome: 'ok', kind, data: { loggedIn: true, changed: false } };
   }
   if (p.account.authMode !== 'browser') {
     l.info(
       { accountId: p.accountId, code: 'oauth_account' },
       'whoami on an OAuth account; identity unchanged',
     );
-    return { outcome: 'ok', kind: 'profile.whoami', data: { loggedIn: true, changed: false } };
+    return { outcome: 'ok', kind, data: { loggedIn: true, changed: false } };
   }
   try {
-    const r = await deps.completeIdentity(ctx.job.workspaceId, p.accountId, {
+    const r = await deps.completeIdentity(ctx.job.workspaceId, p.account.id, {
       name: who.name,
       id: who.id,
       ...(who.totalKarma === undefined ? {} : { totalKarma: who.totalKarma }),
@@ -279,7 +334,7 @@ async function applyWhoami(
     l.info({ accountId: p.accountId, changed: r.changed }, 'browser identity recorded');
     return {
       outcome: 'ok',
-      kind: 'profile.whoami',
+      kind,
       data: { loggedIn: true, changed: r.changed, username: r.username },
     };
   } catch (e) {

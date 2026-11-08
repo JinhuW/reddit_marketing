@@ -9,7 +9,7 @@ const json = (body: unknown, status = 200) =>
 
 type Params = { params: Promise<{ profileId: string }> };
 
-/** Session → member → profile → Admin or account owner. Shared by the status GET and the upgrade POST. */
+/** Session → member → profile → Admin, account owner, or (no account) the creator. Shared by GET and the upgrade POST. */
 async function controllableProfile(params: Params['params']) {
   const me = await getCurrentMember();
   if (!me) return { ok: false, res: json({ error: 'unauthorized' }, 401) } as const;

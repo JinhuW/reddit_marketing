@@ -12,7 +12,7 @@ import {
 
 type Row = Parameters<typeof profileView>[0];
 
-const row = (account: Partial<Row['account']> = {}): Row =>
+const row = (account: Partial<NonNullable<Row['account']>> | null = {}, extra: Partial<Row> = {}): Row =>
   ({
     id: 'p1',
     name: 'Mira · Chrome',
@@ -24,7 +24,13 @@ const row = (account: Partial<Row['account']> = {}): Row =>
     lastSessionAt: null,
     proxy: null,
     sessions: [],
-    account: {
+    createdByMemberId: 'm2',
+    createdBy: { user: { name: 'Leo Park', email: 'leo@acme.so' } },
+    startUrl: null,
+    cookiesEnc: null,
+    cookiesImportedAt: null,
+    ...extra,
+    account: account && {
       id: 'a1',
       username: 'mira_cs',
       ownerMemberId: 'm1',
@@ -96,6 +102,51 @@ describe('profileView', () => {
     expect(v.needsAttention).toBe(true);
   });
 
+  it('a browser with no account: "No account", creator controls, no agent or pause, no attention', () => {
+    const v = profileView(row(null, { accountId: null }));
+    expect(v.account).toBe('No account');
+    expect(v.accountInfo).toBeNull();
+    expect(v.accountOwnerMemberId).toBeNull();
+    expect(v.owner).toBe('Created by Leo Park');
+    expect(v.ownerFirst).toBe('Leo');
+    expect(v.agent).toBeNull();
+    expect(v.paused).toBeNull();
+    expect(v.signedIn).toBe(true);
+    expect(v.needsAttention).toBe(false);
+    expect(profileView(row(null, { accountId: null, createdBy: null } as Partial<Row>)).ownerFirst).toBe(
+      'its creator',
+    );
+  });
+
+  it('exposes only whether credentials and cookies are stored, never their values', () => {
+    const v = profileView(
+      row(
+        {
+          authMode: 'browser',
+          identifiedAt: null,
+          username: 'pending-abc123',
+          loginPasswordEnc: 'enc:pw',
+          totpSecretEnc: null,
+        } as Partial<NonNullable<Row['account']>>,
+        { startUrl: 'https://www.reddit.com/r/saas/', cookiesEnc: 'enc:cookies' },
+      ),
+    );
+    expect(v.accountInfo).toEqual({
+      id: 'a1',
+      username: null,
+      authMode: 'browser',
+      identified: false,
+      hasPassword: true,
+      hasTotp: false,
+      ownerName: 'Mira Chen',
+    });
+    expect(v.startUrl).toBe('https://www.reddit.com/r/saas/');
+    expect(v.cookies).toEqual({ pending: true, importedAt: null });
+    expect(JSON.stringify(v)).not.toContain('enc:');
+    const imported = profileView(row({}, { cookiesImportedAt: new Date('2026-11-07T10:00:00Z') }));
+    expect(imported.cookies).toEqual({ pending: false, importedAt: '2026-11-07T10:00:00.000Z' });
+  });
+
   it('a healthy profile needs no attention', () => {
     const v = profileView(row());
     expect(v.paused).toBeNull();
@@ -109,6 +160,18 @@ describe('sign-in', () => {
     expect(showSignIn(undefined, { authMode: 'browser', identifiedAt: null })).toBe(true);
     expect(showSignIn(undefined, { authMode: 'browser', identifiedAt: new Date() })).toBe(false);
     expect(showSignIn(undefined, { authMode: 'oauth', identifiedAt: null })).toBe(false);
+    expect(showSignIn(undefined, null)).toBe(false);
+    expect(showSignIn('1', null)).toBe(true);
+  });
+
+  it('a browser with no account is signed in as whoever the job reads', () => {
+    expect(signInView(null, null)).toEqual({ state: 'idle' });
+    expect(
+      signInView(null, { state: 'done', whoami: { loggedIn: true, name: 'jane_from_acme', id: 'x1' } }),
+    ).toEqual({ state: 'signed_in', username: 'jane_from_acme' });
+    expect(signInView(null, { state: 'done', whoami: { loggedIn: false } })).toMatchObject({
+      state: 'not_signed_in',
+    });
   });
 
   it('maps account identity and the whoami answer', () => {

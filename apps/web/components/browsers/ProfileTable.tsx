@@ -21,7 +21,9 @@ export function ProfileTable({
     <section className="panel min-w-0" aria-labelledby="profiles-h">
       <div className="sect-h">
         <h2 id="profiles-h">Browser profiles</h2>
-        <span className="muted text-xs">Each profile is bound to exactly one account and one agent</span>
+        <span className="muted text-xs">
+          Each profile holds at most one account; each account has one agent
+        </span>
       </div>
       <div className="overflow-x-auto px-2 py-1">
         <table className="tbl [&_td]:whitespace-nowrap" data-testid="profile-table">

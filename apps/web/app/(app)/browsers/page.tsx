@@ -4,8 +4,9 @@ import { Dot, ProfileTable } from '@/components/browsers/ProfileTable';
 import { type NodeInfo, nodeOptions, profileView, savedProxyLabel } from '@/components/browsers/view';
 import { PageHeader } from '@/components/ui/page-header';
 import { requireMember } from '@/lib/session';
-import { browsers, nodes, shell } from '@threadline/db';
+import { browsers, members, nodes, shell } from '@threadline/db';
 import type { Metadata } from 'next';
+import Link from 'next/link';
 
 export const metadata: Metadata = { title: 'Browsers and proxies' };
 
@@ -46,12 +47,32 @@ export default async function BrowsersPage({ searchParams }: { searchParams: Pro
     .sort((a, b) => a - b);
   const median = latencies.length ? latencies[Math.floor(latencies.length / 2)] : null;
   const limit = shell.PLAN_LIMITS[me.workspace.plan].accounts;
+  const canCreate = members.roleAtLeast(me.role, 'editor');
+  // Only for a selected browser with no account: accounts in no browser this member may move (admin: any).
+  const assignable =
+    selRow && !selRow.accountId && browsers.canControlProfile(me, selRow)
+      ? (await browsers.listAssignableAccounts(me.workspaceId))
+          .filter((a) => isAdmin || a.ownerMemberId === me.id)
+          .map((a) => ({
+            id: a.id,
+            label: a.username.startsWith('pending-')
+              ? `Unfinished sign-in · ${a.owner.user.name ?? a.owner.user.email}`
+              : `u/${a.username} · ${a.owner.user.name ?? a.owner.user.email}`,
+          }))
+      : [];
 
   return (
     <>
       <PageHeader
         title="Browsers and proxies"
         sub="One dedicated browser profile per connected account. Agents draft and post only inside that profile, so each account always logs in from the same device and place."
+        actions={
+          canCreate ? (
+            <Link href="/browsers/new" className="btn btn-primary">
+              New browser
+            </Link>
+          ) : null
+        }
       />
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Kpi label="Profiles">
@@ -101,11 +122,12 @@ export default async function BrowsersPage({ searchParams }: { searchParams: Pro
             nodeOptions={nodeOptions(online, selRow.nodeId ? (nodeById.get(selRow.nodeId) ?? null) : null)}
             savedProxies={savedProxies}
             currentProxyId={selRow.proxyId}
+            assignable={assignable}
           />
         </div>
       ) : (
         <div className="panel muted p-6 text-[13px]">
-          No browser profiles yet. A profile is created when a Reddit account is connected.
+          No browser profiles yet. Create one with New browser, or connect a Reddit account.
         </div>
       )}
     </>

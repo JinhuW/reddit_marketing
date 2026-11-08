@@ -197,3 +197,24 @@ node reads the identity. Spec: `docs/plans/0002-browser-mode.md`.
   The profile and its fingerprint are kept. The connect form says it picks up u/pending-… where it left off.
 - The one-account-per-person block rule is unchanged: once the account has a Reddit identity, a second connect
   is refused. OAuth connect still refuses while a pending browser account exists (it cannot reuse it).
+
+## 2026-11-08 · Browsers are created on their own; an account is assigned to one
+
+Plan: docs/plans/0003-standalone-browsers.md. The Design canvas has no artboard for this yet; the screens follow the
+existing Browsers editor and the owner's reference (an anti-detect-browser "edit account" dialog).
+
+- `BrowserProfile.accountId` is optional. **One account per browser at a time**, an account in at most one browser
+  (`@unique`). Assign / unassign write `profile.account_assigned` / `profile.account_unassigned`, and both are
+  refused while someone has control of the browser. Deleting an account keeps its browser.
+- An account-less browser is controlled by admins and its creator (`createdByMemberId`). It is never dispatched
+  for actions. Assigning an existing account also needs admin or that account's owner, so nobody can move someone
+  else's account into their own browser.
+- The **password and 2FA secret** are stored encrypted on the account and used only by the gateway to build
+  `profile.signIn`. That command fills reddit.com/login and the TOTP code, and a captcha or check falls back to
+  the VNC take-over. Audit records which fields changed, never the values.
+- **Start tab and cookies** live on the browser. Pasted cookie JSON is encrypted, imported on the next
+  `profile.signIn` and then deleted (the profile's own volume keeps them).
+- Identity: an account added by name must be signed in as that name. `completeBrowserIdentity` refuses any other
+  user, so a browser whose cookies still hold the previous account cannot pass as the new one.
+- The `/accounts/connect` browser flow is unchanged. It resumes only its own `pending-…` placeholders, never an
+  account added by name.

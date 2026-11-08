@@ -131,15 +131,16 @@ export interface VncSession {
 export interface VncRepo {
   /** The profile's open BrowserSession, if any. */
   openSession(profileId: string): Promise<VncSession | null>;
-  /** The profile's account and node (with name). */
+  /** The profile's account (null for a browser with no account, plan 0003) and node (with name). */
   profileNode(
     workspaceId: string,
     profileId: string,
-  ): Promise<{ accountId: string; node: { name: string; workspaceId: string } | null } | null>;
+  ): Promise<{ accountId: string | null; node: { name: string; workspaceId: string } | null } | null>;
   /** Appends a `session.log` row to the session (what `session.idle` reads). */
   logSession(entry: {
     session: VncSession;
-    accountId: string;
+    /** null for a browser with no account */
+    accountId: string | null;
     text: string;
     kind: 'connected' | 'disconnected' | 'activity';
   }): Promise<void>;
@@ -286,7 +287,7 @@ interface Dialing {
 
 interface Relay {
   session: VncSession;
-  accountId: string;
+  accountId: string | null;
   node: string;
   web: WebSocket;
   agent: WebSocket;
@@ -553,7 +554,7 @@ export class VncRelay {
 
   private startRelay(
     session: VncSession,
-    accountId: string,
+    accountId: string | null,
     node: string,
     web: { ws: WebSocket; held: { release(s: Sink): void } },
     agent: { ws: WebSocket; held: { release(s: Sink): void } },

@@ -5,7 +5,7 @@ import type { AccountAuthMode, AccountRoleLabel } from '@threadline/shared';
 import { prisma } from '../client';
 import { PlanLimitError } from './agents';
 import { writeAudit } from './audit';
-import { attachProxyTx, ensureCloakFingerprintTx } from './browsers';
+import { assignAccountTx, attachProxyTx, ensureCloakFingerprintTx } from './browsers';
 import { pickForProfile } from './nodes';
 import { PLAN_LIMITS } from './shell';
 
@@ -101,7 +101,13 @@ export type AccountCard = Awaited<ReturnType<typeof listCards>>[number];
 /** The owner's unfinished browser connect ({@link isPendingConnect}), if any: the next browser connect resumes it. */
 export function findPendingByOwner(workspaceId: string, ownerMemberId: string) {
   return prisma.redditAccount.findFirst({
-    where: { workspaceId, ownerMemberId, authMode: 'browser', identifiedAt: null },
+    where: {
+      workspaceId,
+      ownerMemberId,
+      authMode: 'browser',
+      identifiedAt: null,
+      username: { startsWith: 'pending-' },
+    },
     orderBy: { createdAt: 'asc' },
     select: { id: true, username: true, authMode: true, identifiedAt: true },
   });
@@ -172,6 +178,7 @@ export async function connect(input: ConnectInput) {
       data: {
         workspaceId: input.workspaceId,
         accountId: account.id,
+        createdByMemberId: input.ownerMemberId,
         name: profileName(
           owner.user.name ?? input.username,
           await ownedBefore(tx, input.ownerMemberId, account.id),
@@ -258,7 +265,8 @@ export async function startBrowserConnect(
       include: {
         user: { select: { name: true, email: true } },
         ownedAccounts: {
-          where: { authMode: 'browser', identifiedAt: null },
+          // only the connect flow's own placeholders; an account added to a browser by name is not resumed
+          where: { authMode: 'browser', identifiedAt: null, username: { startsWith: 'pending-' } },
           orderBy: { createdAt: 'asc' },
           take: 1,
           select: {
@@ -317,6 +325,7 @@ export async function startBrowserConnect(
       data: {
         workspaceId: input.workspaceId,
         accountId: account.id,
+        createdByMemberId: actor,
         name: profileName(
           owner.user.name ?? owner.user.email.split('@')[0] ?? 'Owner',
           await ownedBefore(tx, input.ownerMemberId, account.id),
@@ -503,6 +512,11 @@ export async function completeBrowserIdentity(
           `This profile is signed in as u/${who.name}, but the account is u/${acc.username}.`,
         );
       }
+      // An account added to a browser by name (plan 0003) must be signed in as that name.
+      if (!acc.username.startsWith('pending-') && acc.username.toLowerCase() !== who.name.toLowerCase())
+        throw new AccountConflictError(
+          `This browser is signed in as u/${who.name}, but the assigned account is u/${acc.username}. Sign out over the live view first.`,
+        );
       const other = await tx.redditAccount.findFirst({
         where: {
           workspaceId,
@@ -593,5 +607,158 @@ export async function ownerOptions(workspaceId: string) {
   return prisma.workspaceMember.findMany({
     where: { workspaceId },
     select: { id: true, user: { select: { name: true, email: true } } },
+  });
+}
+
+// ── accounts added to a standalone browser (docs/plans/0003-standalone-browsers.md) ──
+
+export const REDDIT_USERNAME = /^[A-Za-z0-9_-]{3,20}$/;
+
+export interface AddBrowserAccountInput {
+  workspaceId: string;
+  profileId: string;
+  actorMemberId: string;
+  /** defaults to the actor */
+  ownerMemberId?: string;
+  /** Reddit username, without u/ */
+  username: string;
+  /** already encrypted; omit for a sign-in by hand or by cookies */
+  loginPasswordEnc?: string | null;
+  totpSecretEnc?: string | null;
+  roleLabel?: AccountRoleLabel;
+  disclosureLine?: string;
+  dailyPostLimit?: number;
+  selfPromoMax?: number;
+}
+
+/**
+ * Creates a browser-mode account by name with its encrypted credentials and assigns it to the browser, in one
+ * transaction. It is not identified (never publishable) until `profile.signIn` / `profile.whoami` reads the same
+ * username from the browser. Audit: `account.connect_started`, `account.credentials_updated` (when credentials
+ * were given), `profile.account_assigned`. Refused when the username is already in the workspace, the plan is
+ * full, or the browser has an account (BrowserAssignError).
+ */
+export async function addBrowserAccount(input: AddBrowserAccountInput): Promise<{ accountId: string }> {
+  const username = input.username.trim().replace(/^\/?u\//i, '');
+  if (!REDDIT_USERNAME.test(username)) throw new AccountConflictError('That is not a Reddit username.');
+  const owner = input.ownerMemberId ?? input.actorMemberId;
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const member = await tx.workspaceMember.findFirst({
+        where: { id: owner, workspaceId: input.workspaceId },
+        select: { id: true },
+      });
+      if (!member) throw new Error('Owner is not a member of this workspace');
+      const taken = await tx.redditAccount.findFirst({
+        where: { workspaceId: input.workspaceId, username: { equals: username, mode: 'insensitive' } },
+        select: { id: true },
+      });
+      if (taken) throw new AccountConflictError(`u/${username} is already in this workspace.`);
+      await assertAccountRoom(tx, input.workspaceId);
+      const created = await tx.redditAccount.create({
+        data: {
+          workspaceId: input.workspaceId,
+          ownerMemberId: owner,
+          username,
+          redditId: `pending:${username.toLowerCase()}-${Date.now().toString(36)}`,
+          authMode: 'browser',
+          identifiedAt: null,
+          scopes: [],
+          roleLabel: input.roleLabel ?? 'founder',
+          disclosureLine: input.disclosureLine ?? '',
+          ...(input.dailyPostLimit !== undefined ? { dailyPostLimit: input.dailyPostLimit } : {}),
+          ...(input.selfPromoMax !== undefined ? { selfPromoMax: input.selfPromoMax } : {}),
+          loginPasswordEnc: input.loginPasswordEnc ?? null,
+          totpSecretEnc: input.totpSecretEnc ?? null,
+        },
+        select: { id: true },
+      });
+      await tx.redditAccount.update({
+        where: { id: created.id },
+        data: { redditId: `pending:${created.id}` },
+      });
+      await writeAudit(
+        {
+          workspaceId: input.workspaceId,
+          actorMemberId: input.actorMemberId,
+          action: 'account.connect_started',
+          targetType: 'RedditAccount',
+          targetId: created.id,
+          accountId: created.id,
+          meta: {
+            item: `u/${username} waiting for sign-in`,
+            authMode: 'browser',
+            profileId: input.profileId,
+          },
+        },
+        tx,
+      );
+      if (input.loginPasswordEnc || input.totpSecretEnc)
+        await writeAudit(
+          {
+            workspaceId: input.workspaceId,
+            actorMemberId: input.actorMemberId,
+            action: 'account.credentials_updated',
+            targetType: 'RedditAccount',
+            targetId: created.id,
+            accountId: created.id,
+            meta: {
+              item: `Sign-in details for u/${username}`,
+              password: 'set',
+              totp: input.totpSecretEnc ? 'set' : 'none',
+            },
+          },
+          tx,
+        );
+      await assignAccountTx(tx, input.workspaceId, input.profileId, created.id, input.actorMemberId);
+      return { accountId: created.id };
+    });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')
+      throw new AccountConflictError(`u/${username} is already in this workspace.`);
+    throw e;
+  }
+}
+
+/**
+ * Sets or clears the stored password / TOTP secret (already encrypted; undefined = keep, null = clear).
+ * Writes `account.credentials_updated` with which fields changed, never the values.
+ */
+export async function setCredentials(
+  workspaceId: string,
+  accountId: string,
+  actorMemberId: string | null,
+  data: { loginPasswordEnc?: string | null; totpSecretEnc?: string | null },
+): Promise<{ changed: boolean }> {
+  return prisma.$transaction(async (tx) => {
+    const a = await tx.redditAccount.findFirst({
+      where: { workspaceId, id: accountId },
+      select: { id: true, username: true, authMode: true },
+    });
+    if (!a) throw new Error('Account not found');
+    if (a.authMode !== 'browser') throw new Error('Only browser-mode accounts sign in with a password');
+    const state = (v: string | null | undefined) => (v === undefined ? undefined : v ? 'set' : 'cleared');
+    const meta = { password: state(data.loginPasswordEnc), totp: state(data.totpSecretEnc) };
+    if (!meta.password && !meta.totp) return { changed: false };
+    await tx.redditAccount.update({
+      where: { id: a.id },
+      data: {
+        ...(data.loginPasswordEnc !== undefined ? { loginPasswordEnc: data.loginPasswordEnc } : {}),
+        ...(data.totpSecretEnc !== undefined ? { totpSecretEnc: data.totpSecretEnc } : {}),
+      },
+    });
+    await writeAudit(
+      {
+        workspaceId,
+        actorMemberId,
+        action: 'account.credentials_updated',
+        targetType: 'RedditAccount',
+        targetId: a.id,
+        accountId: a.id,
+        meta: { item: `Sign-in details for u/${a.username}`, ...meta },
+      },
+      tx,
+    );
+    return { changed: true };
   });
 }

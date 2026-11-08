@@ -1,6 +1,6 @@
 /**
- * Playwright actions over CDP (plan §4 T22): `action.submitComment`, `action.sendDm`, `profile.testProxy` and
- * `profile.whoami` (plan 0002).
+ * Playwright actions over CDP (plan §4 T22): `action.submitComment`, `action.sendDm`, `profile.testProxy`,
+ * `profile.whoami` (plan 0002) and `profile.signIn` (plan 0003).
  * The work lives in `src/actions/`; this file only registers it. Proxy credentials come from
  * `profileProxies`, which the profile module fills on `profile.start`.
  */

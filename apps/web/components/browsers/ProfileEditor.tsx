@@ -3,7 +3,9 @@
 import { attachProxyAction, runProxyTestAction, saveProxyAction } from '@/lib/actions/browsers';
 import Link from 'next/link';
 import { useActionState, useState } from 'react';
+import { AccountSection, type AssignableAccount } from './AccountSection';
 import { BrowserControls } from './BrowserControls';
+import { BrowserSettings } from './BrowserSettings';
 import type { ActionState } from './action-state';
 import type { ProfileView } from './view';
 
@@ -45,6 +47,7 @@ export function ProfileEditor({
   nodeOptions = [],
   savedProxies = [],
   currentProxyId = null,
+  assignable = [],
 }: {
   p: ProfileView;
   canEdit: boolean;
@@ -53,6 +56,8 @@ export function ProfileEditor({
   /** the workspace's proxies (safe fields only), for "Use a saved proxy" */
   savedProxies?: SavedProxy[];
   currentProxyId?: string | null;
+  /** accounts this member may put into this browser (only used when it has none) */
+  assignable?: AssignableAccount[];
 }) {
   const [save, saveAction, saving] = useActionState<ActionState | null, FormData>(saveProxyAction, null);
   const [test, testAction, testing] = useActionState<ActionState | null, FormData>(runProxyTestAction, null);
@@ -95,6 +100,8 @@ export function ProfileEditor({
         ) : null}
       </div>
       <BrowserControls p={p} canEdit={canEdit} isAdmin={isAdmin} nodeOptions={nodeOptions} />
+      <AccountSection p={p} canEdit={canEdit} assignable={assignable} />
+      <BrowserSettings p={p} canEdit={canEdit} />
       <form id={useFormId} action={attachAction} className="hidden">
         <input type="hidden" name="profileId" value={p.id} />
       </form>
@@ -363,8 +370,9 @@ export function ProfileEditor({
             ]}
           />
           <div className="muted text-xs leading-normal">
-            Copied from {p.ownerFirst}’s own device when they connected the account. Threadline keeps it
-            stable; it doesn’t invent a new identity.
+            Copied from {p.ownerFirst}’s own device when they{' '}
+            {p.accountInfo ? 'connected the account' : 'created the browser'}. Threadline keeps it stable; it
+            doesn’t invent a new identity.
           </div>
         </div>
 
@@ -389,8 +397,8 @@ export function ProfileEditor({
             </label>
           ))}
           <div className="muted text-xs">
-            Take over: Admins and {p.ownerFirst} (account owner). Posting from this browser still needs an
-            approved draft.
+            Take over: Admins and {p.ownerFirst} ({p.accountInfo ? 'account owner' : 'created this browser'}).
+            Posting from this browser still needs an approved draft.
           </div>
         </div>
 
@@ -400,7 +408,9 @@ export function ProfileEditor({
               Take over browser
             </Link>
           ) : (
-            <span className="muted text-xs">Only an admin or the account owner can take over.</span>
+            <span className="muted text-xs">
+              Only an admin or {p.accountInfo ? 'the account owner' : 'the browser’s creator'} can take over.
+            </span>
           )}
         </div>
       </div>

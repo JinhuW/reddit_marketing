@@ -7,7 +7,7 @@ import { type BrowserJob, WhoamiData, browserJobId, browserQueue } from '@thread
 import { type JobsOptions, Queue } from 'bullmq';
 
 /** The kinds the web app may enqueue. Actions (submitComment/sendDm) are never queued from here. */
-export type WebBrowserJobKind = 'profile.start' | 'profile.stop' | 'profile.whoami';
+export type WebBrowserJobKind = 'profile.start' | 'profile.stop' | 'profile.whoami' | 'profile.signIn';
 
 export type EnqueueResult = { queued: true; jobId: string; node: string } | { queued: false; reason: string };
 
@@ -113,8 +113,12 @@ export async function enqueueProfileJob(
         : { kind, workspaceId, profileId };
   const jobId = browserJobId(job, deps.now().toString(36));
   try {
-    // A sign-in check is a quick read the person is waiting on: retry twice, not for minutes after the page gave up.
-    const opts = kind === 'profile.whoami' ? { ...BROWSER_JOB_OPTIONS, attempts: 2 } : BROWSER_JOB_OPTIONS;
+    // A sign-in check / sign-in run is something the person is waiting on: retry twice, not for minutes after the
+    // page gave up (and never hammer reddit.com/login).
+    const opts =
+      kind === 'profile.whoami' || kind === 'profile.signIn'
+        ? { ...BROWSER_JOB_OPTIONS, attempts: 2 }
+        : BROWSER_JOB_OPTIONS;
     await withTimeout(deps.queue(node.name).add(node.name, job, { ...opts, jobId }));
   } catch {
     return { queued: false, reason: 'Could not reach the job queue. Try again in a minute.' };
@@ -140,9 +144,16 @@ export type WhoamiStatus =
   | { state: 'failed'; reason: string }
   | { state: 'done'; whoami: WhoamiData };
 
+/** Job ids {@link whoamiStatus} reads: `profile.whoami` and `profile.signIn` (both answer with WhoamiData). */
+export function isSignInJobId(profileId: string, jobId: string): boolean {
+  return (
+    jobId.startsWith(`bj-profile.whoami-${profileId}-`) || jobId.startsWith(`bj-profile.signIn-${profileId}-`)
+  );
+}
+
 /**
- * Reads back a `profile.whoami` job this profile queued (on the profile's current node). Only the parsed
- * whoami answer leaves this function; a job id of another profile or kind reads as `gone`.
+ * Reads back a `profile.whoami` / `profile.signIn` job this profile queued (on the profile's current node). Only
+ * the parsed whoami answer leaves this function; a job id of another profile or kind reads as `gone`.
  */
 export async function whoamiStatus(
   workspaceId: string,
@@ -150,7 +161,7 @@ export async function whoamiStatus(
   jobId: string,
   deps: Pick<BrowserJobDeps, 'queue' | 'profileNode'> = defaultDeps,
 ): Promise<WhoamiStatus> {
-  if (!jobId.startsWith(`bj-profile.whoami-${profileId}-`)) return { state: 'gone' };
+  if (!isSignInJobId(profileId, jobId)) return { state: 'gone' };
   const { node } = await deps.profileNode(workspaceId, profileId);
   if (!node) return { state: 'gone' };
   let job: Awaited<ReturnType<JobQueue['getJob']>>;
@@ -189,6 +200,11 @@ export function readWhoamiResult(value: unknown): WhoamiStatus {
   if (v.outcome === 'skipped') return { state: 'failed', reason: v.reason ?? 'The check was skipped.' };
   if (v.outcome === 'proxy_failed')
     return { state: 'failed', reason: 'The proxy failed. Check it on the Browsers screen.' };
+  if (v.outcome === 'needs_human')
+    return {
+      state: 'failed',
+      reason: 'Reddit wants a human check (captcha or verification). Take control and finish signing in.',
+    };
   if (v.outcome === 'license_denied')
     return { state: 'failed', reason: 'The node has no free browser seat right now.' };
   return { state: 'failed', reason: 'The browser could not check the sign-in.' };

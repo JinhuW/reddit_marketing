@@ -163,6 +163,11 @@ export const AuditAction = [
   'account.resumed',
   'account.connect_started',
   'profile.node_assigned',
+  'profile.created',
+  'profile.account_assigned',
+  'profile.account_unassigned',
+  'profile.settings_updated',
+  'account.credentials_updated',
 ] as const;
 export type AuditAction = (typeof AuditAction)[number];
 

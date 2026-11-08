@@ -12,7 +12,7 @@ import { Dot } from './ProfileTable';
 import type { ActionState } from './action-state';
 import type { ProfileView } from './view';
 
-function Msg({ s }: { s: ActionState | null }) {
+export function Msg({ s }: { s: ActionState | null }) {
   if (!s) return null;
   return (
     <p
@@ -122,7 +122,7 @@ export function BrowserControls({
           Nobody has signed in to Reddit in this browser yet.{' '}
           {canEdit ? (
             <Link href={`/browsers/${p.id}/session?login=1`} className="font-semibold underline">
-              Sign in now
+              Sign in over the live view
             </Link>
           ) : null}
         </p>

@@ -56,6 +56,11 @@ export type BrowserJob =
   | { kind: 'profile.testProxy'; workspaceId: string; profileId: string }
   /** Reads who is signed in to the profile's browser; on success the gateway calls accounts.completeBrowserIdentity. */
   | { kind: 'profile.whoami'; workspaceId: string; profileId: string }
+  /**
+   * Plan 0003: imports pending cookies, signs in with the assigned account's stored credentials when nobody is
+   * signed in, opens the start tab. The gateway loads the secrets with browsers.getSignInForDispatch.
+   */
+  | { kind: 'profile.signIn'; workspaceId: string; profileId: string }
   | { kind: 'health.check'; workspaceId: string };
 export type BrowserJobKind = BrowserJob['kind'];
 
@@ -88,6 +93,7 @@ export const BrowserJobSchema: z.ZodType<BrowserJob> = z.union([
     .strict(),
   z.object({ kind: z.literal('profile.testProxy'), workspaceId: id, profileId: id }).strict(),
   z.object({ kind: z.literal('profile.whoami'), workspaceId: id, profileId: id }).strict(),
+  z.object({ kind: z.literal('profile.signIn'), workspaceId: id, profileId: id }).strict(),
   z.object({ kind: z.literal('health.check'), workspaceId: id }).strict(),
 ]);
 

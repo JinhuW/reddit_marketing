@@ -5,7 +5,7 @@ import { VncViewer } from '@/components/browsers/VncViewer';
 import { profileView, showSignIn } from '@/components/browsers/view';
 import { Avatar } from '@/components/ui/avatar';
 import { handBackAction } from '@/lib/actions/browsers';
-import { nodeProblem } from '@/lib/browser-jobs';
+import { isSignInJobId, nodeProblem } from '@/lib/browser-jobs';
 import { requireMember } from '@/lib/session';
 import { browsers, nodes } from '@threadline/db';
 import type { Metadata } from 'next';
@@ -20,9 +20,9 @@ const time = (d: Date) =>
 export default async function SessionPage({
   params,
   searchParams,
-}: { params: Promise<{ id: string }>; searchParams: Promise<{ login?: string }> }) {
+}: { params: Promise<{ id: string }>; searchParams: Promise<{ login?: string; job?: string }> }) {
   const { id } = await params;
-  const { login } = await searchParams;
+  const { login, job } = await searchParams;
   const me = await requireMember();
   const row = await browsers.getProfile(me.workspaceId, id);
   if (!row) notFound();
@@ -30,7 +30,7 @@ export default async function SessionPage({
   const node = nodeRow && nodeRow.workspaceId === me.workspaceId ? nodeRow : null;
   const p = profileView(row, new Date(), node);
   const signIn = showSignIn(login, row.account);
-  const identified = row.account.identifiedAt != null;
+  const identified = row.account?.identifiedAt != null;
   const problem = nodeProblem(node);
   const canControl = browsers.canControlProfile(me, row);
   const open = await browsers.openSession(id);
@@ -87,9 +87,11 @@ export default async function SessionPage({
       {signIn ? (
         <SignInPanel
           profileId={p.id}
-          username={identified ? row.account.username : null}
+          username={identified ? (row.account?.username ?? null) : null}
           canControl={canControl}
           hasControl={Boolean(humanOpen && mine)}
+          jobId={job && isSignInJobId(p.id, job) ? job : null}
+          back={job ? 'browser' : 'accounts'}
         />
       ) : null}
       {problem && (signIn || humanOpen) ? (
@@ -178,7 +180,9 @@ export default async function SessionPage({
             </section>
           ) : (
             <section className="panel muted px-[18px] py-3.5 text-[12.5px]">
-              Only an admin or the account owner can take over this browser.
+              {row.account
+                ? 'Only an admin or the account owner can take over this browser.'
+                : 'Only an admin or the member who created this browser can take over.'}
             </section>
           )}
 

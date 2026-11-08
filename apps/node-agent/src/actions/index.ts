@@ -1,6 +1,7 @@
 /**
  * Playwright actions over CDP (plan §4 T22): `action.submitComment`, `action.sendDm`, `profile.testProxy`, and
- * `profile.whoami` (plan 0002: the signed-in Reddit identity, read from `me.json` in the profile's own context).
+ * `profile.whoami` (plan 0002: the signed-in Reddit identity, read from `me.json` in the profile's own context), and
+ * `profile.signIn` (plan 0003: cookie import, login form + TOTP, start tab).
  *
  * Each command connects to the profile's container browser, works in its own tab, and maps what happened to a
  * `BrowserOutcome`: `posted` with the new item's fullname, `needs_human` for verification / captcha / login walls
@@ -13,6 +14,7 @@ import { type ProxyLookup, profileProxies } from './proxy-store';
 import { proxyAuthWatchers } from './proxy-watch';
 import { sendDm } from './send-dm';
 import { ActionError, type Session, defaultCdpUrl, errMessage, openSession } from './session';
+import { signIn } from './sign-in';
 import { submitComment } from './submit-comment';
 import { DEFAULT_IP_URL, testProxy } from './test-proxy';
 import { whoami } from './whoami';
@@ -37,13 +39,13 @@ export interface ActionOptions {
   ipUrl?: string;
   /** Cap for one Playwright step; default 15 s. */
   stepTimeoutMs?: number;
-  /** How long to wait for Reddit to show a submitted item; default 20 s. */
+  /** How long to wait for Reddit to show a submitted item (or answer a login submit); default 20 s. */
   confirmTimeoutMs?: number;
 }
 
 type ActionKind = Extract<
   CmdKind,
-  'action.submitComment' | 'action.sendDm' | 'profile.testProxy' | 'profile.whoami'
+  'action.submitComment' | 'action.sendDm' | 'profile.testProxy' | 'profile.whoami' | 'profile.signIn'
 >;
 
 export function createActionHandlers(options: ActionOptions = {}): Pick<HandlerMap, ActionKind> {
@@ -91,6 +93,7 @@ export function createActionHandlers(options: ActionOptions = {}): Pick<HandlerM
       return testProxy(s, cmd, { ipUrl: o.ipUrl, proxy, signal: ctx.signal });
     }),
     'profile.whoami': action((s, cmd: CmdOf<'profile.whoami'>) => whoami(s, cmd, o)),
+    'profile.signIn': action((s, cmd: CmdOf<'profile.signIn'>, ctx) => signIn(s, cmd, ctx, o)),
   };
 }
 

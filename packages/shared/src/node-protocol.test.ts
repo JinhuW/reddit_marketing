@@ -110,6 +110,7 @@ const cmds: Cmd[] = [
   },
   { kind: 'health.check' },
   { kind: 'profile.whoami', profileId: 'prof_1' },
+  { kind: 'profile.signIn', profileId: 'prof_1', startUrl: 'https://www.reddit.com/' },
 ];
 
 const gatewayMessages: GatewayMessage[] = [

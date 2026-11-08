@@ -8,9 +8,9 @@
  * - Results are kept for the last {@link RESULT_CACHE_SIZE} `cmdId`s. Everything an `action.*` handler returns is
  *   kept, errors included: those commands post to Reddit and must never run twice for one job.
  *   Other kinds keep only non-error outcomes, so a BullMQ retry of a failed `profile.start` really retries.
- * - Reads that must be fresh ({@link uncached}: `profile.whoami`) are never kept. Their cmdId is fixed per
- *   profile (`bj-profile.whoami-<profileId>`), so a stored `loggedIn: false` would otherwise answer every later
- *   "I'm signed in" press.
+ * - Reads that must be fresh ({@link uncached}: `profile.whoami`, `profile.signIn`) are never kept. Their cmdId
+ *   may be fixed per profile (`bj-profile.whoami-<profileId>`), so a stored `loggedIn: false` would otherwise
+ *   answer every later "I'm signed in" / "Sign in now" press.
  * - At the deadline the gateway gets a synthetic `error` (`deadline_exceeded`) and the handler's signal is
  *   aborted. That synthetic result is not cached; when the handler settles, its real result is cached, so a retry
  *   of a slow post replays `posted` rather than posting again.
@@ -46,7 +46,7 @@ export function guardMs(deadlineMs: number): number {
 
 const posts = (kind: CmdKind) => kind === 'action.submitComment' || kind === 'action.sendDm';
 /** Kinds whose result is never stored: reads that are cheap to repeat and stale once returned. */
-const uncached = (kind: CmdKind) => kind === 'profile.whoami';
+const uncached = (kind: CmdKind) => kind === 'profile.whoami' || kind === 'profile.signIn';
 
 export class Dispatcher {
   private readonly cache = new Map<string, Result>();

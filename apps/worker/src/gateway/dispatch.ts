@@ -19,6 +19,13 @@
  * `profile.whoami` (plan 0002): starts the profile if needed, asks the agent who is signed in, and outcomes.ts
  * records that identity on the browser-mode account.
  *
+ * `profile.signIn` (plan 0003): like whoami, but the command carries the pending cookies and the assigned account's
+ * stored credentials, loaded with the GATEWAY-ONLY `browsers.getSignInForDispatch` right before the send. They go
+ * only into the command over the authenticated socket: never into the job payload, the result, logs or audit.
+ *
+ * A browser with no account (plan 0003) is never dispatched for actions, and the offline sweep only pauses and
+ * resumes accounts that are in a browser.
+ *
  * Retries: `NodeNotConnected`, `NodeTimeout` and `NodeDisconnected` are thrown as is, so BullMQ retries the job
  * with the same id; the agent replays its stored result for that cmdId, so a comment posted before a disconnect
  * is recorded once and never posted twice. Producers enqueue with {@link browserJobOptions}; to run a command
@@ -75,6 +82,7 @@ export const BROWSER_DEADLINE_MS: Record<BrowserJobKind, number> = {
   'action.sendDm': 120_000,
   'profile.testProxy': 45_000,
   'profile.whoami': 45_000,
+  'profile.signIn': 120_000,
   'health.check': 15_000,
 };
 
@@ -112,7 +120,11 @@ type Draft = NonNullable<Awaited<ReturnType<typeof drafts.get>>>;
 
 export interface DispatchDeps {
   getProfile: typeof browsers.getProfileForDispatch;
-  listProfiles: (workspaceId: string) => Promise<{ id: string; accountId: string; nodeId: string | null }[]>;
+  /** GATEWAY-ONLY: decrypted credentials and cookies for `profile.signIn`. */
+  getSignIn: typeof browsers.getSignInForDispatch;
+  listProfiles: (
+    workspaceId: string,
+  ) => Promise<{ id: string; accountId: string | null; nodeId: string | null }[]>;
   getDraft: (workspaceId: string, draftId: string) => Promise<Draft | null>;
   approverCouldApprove: (d: Draft) => Promise<boolean>;
   evaluate: (d: Draft, now: Date) => ReturnType<typeof drafts.evaluate>;
@@ -123,6 +135,7 @@ export interface DispatchDeps {
 
 const defaultDeps: DispatchDeps = {
   getProfile: (ws, id) => browsers.getProfileForDispatch(ws, id),
+  getSignIn: (ws, id) => browsers.getSignInForDispatch(ws, id),
   listProfiles: (ws) => browsers.listProfiles(ws),
   getDraft: (ws, id) => drafts.get(ws, id),
   approverCouldApprove: (d) => drafts.approverCouldApprove(d),
@@ -256,10 +269,10 @@ export class Dispatcher {
     });
   }
 
-  /** Account ids of the given profiles (one workspace). */
+  /** Account ids of the given profiles (one workspace). Browsers with no account have nothing to pause. */
   private async accountsOf(workspaceId: string, pick: (p: { id: string; nodeId: string | null }) => boolean) {
     const profiles = await this.deps.listProfiles(workspaceId);
-    return [...new Set(profiles.filter(pick).map((p) => p.accountId))];
+    return [...new Set(profiles.filter(pick).flatMap((p) => (p.accountId ? [p.accountId] : [])))];
   }
 
   private async nodeOnline(info: NodeInfo): Promise<void> {
@@ -440,7 +453,45 @@ export class Dispatcher {
         );
         return this.apply(ctx, result);
       }
+      case 'profile.signIn': {
+        const pre = await this.ensureRunning(node, profile, cmdId, 'test', null, lastAttempt);
+        if (pre) return pre;
+        const { cmd, cookiesEnc } = await this.signInCmd(job.workspaceId, profile);
+        const result = await this.send(node.name, cmd, cmdId, job.kind);
+        return this.apply({ ...ctx, sentCookiesEnc: cookiesEnc }, result);
+      }
+      default: {
+        const never: never = job;
+        throw new UnrecoverableError(`unknown browser job kind ${(never as BrowserJob).kind}`);
+      }
     }
+  }
+
+  /**
+   * The `profile.signIn` command, loaded right before the send. Holds decrypted secrets: it goes only to
+   * `hub.send` (which logs the kind and cmdId only). Returns the encrypted cookies that were sent, so outcomes.ts
+   * can clear exactly those.
+   */
+  private async signInCmd(
+    workspaceId: string,
+    profile: DispatchProfile,
+  ): Promise<{ cmd: Cmd; cookiesEnc: string | null }> {
+    const s = await this.deps.getSignIn(workspaceId, profile.id);
+    if (!s) throw new DispatchRefused('browser profile not found');
+    // The account was (un)assigned since the profile was loaded: the outcome would land on the wrong account.
+    if ((s.account?.id ?? null) !== profile.accountId)
+      throw new Error('the browser account changed while signing in'); // retryable: reloads both
+    const cookies = s.cookies?.length ? s.cookies : null;
+    return {
+      cmd: {
+        kind: 'profile.signIn',
+        profileId: profile.id,
+        startUrl: s.startUrl,
+        ...(cookies ? { cookies } : {}),
+        ...(s.credentials ? { credentials: s.credentials } : {}),
+      },
+      cookiesEnc: cookies ? s.cookiesEnc : null,
+    };
   }
 
   /**
@@ -536,12 +587,15 @@ export class Dispatcher {
       throw new DispatchRefused(
         `Draft is ${d.status}${d.approverMemberId ? '' : ' with no approver'}; not sent.`,
       );
+    const account = profile.account;
+    if (!account || !profile.accountId)
+      throw new DispatchRefused('no account assigned to this browser; not sent');
     if (d.accountId !== profile.accountId)
       throw new DispatchRefused('draft belongs to another account than the browser profile');
-    if (profile.account.pausedReason)
-      throw new DispatchRefused(`account is paused (${profile.account.pausedReason}); not sent`);
+    if (account.pausedReason)
+      throw new DispatchRefused(`account is paused (${account.pausedReason}); not sent`);
     // Browser mode: nobody has signed in to this profile yet, so the identity behind it is unknown.
-    if (!accounts.isIdentified(profile.account)) return fail('account not signed in yet; not sent');
+    if (!accounts.isIdentified(account)) return fail('account not signed in yet; not sent');
     const expected = job.kind === 'action.submitComment' ? 'comment' : 'dm';
     if (d.type !== expected) throw new DispatchRefused(`a ${d.type} draft cannot be sent with ${job.kind}`);
 

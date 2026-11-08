@@ -4,14 +4,17 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import {
   type AccountAuthMode,
+  type BrowserCookie,
   CloakGpu,
   CloakPersona,
   type PauseReason,
   type ProxySpec,
+  parseCookieJson,
 } from '@threadline/shared';
 import { decrypt } from '@threadline/shared/crypto';
 import { prisma } from '../client';
 import { writeAudit } from './audit';
+import { pickForProfile } from './nodes';
 
 export interface Fingerprint {
   os?: string;
@@ -37,6 +40,7 @@ export interface ProxyTest {
 
 const profileInclude = {
   proxy: true,
+  createdBy: { include: { user: { select: { name: true, email: true } } } },
   account: {
     include: {
       owner: { include: { user: { select: { name: true, email: true } } } },
@@ -68,12 +72,18 @@ export function getProfile(workspaceId: string, id: string) {
   return prisma.browserProfile.findFirst({ where: { workspaceId, id }, include: profileInclude });
 }
 
-/** Admins and the account's owner may change a profile or take over its browser. */
+/**
+ * Admins and the account's owner may change a profile or take over its browser. A browser with no account
+ * (plan 0003): admins and the member who created it.
+ */
 export function canControlProfile(
   me: { id: string; role: string },
-  profile: { account: { ownerMemberId: string } },
+  profile: { account: { ownerMemberId: string } | null; createdByMemberId?: string | null },
 ): boolean {
-  return me.role === 'admin' || profile.account.ownerMemberId === me.id;
+  if (me.role === 'admin') return true;
+  return profile.account
+    ? profile.account.ownerMemberId === me.id
+    : profile.createdByMemberId != null && profile.createdByMemberId === me.id;
 }
 
 export interface ProxyUpdate {
@@ -540,8 +550,9 @@ export interface DispatchProfile {
   id: string;
   workspaceId: string;
   name: string;
-  accountId: string;
-  account: {
+  /** null = a standalone browser with no account (plan 0003): never dispatched for actions */
+  accountId: string | null;
+  account: null | {
     id: string;
     username: string;
     ownerMemberId: string;
@@ -687,7 +698,7 @@ export async function startHumanSession(input: {
     if (open?.driver === 'human')
       throw new SessionConflictError('Someone already has control of this browser.');
     if (open) await tx.browserSession.update({ where: { id: open.id }, data: { endedAt: new Date() } });
-    const agent = profile.account.agents[0] ?? null;
+    const agent = profile.account?.agents[0] ?? null;
     const s = await tx.browserSession.create({
       data: {
         workspaceId: input.workspaceId,
@@ -754,4 +765,373 @@ export async function handBack(input: {
     );
     return ended;
   });
+}
+
+// ── standalone browsers and account assignment (docs/plans/0003-standalone-browsers.md) ──
+
+export const DEFAULT_START_URL = 'https://www.reddit.com/';
+
+/** The browser refused a change (account in another browser, someone in control, …). Message is user-facing. */
+export class BrowserAssignError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BrowserAssignError';
+  }
+}
+
+/** `https?://…` with a host, or null for empty. Throws BrowserAssignError otherwise. */
+export function normalizeStartUrl(raw: string | null | undefined): string | null {
+  const s = raw?.trim();
+  if (!s) return null;
+  let u: URL;
+  try {
+    u = new URL(/^[a-z][a-z0-9+.-]*:/i.test(s) ? s : `https://${s}`);
+  } catch {
+    throw new BrowserAssignError('Start tab must be a web address.');
+  }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:')
+    throw new BrowserAssignError('Start tab must be an http(s) address.');
+  return u.toString();
+}
+
+export interface CreateBrowserInput {
+  workspaceId: string;
+  actorMemberId: string;
+  /** empty = "<creator first name> · Chrome N" */
+  name?: string | null;
+  /** the creator's device as captured in the form ({ os, screen, tz, locale }); drives the CloakBrowser persona */
+  fingerprint?: Prisma.InputJsonValue;
+  proxyId?: string | null;
+  startUrl?: string | null;
+  /** cookie JSON, already validated (parseCookieJson) and encrypted */
+  cookiesEnc?: string | null;
+}
+
+/** {@link createBrowser} inside `tx`. */
+export async function createBrowserTx(
+  tx: Db,
+  input: CreateBrowserInput,
+): Promise<{ profileId: string; name: string; node: { id: string; name: string } | null }> {
+  const actor = await tx.workspaceMember.findFirst({
+    where: { id: input.actorMemberId, workspaceId: input.workspaceId },
+    include: { user: { select: { name: true, email: true } } },
+  });
+  if (!actor) throw new Error('Member is not in this workspace');
+  if (input.proxyId) {
+    const px = await tx.proxy.findFirst({ where: { workspaceId: input.workspaceId, id: input.proxyId } });
+    if (!px) throw new Error('Proxy not found');
+  }
+  const startUrl = normalizeStartUrl(input.startUrl);
+  let name = input.name?.trim().slice(0, 80);
+  if (!name) {
+    const first = (actor.user.name ?? actor.user.email.split('@')[0] ?? 'Browser').split(' ')[0];
+    const n = await tx.browserProfile.count({
+      where: {
+        workspaceId: input.workspaceId,
+        OR: [{ createdByMemberId: actor.id }, { account: { ownerMemberId: actor.id } }],
+      },
+    });
+    name = `${first} · Chrome${n ? ` ${n + 1}` : ''}`;
+  }
+  const created = await tx.browserProfile.create({
+    data: {
+      workspaceId: input.workspaceId,
+      createdByMemberId: actor.id,
+      name,
+      fingerprint: input.fingerprint ?? {},
+      startUrl,
+      cookiesEnc: input.cookiesEnc ?? null,
+    },
+    select: { id: true },
+  });
+  await tx.browserProfile.update({
+    where: { id: created.id },
+    data: { cookiesVolume: `tl-profile-${created.id}` },
+  });
+  await writeAudit(
+    {
+      workspaceId: input.workspaceId,
+      actorMemberId: actor.id,
+      action: 'profile.created',
+      targetType: 'BrowserProfile',
+      targetId: created.id,
+      meta: { item: `Browser ${name} created`, startUrl, cookiesPending: Boolean(input.cookiesEnc) },
+    },
+    tx,
+  );
+  await ensureCloakFingerprintTx(tx, {
+    workspaceId: input.workspaceId,
+    profileId: created.id,
+    actorMemberId: actor.id,
+  });
+  const node = await pickForProfile(input.workspaceId, tx);
+  if (node) await assignNodeTx(tx, input.workspaceId, created.id, node.id, actor.id);
+  if (input.proxyId) await attachProxyTx(tx, input.workspaceId, created.id, input.proxyId, actor.id);
+  return { profileId: created.id, name, node: node ? { id: node.id, name: node.name } : null };
+}
+
+/**
+ * A browser with no account: CloakBrowser fingerprint, least-loaded online node with room, optional proxy, start
+ * tab and pending cookies. Audit: `profile.created`, `profile.fingerprint_assigned`, and `profile.node_assigned` /
+ * `profile.proxy_updated` when set.
+ */
+export function createBrowser(input: CreateBrowserInput) {
+  return prisma.$transaction((tx) => createBrowserTx(tx, input));
+}
+
+/** {@link assignAccount} inside `tx`. */
+export async function assignAccountTx(
+  tx: Db,
+  workspaceId: string,
+  profileId: string,
+  accountId: string,
+  actorMemberId: string | null,
+): Promise<{ changed: boolean }> {
+  const profile = await tx.browserProfile.findFirst({
+    where: { workspaceId, id: profileId },
+    select: { id: true, name: true, accountId: true },
+  });
+  if (!profile) throw new Error('Browser not found');
+  const account = await tx.redditAccount.findFirst({
+    where: { workspaceId, id: accountId },
+    select: { id: true, username: true, health: true, browserProfile: { select: { id: true, name: true } } },
+  });
+  if (!account) throw new Error('Account not found');
+  if (profile.accountId === account.id) return { changed: false };
+  if (profile.accountId)
+    throw new BrowserAssignError(`${profile.name} already has an account. Unassign it first.`);
+  if (account.browserProfile)
+    throw new BrowserAssignError(
+      `u/${account.username} is in ${account.browserProfile.name}. Unassign it there first.`,
+    );
+  if (account.health === 'blocked')
+    throw new BrowserAssignError(`u/${account.username} is disconnected and cannot be assigned.`);
+  await assertNoHumanSession(tx, profile.id, profile.name);
+  await tx.browserProfile.update({ where: { id: profile.id }, data: { accountId: account.id } });
+  await writeAudit(
+    {
+      workspaceId,
+      actorMemberId,
+      action: 'profile.account_assigned',
+      targetType: 'BrowserProfile',
+      targetId: profile.id,
+      accountId: account.id,
+      meta: { item: `u/${account.username} → ${profile.name}`, username: account.username },
+    },
+    tx,
+  );
+  return { changed: true };
+}
+
+/**
+ * Puts an account in a browser that has none. Refused (BrowserAssignError) when the browser already has an
+ * account, the account is in another browser, the account is disconnected, or someone has control of the browser.
+ * Writes `profile.account_assigned`.
+ */
+export function assignAccount(
+  workspaceId: string,
+  profileId: string,
+  accountId: string,
+  actorMemberId: string | null = null,
+) {
+  return prisma.$transaction((tx) => assignAccountTx(tx, workspaceId, profileId, accountId, actorMemberId));
+}
+
+/**
+ * Takes the account out of the browser; both stay. Refused while someone has control of the browser. The browser's
+ * cookie jar still holds the old sign-in: the next account's sign-in is refused until it is signed out over VNC
+ * (completeBrowserIdentity). Writes `profile.account_unassigned`.
+ */
+export async function unassignAccount(
+  workspaceId: string,
+  profileId: string,
+  actorMemberId: string | null = null,
+): Promise<{ changed: boolean }> {
+  return prisma.$transaction(async (tx) => {
+    const profile = await tx.browserProfile.findFirst({
+      where: { workspaceId, id: profileId },
+      select: { id: true, name: true, accountId: true, account: { select: { username: true } } },
+    });
+    if (!profile) throw new Error('Browser not found');
+    if (!profile.accountId) return { changed: false };
+    await assertNoHumanSession(tx, profile.id, profile.name);
+    const { count } = await tx.browserProfile.updateMany({
+      where: { id: profile.id, accountId: profile.accountId },
+      data: { accountId: null },
+    });
+    if (count === 0) return { changed: false };
+    await writeAudit(
+      {
+        workspaceId,
+        actorMemberId,
+        action: 'profile.account_unassigned',
+        targetType: 'BrowserProfile',
+        targetId: profile.id,
+        accountId: profile.accountId,
+        meta: {
+          item: `u/${profile.account?.username} out of ${profile.name}`,
+          username: profile.account?.username,
+        },
+      },
+      tx,
+    );
+    return { changed: true };
+  });
+}
+
+async function assertNoHumanSession(tx: Db, profileId: string, name: string) {
+  const open = await tx.browserSession.findFirst({
+    where: { profileId, endedAt: null, driver: 'human' },
+    select: { id: true },
+  });
+  if (open) throw new BrowserAssignError(`Someone has control of ${name}. Hand it back first.`);
+}
+
+/** Accounts of the workspace that are in no browser and not disconnected (the "assign an account" picker). */
+export function listAssignableAccounts(workspaceId: string) {
+  return prisma.redditAccount.findMany({
+    where: { workspaceId, browserProfile: null, health: { not: 'blocked' } },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      username: true,
+      authMode: true,
+      identifiedAt: true,
+      ownerMemberId: true,
+      owner: { select: { user: { select: { name: true, email: true } } } },
+    },
+  });
+}
+
+export interface BrowserSettingsUpdate {
+  name?: string;
+  /** null clears it (back to the default) */
+  startUrl?: string | null;
+  /** already validated and encrypted; null drops pending cookies; undefined keeps them */
+  cookiesEnc?: string | null;
+}
+
+/** Name, start tab and pending cookies. Writes `profile.settings_updated` (never with cookie values). */
+export async function updateBrowserSettings(
+  workspaceId: string,
+  profileId: string,
+  actorMemberId: string | null,
+  data: BrowserSettingsUpdate,
+) {
+  return prisma.$transaction(async (tx) => {
+    const p = await tx.browserProfile.findFirst({
+      where: { workspaceId, id: profileId },
+      select: { id: true, name: true, accountId: true, startUrl: true, cookiesEnc: true },
+    });
+    if (!p) throw new Error('Browser not found');
+    const name = data.name?.trim().slice(0, 80);
+    const fields: Prisma.BrowserProfileUpdateInput = {};
+    const changed: string[] = [];
+    if (name && name !== p.name) {
+      fields.name = name;
+      changed.push('name');
+    }
+    if (data.startUrl !== undefined) {
+      const startUrl = normalizeStartUrl(data.startUrl);
+      if (startUrl !== p.startUrl) {
+        fields.startUrl = startUrl;
+        changed.push('startUrl');
+      }
+    }
+    if (data.cookiesEnc !== undefined && data.cookiesEnc !== p.cookiesEnc) {
+      fields.cookiesEnc = data.cookiesEnc;
+      changed.push(data.cookiesEnc ? 'cookies' : 'cookiesDropped');
+    }
+    if (!changed.length) return { changed: [] as string[] };
+    await tx.browserProfile.update({ where: { id: p.id }, data: fields });
+    await writeAudit(
+      {
+        workspaceId,
+        actorMemberId,
+        action: 'profile.settings_updated',
+        targetType: 'BrowserProfile',
+        targetId: p.id,
+        accountId: p.accountId,
+        meta: { item: `Settings for ${name || p.name}`, changed, startUrl: fields.startUrl ?? p.startUrl },
+      },
+      tx,
+    );
+    return { changed };
+  });
+}
+
+/** Cookies reached the profile's own volume: drop the stored copy. */
+export async function markCookiesImported(workspaceId: string, profileId: string, cookiesEnc: string) {
+  // Only clear what was sent: cookies pasted while the job ran stay pending.
+  await prisma.browserProfile.updateMany({
+    where: { workspaceId, id: profileId, cookiesEnc },
+    data: { cookiesEnc: null, cookiesImportedAt: new Date() },
+  });
+}
+
+export interface SignInDispatch {
+  profileId: string;
+  startUrl: string;
+  /** the encrypted cookie JSON that was sent, for {@link markCookiesImported}; null = none pending */
+  cookiesEnc: string | null;
+  cookies: BrowserCookie[] | null;
+  account: {
+    id: string;
+    username: string;
+    authMode: AccountAuthMode;
+    identifiedAt: Date | null;
+  } | null;
+  /** decrypted; null without an account or without a stored password */
+  credentials: { username: string; password: string; totpSecret?: string } | null;
+}
+
+/**
+ * GATEWAY-ONLY, like {@link getProfileForDispatch}: the only function that decrypts account passwords, TOTP
+ * secrets and pending cookies. Put the result only in the `profile.signIn` command; never log, queue or persist it.
+ * Credentials are sent only for a browser-mode account that has a real username (not `pending-…`).
+ */
+export async function getSignInForDispatch(
+  workspaceId: string,
+  profileId: string,
+): Promise<SignInDispatch | null> {
+  const p = await prisma.browserProfile.findFirst({
+    where: { workspaceId, id: profileId },
+    select: {
+      id: true,
+      startUrl: true,
+      cookiesEnc: true,
+      account: {
+        select: {
+          id: true,
+          username: true,
+          authMode: true,
+          identifiedAt: true,
+          loginPasswordEnc: true,
+          totpSecretEnc: true,
+        },
+      },
+    },
+  });
+  if (!p) return null;
+  let cookies: BrowserCookie[] | null = null;
+  if (p.cookiesEnc) cookies = parseCookieJson(decrypt(p.cookiesEnc));
+  const a = p.account;
+  const credentials =
+    a && a.authMode === 'browser' && a.loginPasswordEnc && !a.username.startsWith('pending-')
+      ? {
+          username: a.username,
+          password: decrypt(a.loginPasswordEnc),
+          ...(a.totpSecretEnc ? { totpSecret: decrypt(a.totpSecretEnc) } : {}),
+        }
+      : null;
+  return {
+    profileId: p.id,
+    startUrl: p.startUrl ?? DEFAULT_START_URL,
+    cookiesEnc: p.cookiesEnc,
+    cookies,
+    account: a
+      ? { id: a.id, username: a.username, authMode: a.authMode, identifiedAt: a.identifiedAt }
+      : null,
+    credentials,
+  };
 }

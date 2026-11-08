@@ -112,6 +112,8 @@ async function resumeHandedBack(now: Date, q: () => BrowserQueues) {
     });
     if (!s) continue;
     const acc = s.profile.account;
+    // A browser with no account (plan 0003): nothing was paused and no draft can be waiting on it.
+    if (!acc) continue;
 
     // Only a needs_human pause from before the hand-back: a newer one means the browser hit another wall.
     const resumable = acc.pausedReason === 'needs_human' && acc.pausedAt !== null && acc.pausedAt <= ev.at;

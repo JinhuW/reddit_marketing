@@ -18,11 +18,11 @@ const createdNodes: string[] = [];
 beforeAll(async () => {
   workspaceId = (await prisma.workspace.findUniqueOrThrow({ where: { slug: 'acme' } })).id;
   const p = await prisma.browserProfile.findFirstOrThrow({
-    where: { workspaceId },
+    where: { workspaceId, accountId: { not: null } },
     orderBy: { createdAt: 'asc' },
   });
   profileId = p.id;
-  accountId = p.accountId;
+  accountId = p.accountId!;
   if (!process.env.APP_ENCRYPTION_KEY) process.env.APP_ENCRYPTION_KEY = randomBytes(32).toString('base64');
 });
 afterAll(async () => {
@@ -185,7 +185,7 @@ describe('browsers.assignNode / getProfileForDispatch', () => {
       });
       expect(d!.cloak).toMatchObject({ seed: expect.any(Number) });
       expect(d!.screen).toMatch(/^\d+x\d+$/);
-      expect(d!.account.id).toBe(accountId);
+      expect(d!.account!.id).toBe(accountId);
       expect(await browsers.getProfileForDispatch('not-a-workspace', profileId)).toBeNull();
     } finally {
       await prisma.browserProfile.update({ where: { id: profileId }, data: { proxyId: before.proxyId } });

@@ -156,6 +156,41 @@ describe('session.idle', () => {
     expect(mem.jobs.size).toBe(before);
   });
 
+  it('a hand-back on a browser with no account (plan 0003) resumes and queues nothing', async () => {
+    const me = await jane();
+    const profile = await prisma.browserProfile.create({
+      data: { workspaceId: me.workspaceId, name: 'idle-noacct', createdByMemberId: me.id },
+    });
+    const mem = memoryBrowserQueues();
+    const s = await browsers.startHumanSession({
+      workspaceId: me.workspaceId,
+      profileId: profile.id,
+      memberId: me.id,
+      memberName: me.name,
+      reason: 'sign in by hand',
+    });
+    createdSessions.push(s.id);
+    await browsers.handBack({
+      workspaceId: me.workspaceId,
+      sessionId: s.id,
+      memberId: me.id,
+      memberName: me.name,
+    });
+    await sessionIdle(undefined, { browser: mem });
+    expect([...mem.jobs.keys()].filter((k) => k.includes(s.id))).toEqual([]);
+    // Out of the seeded workspace (AuditEvent is append-only, so the profile cannot be deleted).
+    const scratch = await prisma.workspace.create({
+      data: {
+        name: 'Test',
+        slug: `t00-ws-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      },
+    });
+    await prisma.browserProfile.update({
+      where: { id: profile.id },
+      data: { workspaceId: scratch.id, createdByMemberId: null },
+    });
+  });
+
   it('does not resume a pause that came after the hand-back', async () => {
     const { d, profile, me } = await dmDraft();
     const mem = memoryBrowserQueues();

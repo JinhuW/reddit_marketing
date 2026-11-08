@@ -2,7 +2,8 @@
 
 import { FormMessage } from '@/components/agents/FormMessage';
 import { type ActionState, finishConnect, startBrowserConnect } from '@/lib/actions/accounts';
-import { useActionState, useEffect, useState } from 'react';
+import { useDeviceFingerprint } from '@/lib/use-device-fingerprint';
+import { useActionState, useState } from 'react';
 import { connectModes } from './connect-mode';
 
 const ROLES = [
@@ -38,24 +39,7 @@ export function ConnectAccountFlow(p: ConnectProps) {
   const modes = connectModes(p.configured);
   const [mode, setMode] = useState(p.authorized ? 'oauth' : modes[0]!);
   const [role, setRole] = useState<(typeof ROLES)[number]['v']>('founder');
-  const [fingerprint, setFingerprint] = useState('');
-
-  // Captured once, in the owner's real browser, so their browser profile matches their device.
-  useEffect(() => {
-    try {
-      setFingerprint(
-        JSON.stringify({
-          userAgent: navigator.userAgent,
-          screen: `${screen.width}×${screen.height}`,
-          tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          locale: navigator.languages?.join(', ') || navigator.language,
-          os:
-            (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ??
-            navigator.platform,
-        }),
-      );
-    } catch {}
-  }, []);
+  const fingerprint = useDeviceFingerprint();
 
   const browser = mode === 'browser';
   // A pending browser account is resumed by the browser flow, so it needs no free slot; anything new does.

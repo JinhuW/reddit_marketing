@@ -21,6 +21,7 @@ import { type GatewayHandle, startGateway } from './index';
 import {
   INTERNAL_VNC_PREFIX,
   createVncPlugin,
+  dbVncRepo,
   signInternalVncUrl,
   signVncToken,
   verifyInternalVncUrl,
@@ -99,9 +100,10 @@ beforeAll(async () => {
 
   // A profile with no open session; take it over as its account owner.
   const profile = await prisma.browserProfile.findFirstOrThrow({
-    where: { workspaceId, sessions: { none: { endedAt: null } } },
+    where: { workspaceId, accountId: { not: null }, sessions: { none: { endedAt: null } } },
     include: { account: { include: { owner: { include: { user: true } } } } },
   });
+  if (!profile.account) throw new Error('seed profile has no account');
   profileId = profile.id;
   previousNodeId = profile.nodeId;
   await browsers.assignNode(workspaceId, profileId, node.id);
@@ -415,6 +417,38 @@ describe('relay', () => {
   });
 });
 
+describe('browsers with no account (plan 0003)', () => {
+  it('profileNode reports no account and session logs carry accountId null', async () => {
+    const workspaceId = (await prisma.workspace.findFirstOrThrow({ select: { id: true } })).id;
+    const p = await prisma.browserProfile.create({
+      data: { workspaceId, name: `t24-noacct-${randomBytes(3).toString('hex')}`, nodeId: node.id },
+    });
+    const s = await prisma.browserSession.create({
+      data: { workspaceId, profileId: p.id, driver: 'human' },
+    });
+    try {
+      expect(await dbVncRepo.profileNode(workspaceId, p.id)).toEqual({
+        accountId: null,
+        node: { name: node.name, workspaceId },
+      });
+      await dbVncRepo.logSession({
+        session: { id: s.id, workspaceId, profileId: p.id, driver: 'human', startedByMemberId: null },
+        accountId: null,
+        text: 'Opened the remote display',
+        kind: 'connected',
+      });
+      const ev = await prisma.auditEvent.findFirstOrThrow({
+        where: { sessionId: s.id, action: 'session.log' },
+      });
+      expect(ev.accountId).toBeNull();
+    } finally {
+      // AuditEvent is append-only: end the session and park the profile instead of deleting them.
+      await prisma.browserSession.update({ where: { id: s.id }, data: { endedAt: new Date() } });
+      await parkInScratchWorkspace(p.id);
+    }
+  });
+});
+
 describe('web ↔ gateway signature contract', () => {
   it('the gateway accepts exactly what the web proxy signs (both use @threadline/shared/vnc-sign)', async () => {
     const { signGatewayVncUrl } = await import('../../../web/vnc-proxy');
@@ -437,3 +471,13 @@ describe('web ↔ gateway signature contract', () => {
     });
   });
 });
+
+/** Moves a test-made browser out of the seeded workspace (AuditEvent is append-only, so it cannot be deleted). */
+async function parkInScratchWorkspace(profileId: string) {
+  const slug = `t00-ws-${randomBytes(4).toString('hex')}`;
+  const ws = await prisma.workspace.create({ data: { name: 'Test', slug } });
+  await prisma.browserProfile.update({
+    where: { id: profileId },
+    data: { nodeId: null, workspaceId: ws.id, createdByMemberId: null },
+  });
+}

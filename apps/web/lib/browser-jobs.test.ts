@@ -81,6 +81,20 @@ describe('enqueueProfileJob', () => {
     for (const a of q.added) expect(BrowserJobSchema.safeParse(a.data).success).toBe(true);
   });
 
+  it('queues profile.signIn with ids only (no secrets) and two attempts', async () => {
+    const q = fakeQueue();
+    const r = await enqueueProfileJob(
+      'ws',
+      'p1',
+      'profile.signIn',
+      deps({ name: 'browser-1', status: 'online' }, q),
+    );
+    expect(r).toMatchObject({ queued: true, jobId: expect.stringMatching(/^bj-profile\.signIn-p1-/) });
+    expect(q.added[0]!.data).toEqual({ kind: 'profile.signIn', workspaceId: 'ws', profileId: 'p1' });
+    expect(q.added[0]!.opts.attempts).toBe(2);
+    expect(BrowserJobSchema.safeParse(q.added[0]!.data).success).toBe(true);
+  });
+
   it('returns queued:false when Redis fails', async () => {
     const d = deps({ name: 'browser-1', status: 'online' });
     d.queue = () => ({
@@ -110,6 +124,18 @@ describe('whoamiStatus', () => {
     });
     expect(await whoamiStatus('ws', 'p1', id, deps(online, q))).toEqual({ state: 'gone' });
     expect(await whoamiStatus('ws', 'p1', id, deps(null, q))).toEqual({ state: 'gone' });
+  });
+
+  it('also reads a profile.signIn job of this profile', async () => {
+    const sid = 'bj-profile.signIn-p1-abc';
+    const q = fakeQueue({
+      [sid]: { state: 'completed', returnvalue: { outcome: 'ok', data: { loggedIn: false } } },
+    });
+    expect(await whoamiStatus('ws', 'p1', sid, deps(online, q))).toEqual({
+      state: 'done',
+      whoami: { loggedIn: false },
+    });
+    expect(await whoamiStatus('ws', 'p2', sid, deps(online, q))).toEqual({ state: 'gone' });
   });
 
   it('maps job states and the gateway result', async () => {
@@ -143,6 +169,10 @@ describe('readWhoamiResult', () => {
       reason: 'paused',
     });
     expect(readWhoamiResult({ outcome: 'proxy_failed' }).state).toBe('failed');
+    expect(readWhoamiResult({ outcome: 'needs_human', paused: true, accountId: 'a1' })).toEqual({
+      state: 'failed',
+      reason: expect.stringContaining('Take control'),
+    });
     expect(readWhoamiResult(null).state).toBe('failed');
   });
 });

@@ -17,6 +17,7 @@
  *   `ws://tl-profile-<id>:6080/websockify`. No other inbound path exists.
  */
 import { z } from 'zod';
+import { BrowserCookie } from './cookies';
 import { BrowserOutcome, CloakGpu, CloakPersona, NodeEventKind } from './enums';
 
 export const PROTOCOL_VERSION = 1;
@@ -122,6 +123,28 @@ export const HealthCheckCmd = z.object({ kind: z.literal('health.check') });
  */
 export const ProfileWhoamiCmd = z.object({ kind: z.literal('profile.whoami'), profileId: id });
 
+/**
+ * Plan 0003. Prepares a profile's browser for its assigned account, in order: import `cookies` into the profile's
+ * context; read `me.json`; when nobody is signed in and `credentials` are given, fill reddit.com/login (and the
+ * TOTP code from `totpSecret`) and read `me.json` again; leave a tab open on `startUrl` for the live view.
+ * Result data: {@link WhoamiData}. Captcha / verification walls → `needs_human` with the tab kept.
+ * Carries secrets: built only by the gateway at dispatch time, never logged, never stored in a result.
+ */
+export const ProfileSignInCmd = z.object({
+  kind: z.literal('profile.signIn'),
+  profileId: id,
+  startUrl: z.string().url(),
+  cookies: z.array(BrowserCookie).max(500).optional(),
+  credentials: z
+    .object({
+      username: z.string().min(1).max(64),
+      password: z.string().min(1).max(256),
+      /** base32 */
+      totpSecret: z.string().min(1).max(128).optional(),
+    })
+    .optional(),
+});
+
 export const Cmd = z.discriminatedUnion('kind', [
   ProfileStartCmd,
   ProfileStopCmd,
@@ -131,6 +154,7 @@ export const Cmd = z.discriminatedUnion('kind', [
   VncOpenCmd,
   HealthCheckCmd,
   ProfileWhoamiCmd,
+  ProfileSignInCmd,
 ]);
 export type Cmd = z.infer<typeof Cmd>;
 export type CmdKind = Cmd['kind'];

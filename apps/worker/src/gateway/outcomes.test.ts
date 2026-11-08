@@ -1,4 +1,4 @@
-/** Unit: the `profile.whoami` outcome with injected deps (no database, no node). */
+/** Unit: the `profile.whoami` and `profile.signIn` outcomes with injected deps (no database, no node). */
 import { accounts } from '@threadline/db';
 import { describe, expect, it, vi } from 'vitest';
 import { log } from '../log';
@@ -37,7 +37,11 @@ function deps(
     writeAudit: unused,
     notifyNeedsHuman: unused,
     completeIdentity: vi.fn(complete),
-  } as unknown as OutcomeDeps & { completeIdentity: ReturnType<typeof vi.fn> };
+    markCookiesImported: vi.fn(async () => undefined),
+  } as unknown as OutcomeDeps & {
+    completeIdentity: ReturnType<typeof vi.fn>;
+    markCookiesImported: ReturnType<typeof vi.fn>;
+  };
 }
 
 /** Captures what the outcome logs, to prove the username never appears. */
@@ -137,6 +141,112 @@ describe('profile.whoami outcome', () => {
     const err = await applyOutcome(
       ctx(),
       { outcome: 'error', error: { code: 'cdp_timeout', message: '' } } as never,
+      deps(),
+      l,
+    ).catch((e) => e);
+    expect((err as Error).name).toBe('RetryableOutcomeError');
+  });
+});
+
+describe('profile.signIn outcome (plan 0003)', () => {
+  const signInCtx = (sentCookiesEnc: string | null, withAccount = true): OutcomeContext => {
+    const base = ctx();
+    return {
+      ...base,
+      job: { kind: 'profile.signIn', workspaceId: 'w1', profileId: 'p1' },
+      cmdId: 'bj-profile.signIn-p1-x',
+      profile: withAccount ? base.profile : { id: 'p1', name: 'Profile 1', accountId: null, account: null },
+      sentCookiesEnc,
+    };
+  };
+
+  it('ok: marks the sent cookies imported, then records the identity', async () => {
+    const d = deps();
+    const { l, lines } = capture();
+    const out = await applyOutcome(
+      signInCtx('enc-cookies'),
+      { outcome: 'ok', data: signedIn } as never,
+      d,
+      l,
+    );
+    expect(d.markCookiesImported).toHaveBeenCalledWith('w1', 'p1', 'enc-cookies');
+    expect(d.completeIdentity).toHaveBeenCalledWith(
+      'w1',
+      'a1',
+      expect.objectContaining({ name: 'founder_jane' }),
+    );
+    expect(out).toEqual({
+      outcome: 'ok',
+      kind: 'profile.signIn',
+      data: { loggedIn: true, changed: true, username: 'founder_jane' },
+    });
+    expect(lines.join()).not.toContain('enc-cookies');
+    expect(lines.join()).not.toContain('founder_jane');
+  });
+
+  it('no cookies sent: nothing marked imported', async () => {
+    const d = deps();
+    const { l } = capture();
+    await applyOutcome(signInCtx(null), { outcome: 'ok', data: { loggedIn: false } } as never, d, l);
+    expect(d.markCookiesImported).not.toHaveBeenCalled();
+  });
+
+  it('a duplicate identity is final, but the cookies were already imported', async () => {
+    const d = deps(async () => {
+      throw new accounts.AccountConflictError('u/founder_jane is already connected in this workspace.');
+    });
+    const { l } = capture();
+    const err = await applyOutcome(signInCtx('enc'), { outcome: 'ok', data: signedIn } as never, d, l).catch(
+      (e) => e,
+    );
+    expect((err as FinalOutcomeError).code).toBe('identity_conflict');
+    expect(d.markCookiesImported).toHaveBeenCalledTimes(1);
+  });
+
+  it('signed in on a browser with no account: logged only, nothing recorded', async () => {
+    const d = deps();
+    const { l, lines } = capture();
+    const out = await applyOutcome(signInCtx(null, false), { outcome: 'ok', data: signedIn } as never, d, l);
+    expect(out).toEqual({ outcome: 'ok', kind: 'profile.signIn', data: { loggedIn: true, changed: false } });
+    expect(d.completeIdentity).not.toHaveBeenCalled();
+    expect(lines.join()).toContain('no_account');
+  });
+
+  it.each(['signin_rejected', 'totp_secret_invalid', 'cookies_rejected'])(
+    '%s is final (never re-submits a login) and pauses nothing',
+    async (code) => {
+      const d = deps();
+      const { l, lines } = capture();
+      const err = await applyOutcome(
+        signInCtx('enc'),
+        { outcome: 'error', error: { code, message: 'secret page text' } } as never,
+        d,
+        l,
+      ).catch((e) => e);
+      expect(err).toBeInstanceOf(FinalOutcomeError);
+      expect((err as FinalOutcomeError).code).toBe(code);
+      expect(d.markCookiesImported).not.toHaveBeenCalled();
+      expect(lines.join()).not.toContain('secret page text');
+      if (code === 'signin_rejected') expect(lines.join()).toContain('rejected the stored password');
+    },
+  );
+
+  it.each(['login_form_not_found', 'aborted'])('%s is retryable', async (code) => {
+    const { l } = capture();
+    const err = await applyOutcome(
+      signInCtx('enc'),
+      { outcome: 'error', error: { code, message: '' } } as never,
+      deps(),
+      l,
+    ).catch((e) => e);
+    expect((err as Error).name).toBe('RetryableOutcomeError');
+  });
+
+  it('an agent error is retryable (signIn is not an action)', async () => {
+    const { l } = capture();
+    const err = await applyOutcome(
+      signInCtx('enc'),
+      { outcome: 'error', error: { code: 'login_form_missing', message: '' } } as never,
       deps(),
       l,
     ).catch((e) => e);

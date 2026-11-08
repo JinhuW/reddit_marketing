@@ -314,6 +314,7 @@ model WorkspaceMember {
   approvedDrafts    Draft[]          @relation("DraftApprover")
   ownedLeads        Lead[]           @relation("LeadOwner")
   startedSessions   BrowserSession[]
+  createdBrowsers   BrowserProfile[] @relation("BrowserProfileCreatedBy")
   auditEvents       AuditEvent[]
   notifications     Notification[]
 
@@ -348,6 +349,10 @@ model RedditAccount {
   /// When the Reddit identity was confirmed (OAuth callback or profile.whoami). Null = a browser-mode account
   /// whose owner has not signed in yet: never publishable, never dispatched (isIdentified).
   identifiedAt     DateTime?
+  /// Reddit password for auto sign-in (profile.signIn), encrypted with APP_ENCRYPTION_KEY. Plan 0003.
+  loginPasswordEnc String?
+  /// Base32 TOTP secret for Reddit 2FA, encrypted with APP_ENCRYPTION_KEY.
+  totpSecretEnc    String?
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
@@ -366,31 +371,40 @@ model RedditAccount {
 }
 
 model BrowserProfile {
-  id            String               @id @default(cuid())
-  workspaceId   String
-  accountId     String               @unique
-  name          String
-  containerId   String?
-  status        BrowserProfileStatus @default(idle)
-  proxyId       String?
+  id                String               @id @default(cuid())
+  workspaceId       String
+  /// The Reddit account assigned to this browser; null = a standalone browser (plan 0003). One at a time.
+  accountId         String?              @unique
+  /// Who created the browser; controls it (with admins) while no account is assigned.
+  createdByMemberId String?
+  name              String
+  /// Tab opened on every profile.signIn run; null = https://www.reddit.com/
+  startUrl          String?
+  /// Cookie JSON waiting to be imported on the next profile.signIn (encrypted); cleared after import.
+  cookiesEnc        String?
+  cookiesImportedAt DateTime?
+  containerId       String?
+  status            BrowserProfileStatus @default(idle)
+  proxyId           String?
   /// { os, screen, tz, locale, userAgent }
-  fingerprint   Json                 @default("{}")
-  cookiesVolume String?
-  lastSessionAt DateTime?
+  fingerprint       Json                 @default("{}")
+  cookiesVolume     String?
+  lastSessionAt     DateTime?
   /// Browser node that runs this profile (browsers.assignNode).
-  nodeId        String?
+  nodeId            String?
   /// CloakBrowser fingerprint, set once at connect time by browsers.ensureCloakFingerprint, never changed.
   /// The salt the seed derives from is kept in `fingerprint.cloakSalt`.
-  cloakSeed     Int?
+  cloakSeed         Int?
   /// "windows" | "macos" | "linux" (CloakPersona)
-  cloakPersona  String?
+  cloakPersona      String?
   /// "nvidia" | "intel" | "amd" (CloakGpu)
-  cloakGpu      String?
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
+  cloakGpu          String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
   workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  account   RedditAccount    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account   RedditAccount?   @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  createdBy WorkspaceMember? @relation("BrowserProfileCreatedBy", fields: [createdByMemberId], references: [id], onDelete: SetNull)
   proxy     Proxy?           @relation(fields: [proxyId], references: [id])
   node      BrowserNode?     @relation(fields: [nodeId], references: [id])
   sessions  BrowserSession[]

@@ -71,12 +71,15 @@ export type SignInCheck =
   | { state: 'not_signed_in'; message: string }
   | { state: 'failed'; message: string };
 
-/** Account identity first; otherwise the `profile.whoami` job's answer (null = nothing asked yet). */
+/**
+ * Account identity first; otherwise the `profile.whoami` / `profile.signIn` job's answer (null = nothing asked
+ * yet). `account` null = a browser with no account (plan 0003): whoever the browser is signed in as counts.
+ */
 export function signInView(
-  account: { identified: boolean; username: string },
+  account: { identified: boolean; username: string } | null,
   status: WhoamiStatus | null,
 ): SignInCheck {
-  if (account.identified) return { state: 'signed_in', username: account.username };
+  if (account?.identified) return { state: 'signed_in', username: account.username };
   if (!status) return { state: 'idle' };
   switch (status.state) {
     case 'pending':
@@ -86,6 +89,7 @@ export function signInView(
     case 'failed':
       return { state: 'failed', message: status.reason };
     case 'done':
+      if (!account && status.whoami.loggedIn) return { state: 'signed_in', username: status.whoami.name };
       return status.whoami.loggedIn
         ? {
             // The gateway links the identity before the job completes; still unlinked = it was refused.
@@ -97,17 +101,29 @@ export function signInView(
 }
 
 /** Show the sign-in banner: asked for (`?login=1`), or a browser-mode account nobody has signed in to yet. */
-export function showSignIn(login: string | undefined, account: { authMode: string; identifiedAt: unknown }) {
-  return login === '1' || (account.authMode === 'browser' && account.identifiedAt == null);
+export function showSignIn(
+  login: string | undefined,
+  account: { authMode: string; identifiedAt: unknown } | null,
+) {
+  return login === '1' || (account?.authMode === 'browser' && account.identifiedAt == null);
 }
+
+/** A real Reddit username, or null for the `pending-…` placeholder of a browser connect nobody finished. */
+export function realUsername(username: string): string | null {
+  return username.startsWith('pending-') ? null : username;
+}
+
+const firstName = (n: string) => n.split(' ')[0] ?? n;
 
 /** Plain, client-safe view of a profile. Never includes proxy credentials. */
 export function profileView(p: Row, now = new Date(), node: NodeInfo | null = null) {
   const fp = (p.fingerprint ?? {}) as browsers.Fingerprint;
   const test = (p.proxy?.lastTest ?? null) as browsers.ProxyTest | null;
   const region = proxyRegionMismatch(test ? { country: test.country, timeZone: test.timeZone } : null, fp.tz);
-  const agent = p.account.agents[0] ?? null;
-  const ownerName = p.account.owner.user.name ?? p.account.owner.user.email;
+  const a = p.account;
+  const agent = a?.agents[0] ?? null;
+  const ownerName = a ? (a.owner.user.name ?? a.owner.user.email) : null;
+  const creatorName = p.createdBy ? (p.createdBy.user.name ?? p.createdBy.user.email) : null;
   const open = p.sessions[0] ?? null;
   const providerName = p.proxy?.provider.split(' · ')[0] ?? '';
   const proxyLabel =
@@ -117,10 +133,15 @@ export function profileView(p: Row, now = new Date(), node: NodeInfo | null = nu
       ? `${test?.kind ?? p.proxy.protocol.toUpperCase()} · ${p.proxy.sticky ? 'sticky' : 'rotating'}`
       : 'Direct connection';
   const status = STATUS[p.status];
-  const paused = p.account.pausedReason
-    ? { reason: p.account.pausedReason, label: PAUSE_LABEL[p.account.pausedReason] }
-    : null;
-  const signedIn = p.account.authMode !== 'browser' || p.account.identifiedAt != null;
+  const paused = a?.pausedReason ? { reason: a.pausedReason, label: PAUSE_LABEL[a.pausedReason] } : null;
+  // No account = nothing waiting for a sign-in.
+  const signedIn = !a || a.authMode !== 'browser' || a.identifiedAt != null;
+  // Who may change the browser besides admins: the account owner, or the creator of a browser with no account.
+  const controllerFirst = ownerName
+    ? firstName(ownerName)
+    : creatorName
+      ? firstName(creatorName)
+      : 'its creator';
   const needsAttention =
     region.mismatch || p.status === 'check' || p.status === 'error' || paused !== null || !signedIn;
   return {
@@ -138,10 +159,35 @@ export function profileView(p: Row, now = new Date(), node: NodeInfo | null = nu
     locale: fp.locale ?? '—',
     capturedAt: fp.capturedAt ?? null,
     ownerPlace: fp.ownerPlace ?? null,
-    account: signedIn ? `u/${p.account.username}` : 'Waiting for sign-in',
-    accountOwnerMemberId: p.account.ownerMemberId,
-    owner: `${ownerName} · ${ROLE[p.account.roleLabel]}`,
-    ownerFirst: ownerName.split(' ')[0] ?? ownerName,
+    account: !a ? 'No account' : signedIn ? `u/${a.username}` : 'Waiting for sign-in',
+    accountOwnerMemberId: a?.ownerMemberId ?? null,
+    owner:
+      a && ownerName
+        ? `${ownerName} · ${ROLE[a.roleLabel]}`
+        : creatorName
+          ? `Created by ${creatorName}`
+          : '—',
+    /** the account owner's first name, else the creator's (a browser with no account) */
+    ownerFirst: controllerFirst,
+    /** The assigned account for the editor's Account section. Never the stored password or TOTP secret. */
+    accountInfo: a
+      ? {
+          id: a.id,
+          /** null while a browser connect is still `pending-…` */
+          username: realUsername(a.username),
+          authMode: a.authMode,
+          identified: a.identifiedAt != null,
+          hasPassword: Boolean(a.loginPasswordEnc),
+          hasTotp: Boolean(a.totpSecretEnc),
+          ownerName: ownerName ?? '',
+        }
+      : null,
+    startUrl: p.startUrl ?? null,
+    /** pasted cookies wait (encrypted) for the next sign-in run; never their values */
+    cookies: {
+      pending: Boolean(p.cookiesEnc),
+      importedAt: p.cookiesImportedAt ? p.cookiesImportedAt.toISOString() : null,
+    },
     agent: agent ? { name: agent.name, color: agent.color } : null,
     proxyLabel,
     proxyType,

@@ -175,6 +175,25 @@ describe('Dispatcher', () => {
     ]);
   });
 
+  it('never stores profile.signIn results: every "Sign in now" runs again', async () => {
+    let runs = 0;
+    const { d, send } = setup({
+      'profile.signIn': async () => {
+        runs++;
+        return { outcome: 'ok', data: { loggedIn: false } };
+      },
+    });
+    const sign: Command['cmd'] = {
+      kind: 'profile.signIn',
+      profileId: 'p1',
+      startUrl: 'https://www.reddit.com/',
+    };
+    await d.handle(cmd('bj-profile.signIn-p1', sign), send);
+    await d.handle(cmd('bj-profile.signIn-p1', sign), send);
+    expect(runs).toBe(2);
+    expect(d.cached('bj-profile.signIn-p1')).toBeUndefined();
+  });
+
   it('turns a thrown handler into an error result with secrets scrubbed', async () => {
     const { d, send, results } = setup({
       'profile.start': async (c) => {

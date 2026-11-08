@@ -38,10 +38,11 @@ test('saving a proxy port persists and never echoes credentials', async ({ page 
     await page.goto(`/browsers?id=${id}`);
     await expect(page.getByLabel('Port')).toBeHidden(); // custom proxy form starts folded
     await page.getByText('enter a proxy for this profile').click();
-    await expect(page.getByLabel('Password')).toHaveValue('');
-    await expect(page.getByLabel('Password')).toHaveAttribute('placeholder', '•••• saved');
+    const proxyPassword = page.getByTestId('custom-proxy').getByLabel('Password');
+    await expect(proxyPassword).toHaveValue('');
+    await expect(proxyPassword).toHaveAttribute('placeholder', '•••• saved');
     await page.getByLabel('Port').fill('22226');
-    await page.getByRole('button', { name: 'Save' }).click();
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByRole('status').filter({ hasText: 'Proxy saved' })).toBeVisible();
     await page.reload();
     await page.getByText('enter a proxy for this profile').click();
@@ -187,6 +188,75 @@ test('a viewer sees node and status but no Start, Stop, Assign or Resume', async
   for (const name of ['Start', 'Stop', 'Assign', 'Resume'])
     await expect(controls.getByRole('button', { name, exact: true })).toHaveCount(0);
   await ctx.close();
+});
+
+test('a new browser with cookies, an added account with password + 2FA, then unassigned', async ({
+  page,
+}) => {
+  const name = `e2e browser ${Date.now().toString(36)}`;
+  const username = `e2e_sa_${Date.now().toString(36)}`.slice(0, 20);
+  try {
+    await page.goto('/browsers');
+    await page.getByRole('link', { name: 'New browser' }).click();
+    const form = page.getByTestId('new-browser-form');
+    await form.getByLabel('Name').fill(name);
+    await form.getByLabel('Cookie', { exact: true }).fill('not json');
+    await form.getByRole('button', { name: 'Create browser' }).click();
+    await expect(form.getByRole('status')).toContainText('Cookie must be JSON');
+    await expect(form.getByLabel('Name')).toHaveValue(name); // a refused submit keeps the fields
+    await form.getByLabel('Cookie', { exact: true }).fill(
+      JSON.stringify([
+        {
+          domain: '.reddit.com',
+          name: 'reddit_session',
+          value: 'e2e-cookie-value',
+          path: '/',
+          secure: true,
+        },
+      ]),
+    );
+    await form.getByRole('button', { name: 'Create browser' }).click();
+    await page.waitForURL(/\/browsers\?id=/);
+    const id = new URL(page.url()).searchParams.get('id')!;
+    const created = await prisma.browserProfile.findUniqueOrThrow({ where: { id } });
+    expect(created.accountId).toBeNull();
+    expect(created.cookiesEnc).toBeTruthy();
+    expect(created.cookiesEnc).not.toContain('e2e-cookie-value');
+
+    await expect(page.locator(`tr[data-profile="${name}"]`)).toContainText('No account');
+    await expect(page.getByTestId('cookie-status')).toContainText('Pending');
+    await expect(page.getByTestId('browser-settings').getByLabel('Cookie', { exact: true })).toHaveValue('');
+
+    const section = page.getByTestId('account-section');
+    const add = section.getByTestId('add-account');
+    await add.getByLabel('Username').fill(username);
+    await add.getByLabel('Password').fill('e2e-hunter2');
+    await add.getByLabel('2FA secret').fill('GDKI AX2L WCTA C3JC');
+    await add.getByRole('button', { name: 'Add account' }).click();
+    await expect(section.getByTestId('account-username')).toHaveText(`u/${username}`);
+    await expect(section).toContainText('Saved');
+    expect(await page.content()).not.toContain('e2e-hunter2');
+    const acc = await prisma.redditAccount.findFirstOrThrow({ where: { username } });
+    expect(acc.loginPasswordEnc).toBeTruthy();
+    expect(acc.loginPasswordEnc).not.toContain('e2e-hunter2');
+    expect(acc.identifiedAt).toBeNull();
+
+    await section.getByRole('button', { name: 'Unassign account' }).click();
+    await expect(section.getByRole('status').filter({ hasText: 'Account unassigned' })).toBeVisible();
+    expect((await prisma.browserProfile.findUniqueOrThrow({ where: { id } })).accountId).toBeNull();
+    // the account stays and can be assigned again from the picker
+    await expect(section.getByLabel('Assign an account').locator('option')).toContainText([`u/${username}`]);
+  } finally {
+    // AuditEvent is append-only, so the rows cannot be deleted: move them out of the seeded workspace.
+    const scratch = await prisma.workspace.create({
+      data: { name: 'Test', slug: `t00-ws-e2e-${Date.now().toString(36)}` },
+    });
+    await prisma.browserProfile.updateMany({
+      where: { name },
+      data: { workspaceId: scratch.id, nodeId: null, accountId: null, createdByMemberId: null },
+    });
+    await prisma.redditAccount.updateMany({ where: { username }, data: { workspaceId: scratch.id } });
+  }
 });
 
 test.afterAll(async () => {
