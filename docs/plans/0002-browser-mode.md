@@ -13,7 +13,7 @@ planned. The OAuth path stays in the code and is used only when an app is config
 | Post a new thread (`post` drafts) | Reddit API | Not supported in browser mode: refused with a clear reason, never sent |
 | Find conversations (`reddit.poll`) | App token (client credentials) | The public Atom feed (`/r/<sub>/new/.rss`) fetched by the worker through `REDDIT_READ_PROXY_URL` (anonymous `new.json` returns 403) |
 | Profile → node | Manual (`register-node --assign`) | Assigned at creation to the least-loaded online node in the workspace that has room (`maxProfiles`); changeable on the Browsers screen |
-| Proxy | Per profile, saved on the Browsers screen | Same. Production profile 1 uses a Decodo ISP port not used by the ERP fleet |
+| Proxy | Per profile, saved on the Browsers screen | A workspace provider in Settings → Proxies (host + one username/password); each profile picks a port on the Browsers screen. Production profile 1 uses a Decodo ISP port not used by the ERP fleet |
 
 Rules that do not change: a post only from an approved Draft with an `approverMemberId` (the gate in
 `assertPublishable` and in the gateway's `approvalGate`); every RedditAccount / BrowserSession transition writes an

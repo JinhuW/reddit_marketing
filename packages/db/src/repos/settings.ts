@@ -144,6 +144,10 @@ function actionLabel(
       return { label: 'Invited', tone: 'line' };
     case 'member.role_changed':
       return { label: 'Role changed', tone: 'line' };
+    case 'settings.proxy_provider_saved':
+      return { label: 'Proxy provider saved', tone: 'line' };
+    case 'settings.proxy_provider_deleted':
+      return { label: 'Proxy provider deleted', tone: 'mid' };
     default:
       return { label: action, tone: 'line' };
   }

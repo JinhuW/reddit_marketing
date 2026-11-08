@@ -163,6 +163,8 @@ export const AuditAction = [
   'account.resumed',
   'account.connect_started',
   'profile.node_assigned',
+  'settings.proxy_provider_saved',
+  'settings.proxy_provider_deleted',
 ] as const;
 export type AuditAction = (typeof AuditAction)[number];
 

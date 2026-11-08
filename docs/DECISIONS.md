@@ -3,6 +3,43 @@
 Running log of choices made while building that docs/PLAN.md left open or that differ from it.
 Newest first.
 
+## 2026-11-07 — Workspace proxy providers (Settings → Proxies)
+
+Owner: "The proxy is Decodo. User name and password are the same for all ports. Configure it in Settings instead
+of in the browser."
+
+- **`ProxyProvider` {name, protocol, host, encrypted username/password, optional port range, region}**, unique by
+  name per workspace. A profile uses one port of it through its own `Proxy` row (`providerId` + `port`).
+  `getProfileForDispatch` takes host, protocol and credentials from the provider and ignores the row's own, so a
+  new provider password reaches every profile at its next start. The row keeps display copies of name, host and
+  protocol, updated when the provider is saved.
+- **One IP per account**: `assignProviderPort` refuses a port another profile of the workspace uses, counting
+  profiles on the provider and profiles on a standalone proxy with the same host (e.g. the add-proxy CLI row),
+  and a port outside the range when one is set. Saving a narrower range that leaves a used port outside is
+  refused. No lock is taken: two simultaneous picks of the same port can both pass (same trade-off as
+  `nodes.pickForProfile`).
+- **A provider cannot be deleted while a profile uses it.** Unused port rows are deleted with it, and a port row
+  a profile leaves is deleted when no profile uses it any more.
+- **A custom (one-off) proxy never overwrites a provider port row**: saving one on a profile that is on a
+  provider creates a new standalone row.
+- No backfill: existing standalone proxies stay as they are until someone picks a provider port.
+- Audit: `settings.proxy_provider_saved` / `settings.proxy_provider_deleted` (name, host, protocol, range,
+  `credentialsChanged`); a port pick writes `profile.proxy_updated` with provider name and port. Never credentials.
+
+**UI not shown on the artboards** (each in its smallest form)
+
+- Settings nav **"Proxies"** (Admins only; others get "Only admins can manage proxies." on the URL). One panel in
+  the Team-and-roles pattern: table Provider / Host / Ports / Credentials (Saved · Not set) / In use (port ·
+  profile) with Edit and Delete (disabled while in use), and an inline form: Name, Protocol, Host, Ports from–to
+  (optional), Region (optional), Username, Password (write-only, "•••• saved" placeholder).
+- Browsers profile editor: the proxy block is **Provider + Port selects** (ports of the range; another profile's
+  port is disabled and shows its name; a number field when there is no range or the range is over 500 ports).
+  The old fields moved into a collapsed **"Custom proxy"** section, open when the profile already uses a one-off
+  proxy or no provider exists; its "Provider" select is now labelled "Service". Save submits whichever is
+  showing. The "Use a saved proxy" picker is gone (`attachProxy` stays in the repo for the CLI and tests).
+- Connect step 1 (browser mode): the Proxy select lists providers (plus "No proxy · direct connection"); picking
+  one shows a Port select with the first free port preselected.
+
 ## 2026-11-07 — browser node contracts (infra plan T00)
 
 - **Contracts live in `packages/shared`**: `enums.ts` (BrowserNodeStatus, PauseReason, BrowserOutcome, CloakPersona,

@@ -1,10 +1,15 @@
 import { PauseReason } from '@threadline/shared';
 import { describe, expect, it } from 'vitest';
 import {
+  MAX_PORT_OPTIONS,
   PAUSE_LABEL,
+  firstFreePort,
   nodeOptions,
   nodeView,
   profileView,
+  providerChoices,
+  providerLabel,
+  providerPortOptions,
   savedProxyLabel,
   showSignIn,
   signInView,
@@ -152,5 +157,54 @@ describe('savedProxyLabel', () => {
     expect(
       savedProxyLabel({ provider: 'Own server', protocol: 'none', host: null, port: null, profileCount: 0 }),
     ).toBe('Own server · direct · 0 profiles');
+  });
+});
+
+describe('provider ports', () => {
+  const decodo = {
+    id: 'pv1',
+    name: 'Decodo',
+    host: 'isp.decodo.com',
+    portFrom: 10005,
+    portTo: 10008,
+    portsInUse: [
+      { port: 10006, profileId: 'p1', profileName: 'Jane · Chrome' },
+      { port: 10007, profileId: 'p2', profileName: 'Leo · Chrome' },
+    ],
+  };
+
+  it('lists the range; other profiles’ ports are disabled with their name, the own port is not', () => {
+    expect(providerPortOptions(decodo, 'p1')).toEqual([
+      { port: 10005, label: '10005', disabled: false },
+      { port: 10006, label: '10006 · this profile', disabled: false },
+      { port: 10007, label: '10007 · Leo · Chrome', disabled: true },
+      { port: 10008, label: '10008', disabled: false },
+    ]);
+    // a new profile (connect flow) has no port of its own
+    expect(
+      providerPortOptions(decodo, null)!
+        .filter((o) => o.disabled)
+        .map((o) => o.port),
+    ).toEqual([10006, 10007]);
+  });
+
+  it('no range, or one too wide, means a typed-in port', () => {
+    expect(providerPortOptions({ ...decodo, portFrom: null, portTo: null }, null)).toBeNull();
+    expect(providerPortOptions({ ...decodo, portFrom: 1, portTo: MAX_PORT_OPTIONS + 1 }, null)).toBeNull();
+    expect(providerPortOptions({ ...decodo, portFrom: 1, portTo: MAX_PORT_OPTIONS }, null)).toHaveLength(
+      MAX_PORT_OPTIONS,
+    );
+  });
+
+  it('labels and choices carry no credentials; first free port skips used ones', () => {
+    expect(providerLabel(decodo)).toBe('Decodo · isp.decodo.com · 10005–10008');
+    expect(providerLabel({ ...decodo, portFrom: null, portTo: null })).toBe('Decodo · isp.decodo.com');
+    const [c] = providerChoices([{ ...decodo, portFrom: 10006, portTo: 10008 }], 'p9');
+    expect(c!.usedPorts).toEqual([
+      { port: 10006, profileName: 'Jane · Chrome' },
+      { port: 10007, profileName: 'Leo · Chrome' },
+    ]);
+    expect(firstFreePort(c)).toBe('10008');
+    expect(firstFreePort(undefined)).toBe('');
   });
 });

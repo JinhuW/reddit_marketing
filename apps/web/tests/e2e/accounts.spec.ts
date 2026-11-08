@@ -14,7 +14,7 @@ if (!process.env.DATABASE_URL) {
     if (m && !process.env[m[1]!]) process.env[m[1]!] = m[2];
   }
 }
-const { prisma, accounts } = await import('@threadline/db');
+const { prisma, accounts, browsers } = await import('@threadline/db');
 
 test('accounts page shows the three accounts with meters', async ({ page }) => {
   await page.goto('/accounts');
@@ -87,6 +87,18 @@ test('connect through the browser: pending account, sign-in session, identity, h
   const member = await prisma.workspaceMember.create({
     data: { workspaceId: acme.id, userId: user.id, role: 'editor' },
   });
+  // A workspace proxy provider (Settings → Proxies): step 1 picks one of its ports for the new profile.
+  const jane = await prisma.workspaceMember.findFirstOrThrow({
+    where: { workspaceId: acme.id, user: { email: 'jane@acme.so' } },
+  });
+  const provider = await browsers.saveProvider(acme.id, jane.id, {
+    name: `E2E connect ${run}`,
+    protocol: 'http',
+    host: 'isp.decodo.e2e',
+    portFrom: 10001,
+    portTo: 10003,
+    region: null,
+  });
   const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
   const page = await ctx.newPage();
   try {
@@ -106,6 +118,8 @@ test('connect through the browser: pending account, sign-in session, identity, h
     await page.goto('/accounts/connect');
     await page.getByRole('radiogroup', { name: 'Role' }).getByText('Support', { exact: true }).click();
     await page.getByRole('textbox', { name: 'Disclosure line' }).fill('I work on support at Acme.');
+    await page.getByRole('combobox', { name: 'Proxy' }).selectOption(provider.id);
+    await page.getByRole('combobox', { name: 'Port' }).selectOption('10002');
     await page.getByRole('button', { name: 'Open the browser to sign in' }).click();
 
     await expect(page).toHaveURL(/\/browsers\/[^/]+\/session\?login=1$/);
@@ -122,6 +136,11 @@ test('connect through the browser: pending account, sign-in session, identity, h
     const acc = await prisma.redditAccount.findUniqueOrThrow({ where: { ownerMemberId: member.id } });
     expect(acc).toMatchObject({ authMode: 'browser', identifiedAt: null });
     expect(acc.username).toMatch(/^pending-/);
+    const prof = await prisma.browserProfile.findFirstOrThrow({
+      where: { accountId: acc.id },
+      include: { proxy: true },
+    });
+    expect(prof.proxy).toMatchObject({ providerId: provider.id, port: 10002 });
 
     // The accounts list shows the pending account with a link back to its sign-in.
     await page.goto('/accounts');
@@ -143,6 +162,11 @@ test('connect through the browser: pending account, sign-in session, identity, h
     ).toBe(0);
   } finally {
     await ctx.close();
+    await prisma.browserProfile.updateMany({
+      where: { account: { ownerMemberId: member.id } },
+      data: { proxyId: null },
+    });
+    await browsers.deleteProvider(acme.id, jane.id, provider.id);
     await archive(member.id);
   }
 });

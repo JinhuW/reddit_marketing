@@ -1,7 +1,7 @@
 import { AutoRefresh } from '@/components/browsers/AutoRefresh';
 import { ProfileEditor } from '@/components/browsers/ProfileEditor';
 import { Dot, ProfileTable } from '@/components/browsers/ProfileTable';
-import { type NodeInfo, nodeOptions, profileView, savedProxyLabel } from '@/components/browsers/view';
+import { type NodeInfo, nodeOptions, profileView, providerChoices } from '@/components/browsers/view';
 import { PageHeader } from '@/components/ui/page-header';
 import { requireMember } from '@/lib/session';
 import { browsers, nodes, shell } from '@threadline/db';
@@ -23,10 +23,10 @@ function Kpi({ label, children }: { label: string; children: React.ReactNode }) 
 export default async function BrowsersPage({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
   const me = await requireMember();
   const sp = await searchParams;
-  const [rows, online, proxies] = await Promise.all([
+  const [rows, online, providers] = await Promise.all([
     browsers.listProfiles(me.workspaceId),
     nodes.listOnline(me.workspaceId),
-    browsers.listProxies(me.workspaceId),
+    browsers.listProviders(me.workspaceId),
   ]);
   const nodeIds = [...new Set(rows.map((r) => r.nodeId).filter((v): v is string => Boolean(v)))];
   const nodeById = new Map<string, NodeInfo>();
@@ -37,7 +37,6 @@ export default async function BrowsersPage({ searchParams }: { searchParams: Pro
   const sel = profiles.find((p) => p.id === sp.id) ?? profiles[0] ?? null;
   const selRow = rows.find((r) => r.id === sel?.id);
   const isAdmin = me.role === 'admin';
-  const savedProxies = proxies.map((x) => ({ id: x.id, label: savedProxyLabel(x) }));
   const running = profiles.filter((p) => p.status.key === 'running');
   const attention = profiles.filter((p) => p.needsAttention);
   const latencies = profiles
@@ -99,8 +98,7 @@ export default async function BrowsersPage({ searchParams }: { searchParams: Pro
             canEdit={browsers.canControlProfile(me, selRow)}
             isAdmin={isAdmin}
             nodeOptions={nodeOptions(online, selRow.nodeId ? (nodeById.get(selRow.nodeId) ?? null) : null)}
-            savedProxies={savedProxies}
-            currentProxyId={selRow.proxyId}
+            providers={providerChoices(providers, sel.id)}
           />
         </div>
       ) : (

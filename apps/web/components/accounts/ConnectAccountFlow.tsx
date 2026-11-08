@@ -3,6 +3,7 @@
 import { FormMessage } from '@/components/agents/FormMessage';
 import { type ActionState, finishConnect, startBrowserConnect } from '@/lib/actions/accounts';
 import { useActionState, useEffect, useState } from 'react';
+import { type ProviderChoice, firstFreePort } from '../browsers/view';
 import { connectModes } from './connect-mode';
 
 const ROLES = [
@@ -19,8 +20,8 @@ export interface ConnectProps {
   authorized: { username: string; scopes: string[] } | null;
   product: string;
   error: string | null;
-  /** the workspace's proxies (safe labels only) for a browser-mode profile */
-  proxies: { id: string; label: string }[];
+  /** the workspace's proxy providers (safe fields only) for a browser-mode profile */
+  providers: ProviderChoice[];
   compact?: boolean;
 }
 
@@ -34,6 +35,9 @@ export function ConnectAccountFlow(p: ConnectProps) {
   const [mode, setMode] = useState(p.authorized ? 'oauth' : modes[0]!);
   const [role, setRole] = useState<(typeof ROLES)[number]['v']>('founder');
   const [fingerprint, setFingerprint] = useState('');
+  const [providerId, setProviderId] = useState('');
+  const choice = p.providers.find((x) => x.id === providerId);
+  const [port, setPort] = useState('');
 
   // Captured once, in the owner's real browser, so their browser profile matches their device.
   useEffect(() => {
@@ -92,17 +96,63 @@ export function ConnectAccountFlow(p: ConnectProps) {
                   No Reddit app is configured, so accounts connect through their browser.
                 </p>
               ) : null}
-              <label className="muted flex flex-col gap-1 text-xs">
-                Proxy
-                <select name="proxyId" className="field !h-9" defaultValue="" disabled={blocked}>
-                  <option value="">No proxy · direct connection</option>
-                  {p.proxies.map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="grid grid-cols-[minmax(0,1fr)_132px] gap-2">
+                <label className="muted flex flex-col gap-1 text-xs">
+                  Proxy
+                  <select
+                    name="providerId"
+                    className="field !h-9"
+                    value={providerId}
+                    disabled={blocked}
+                    onChange={(e) => {
+                      const id = e.currentTarget.value;
+                      setProviderId(id);
+                      setPort(firstFreePort(p.providers.find((x) => x.id === id)));
+                    }}
+                  >
+                    <option value="">No proxy · direct connection</option>
+                    {p.providers.map((x) => (
+                      <option key={x.id} value={x.id}>
+                        {x.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {choice ? (
+                  <div className="muted flex flex-col gap-1 text-xs">
+                    <label htmlFor="connect-port">Port</label>
+                    {choice.ports ? (
+                      <select
+                        id="connect-port"
+                        name="port"
+                        className="field num !h-9"
+                        value={port}
+                        disabled={blocked}
+                        onChange={(e) => setPort(e.currentTarget.value)}
+                      >
+                        <option value="" disabled>
+                          Pick a port
+                        </option>
+                        {choice.ports.map((o) => (
+                          <option key={o.port} value={o.port} disabled={o.disabled}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        id="connect-port"
+                        name="port"
+                        className="field num !h-9"
+                        inputMode="numeric"
+                        value={port}
+                        disabled={blocked}
+                        onChange={(e) => setPort(e.currentTarget.value)}
+                      />
+                    )}
+                  </div>
+                ) : null}
+              </div>
               {modes.includes('oauth') ? (
                 <button
                   type="button"

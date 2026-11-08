@@ -107,12 +107,19 @@ export async function saveProxy(
       ...(data.usernameEnc !== undefined ? { usernameEnc: data.usernameEnc } : {}),
       ...(data.passwordEnc !== undefined ? { passwordEnc: data.passwordEnc } : {}),
     };
-    let proxyId = profile.proxyId;
-    if (proxyId) await tx.proxy.update({ where: { id: proxyId }, data: fields });
-    else {
+    const current = profile.proxyId
+      ? await tx.proxy.findUnique({ where: { id: profile.proxyId }, select: { id: true, providerId: true } })
+      : null;
+    let proxyId: string;
+    if (current && !current.providerId) {
+      await tx.proxy.update({ where: { id: current.id }, data: fields });
+      proxyId = current.id;
+    } else {
+      // No proxy yet, or a provider port: a custom proxy is a new standalone row (the provider's stays its own).
       const p = await tx.proxy.create({ data: { workspaceId, ...fields } });
       proxyId = p.id;
       await tx.browserProfile.update({ where: { id: profileId }, data: { proxyId } });
+      await dropUnusedProviderRow(tx, current?.id ?? null);
     }
     await writeAudit(
       {
@@ -334,6 +341,304 @@ export function attachProxy(
   actorMemberId: string | null = null,
 ): Promise<{ changed: boolean }> {
   return prisma.$transaction((tx) => attachProxyTx(tx, workspaceId, profileId, proxyId, actorMemberId));
+}
+
+// ── proxy providers (Settings → Proxies): one host + one set of credentials for a range of ports ──
+
+export class ProxyProviderError extends Error {}
+
+/** A port of a provider that a profile of the workspace uses. */
+export interface ProviderPortUse {
+  port: number;
+  profileId: string;
+  profileName: string;
+}
+
+/** Provider fields that are safe to show. The encrypted username/password are never returned. */
+export interface ProxyProviderListItem {
+  id: string;
+  name: string;
+  protocol: 'http' | 'socks5';
+  host: string;
+  portFrom: number | null;
+  portTo: number | null;
+  region: string | null;
+  /** a username or password is saved (encrypted); the values are not returned */
+  hasCredentials: boolean;
+  hasUsername: boolean;
+  hasPassword: boolean;
+  /**
+   * Ports of this provider's host that the workspace's profiles use, lowest first: profiles on this provider,
+   * and profiles on a standalone proxy with the same host (e.g. one added by the add-proxy CLI).
+   */
+  portsInUse: ProviderPortUse[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** Profiles of the workspace on the provider's host (through it, or a standalone proxy with that host). */
+async function portsInUseTx(
+  tx: Db,
+  workspaceId: string,
+  provider: { id: string; host: string },
+): Promise<ProviderPortUse[]> {
+  const rows = await tx.browserProfile.findMany({
+    where: {
+      workspaceId,
+      proxy: {
+        port: { not: null },
+        OR: [
+          { providerId: provider.id },
+          { providerId: null, host: provider.host, protocol: { not: 'none' } },
+        ],
+      },
+    },
+    select: { id: true, name: true, proxy: { select: { port: true } } },
+    orderBy: { createdAt: 'asc' },
+  });
+  return rows
+    .map((r) => ({ port: r.proxy?.port ?? 0, profileId: r.id, profileName: r.name }))
+    .sort((a, b) => a.port - b.port);
+}
+
+/** The workspace's proxy providers, by name, with the ports its profiles use. */
+export async function listProviders(workspaceId: string): Promise<ProxyProviderListItem[]> {
+  const rows = await prisma.proxyProvider.findMany({ where: { workspaceId }, orderBy: { name: 'asc' } });
+  return Promise.all(
+    rows.map(async (r) => ({
+      id: r.id,
+      name: r.name,
+      protocol: r.protocol === 'socks5' ? ('socks5' as const) : ('http' as const),
+      host: r.host,
+      portFrom: r.portFrom,
+      portTo: r.portTo,
+      region: r.region,
+      hasCredentials: Boolean(r.usernameEnc || r.passwordEnc),
+      hasUsername: Boolean(r.usernameEnc),
+      hasPassword: Boolean(r.passwordEnc),
+      portsInUse: await portsInUseTx(prisma, workspaceId, r),
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    })),
+  );
+}
+
+export interface ProviderInput {
+  /** absent = create */
+  id?: string;
+  name: string;
+  protocol: 'http' | 'socks5';
+  host: string;
+  portFrom: number | null;
+  portTo: number | null;
+  region: string | null;
+  /** already encrypted; undefined = keep the saved value */
+  usernameEnc?: string;
+  passwordEnc?: string;
+}
+
+const validPort = (n: number) => Number.isInteger(n) && n >= 1 && n <= 65535;
+
+/**
+ * Creates or updates a provider. Credentials arrive encrypted; undefined keeps the saved value. Refuses a range
+ * that would leave a port in use outside it. Writes `settings.proxy_provider_saved` (never credentials).
+ */
+export async function saveProvider(
+  workspaceId: string,
+  actorMemberId: string,
+  input: ProviderInput,
+): Promise<{ id: string; created: boolean }> {
+  const name = input.name.trim();
+  const host = input.host.trim();
+  const { portFrom, portTo } = input;
+  if (!name) throw new ProxyProviderError('Name is required.');
+  if (!host) throw new ProxyProviderError('Host is required.');
+  if ((portFrom === null) !== (portTo === null))
+    throw new ProxyProviderError('Give both ends of the port range, or neither.');
+  if (portFrom !== null && portTo !== null) {
+    if (!validPort(portFrom) || !validPort(portTo)) throw new ProxyProviderError('Ports must be 1–65535.');
+    if (portFrom > portTo) throw new ProxyProviderError('The range must start at or below its end.');
+  }
+  return prisma.$transaction(async (tx) => {
+    const clash = await tx.proxyProvider.findFirst({
+      where: { workspaceId, name, ...(input.id ? { id: { not: input.id } } : {}) },
+      select: { id: true },
+    });
+    if (clash) throw new ProxyProviderError(`A provider named ${name} already exists.`);
+    const fields = {
+      name,
+      protocol: input.protocol,
+      host,
+      portFrom,
+      portTo,
+      region: input.region,
+      ...(input.usernameEnc !== undefined ? { usernameEnc: input.usernameEnc } : {}),
+      ...(input.passwordEnc !== undefined ? { passwordEnc: input.passwordEnc } : {}),
+    };
+    let id: string;
+    const created = !input.id;
+    if (input.id) {
+      const before = await tx.proxyProvider.findFirst({ where: { workspaceId, id: input.id } });
+      if (!before) throw new ProxyProviderError('Provider not found.');
+      if (portFrom !== null && portTo !== null) {
+        const used = await portsInUseTx(tx, workspaceId, before);
+        const out = used.find((u) => u.port < portFrom || u.port > portTo);
+        if (out)
+          throw new ProxyProviderError(
+            `Port ${out.port} is used by ${out.profileName}; keep it inside the range.`,
+          );
+      }
+      await tx.proxyProvider.update({ where: { id: before.id }, data: fields });
+      // Keep the display copies on its proxies in step; dispatch reads the provider itself.
+      await tx.proxy.updateMany({
+        where: { workspaceId, providerId: before.id },
+        data: { provider: name, protocol: input.protocol, host, region: input.region },
+      });
+      id = before.id;
+    } else {
+      id = (await tx.proxyProvider.create({ data: { workspaceId, ...fields }, select: { id: true } })).id;
+    }
+    await writeAudit(
+      {
+        workspaceId,
+        actorMemberId,
+        action: 'settings.proxy_provider_saved',
+        targetType: 'ProxyProvider',
+        targetId: id,
+        meta: {
+          item: `${created ? 'Added' : 'Updated'} proxy provider ${name}`,
+          created,
+          name,
+          protocol: input.protocol,
+          host,
+          portFrom,
+          portTo,
+          credentialsChanged: input.usernameEnc !== undefined || input.passwordEnc !== undefined,
+        },
+      },
+      tx,
+    );
+    return { id, created };
+  });
+}
+
+/** Deletes a provider no profile uses (its unused port rows go with it). Writes `settings.proxy_provider_deleted`. */
+export async function deleteProvider(workspaceId: string, actorMemberId: string, providerId: string) {
+  return prisma.$transaction(async (tx) => {
+    const p = await tx.proxyProvider.findFirst({ where: { workspaceId, id: providerId } });
+    if (!p) throw new ProxyProviderError('Provider not found.');
+    const inUse = await tx.browserProfile.count({ where: { workspaceId, proxy: { providerId: p.id } } });
+    if (inUse)
+      throw new ProxyProviderError(
+        `${p.name} is used by ${inUse === 1 ? '1 profile' : `${inUse} profiles`}. Move them to another proxy first.`,
+      );
+    await tx.proxy.deleteMany({ where: { workspaceId, providerId: p.id } });
+    await tx.proxyProvider.delete({ where: { id: p.id } });
+    await writeAudit(
+      {
+        workspaceId,
+        actorMemberId,
+        action: 'settings.proxy_provider_deleted',
+        targetType: 'ProxyProvider',
+        targetId: p.id,
+        meta: { item: `Deleted proxy provider ${p.name}`, name: p.name, host: p.host },
+      },
+      tx,
+    );
+  });
+}
+
+/** Removes a provider port row a profile just left, when no profile uses it any more. */
+async function dropUnusedProviderRow(tx: Db, proxyId: string | null) {
+  if (!proxyId) return;
+  await tx.proxy.deleteMany({ where: { id: proxyId, providerId: { not: null }, profiles: { none: {} } } });
+}
+
+/** {@link assignProviderPort} inside `tx` (accounts.startBrowserConnect uses it for a new profile). */
+export async function assignProviderPortTx(
+  tx: Db,
+  workspaceId: string,
+  profileId: string,
+  providerId: string,
+  port: number,
+  actorMemberId: string | null = null,
+): Promise<{ proxyId: string; changed: boolean }> {
+  const profile = await tx.browserProfile.findFirstOrThrow({
+    where: { workspaceId, id: profileId },
+    select: { id: true, name: true, accountId: true, proxyId: true },
+  });
+  const provider = await tx.proxyProvider.findFirst({ where: { workspaceId, id: providerId } });
+  if (!provider) throw new ProxyProviderError('Proxy provider not found.');
+  if (!validPort(port)) throw new ProxyProviderError('Port must be 1–65535.');
+  const { portFrom, portTo } = provider;
+  if (portFrom !== null && portTo !== null && (port < portFrom || port > portTo))
+    throw new ProxyProviderError(`Port ${port} is outside ${provider.name}’s range ${portFrom}–${portTo}.`);
+  // One IP per account: a port another profile of the workspace uses is refused.
+  const taken = (await portsInUseTx(tx, workspaceId, provider)).find(
+    (u) => u.port === port && u.profileId !== profile.id,
+  );
+  if (taken) throw new ProxyProviderError(`Port ${port} is already used by ${taken.profileName}.`);
+
+  const row =
+    (await tx.proxy.findFirst({
+      where: { workspaceId, providerId: provider.id, port },
+      select: { id: true },
+    })) ??
+    (await tx.proxy.create({
+      data: {
+        workspaceId,
+        providerId: provider.id,
+        provider: provider.name,
+        protocol: provider.protocol,
+        host: provider.host,
+        port,
+        region: provider.region,
+        sticky: true,
+      },
+      select: { id: true },
+    }));
+  if (profile.proxyId === row.id) return { proxyId: row.id, changed: false };
+  await tx.browserProfile.update({ where: { id: profile.id }, data: { proxyId: row.id } });
+  await dropUnusedProviderRow(tx, profile.proxyId);
+  await writeAudit(
+    {
+      workspaceId,
+      actorMemberId,
+      action: 'profile.proxy_updated',
+      targetType: 'BrowserProfile',
+      targetId: profile.id,
+      accountId: profile.accountId,
+      meta: {
+        item: `Proxy for ${profile.name}: ${provider.name} · port ${port}`,
+        providerId: provider.id,
+        provider: provider.name,
+        host: provider.host,
+        port,
+        attachedProxyId: row.id,
+        previousProxyId: profile.proxyId,
+        credentialsChanged: false,
+      },
+    },
+    tx,
+  );
+  return { proxyId: row.id, changed: true };
+}
+
+/**
+ * Puts the profile on one port of a workspace provider: finds or creates the Proxy row {providerId, port} and
+ * attaches it. Refuses a port outside the provider's range and a port another profile already uses.
+ * Writes `profile.proxy_updated` (provider name + port, never credentials).
+ */
+export function assignProviderPort(
+  workspaceId: string,
+  profileId: string,
+  providerId: string,
+  port: number,
+  actorMemberId: string | null = null,
+): Promise<{ proxyId: string; changed: boolean }> {
+  return prisma.$transaction((tx) =>
+    assignProviderPortTx(tx, workspaceId, profileId, providerId, port, actorMemberId),
+  );
 }
 
 /** Seed in [0, 2^31) from the profile id and a salt: fits `Int` and CloakBrowser's `--fingerprint`. */
@@ -572,7 +877,7 @@ export async function getProfileForDispatch(
   const p = await prisma.browserProfile.findFirst({
     where: { workspaceId, id: profileId },
     include: {
-      proxy: true,
+      proxy: { include: { proxyProvider: true } },
       node: { select: { id: true, name: true, status: true } },
       account: {
         select: {
@@ -589,14 +894,33 @@ export async function getProfileForDispatch(
   if (!p) return null;
   const fp = (p.fingerprint ?? {}) as Fingerprint;
   let proxy: ProxySpec | null = null;
-  const px = p.proxy;
+  // A provider port takes host, protocol and credentials from its provider (the row's own are ignored), so a
+  // new provider password reaches every profile on it at the next start.
+  const prov = p.proxy?.providerId ? p.proxy.proxyProvider : null;
+  const px = p.proxy
+    ? prov
+      ? {
+          protocol: prov.protocol,
+          host: prov.host,
+          port: p.proxy.port,
+          u: prov.usernameEnc,
+          pw: prov.passwordEnc,
+        }
+      : {
+          protocol: p.proxy.protocol,
+          host: p.proxy.host,
+          port: p.proxy.port,
+          u: p.proxy.usernameEnc,
+          pw: p.proxy.passwordEnc,
+        }
+    : null;
   if (px && px.protocol !== 'none' && px.host && px.port) {
     proxy = {
       protocol: px.protocol,
       host: px.host,
       port: px.port,
-      ...(px.usernameEnc ? { username: decrypt(px.usernameEnc) } : {}),
-      ...(px.passwordEnc ? { password: decrypt(px.passwordEnc) } : {}),
+      ...(px.u ? { username: decrypt(px.u) } : {}),
+      ...(px.pw ? { password: decrypt(px.pw) } : {}),
     };
   }
   return {

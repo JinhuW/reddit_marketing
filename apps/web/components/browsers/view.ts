@@ -63,6 +63,78 @@ export function savedProxyLabel(x: {
   return `${x.provider} · ${where} · ${used}`;
 }
 
+/** A range wider than this gets a number field instead of a select (one option per port). */
+export const MAX_PORT_OPTIONS = 500;
+
+export interface PortOption {
+  port: number;
+  label: string;
+  /** another profile of the workspace uses it (one IP per account) */
+  disabled: boolean;
+}
+
+/** Client-safe provider for the Browsers editor and the connect flow. Never includes credentials. */
+export interface ProviderChoice {
+  id: string;
+  name: string;
+  label: string;
+  portFrom: number | null;
+  portTo: number | null;
+  /** null: no range (or one too wide), so the port is typed in */
+  ports: PortOption[] | null;
+  /** ports other profiles use, for the typed-in case */
+  usedPorts: { port: number; profileName: string }[];
+}
+
+type ProviderLike = Pick<
+  browsers.ProxyProviderListItem,
+  'id' | 'name' | 'host' | 'portFrom' | 'portTo' | 'portsInUse'
+>;
+
+/** Ports of the provider's range; the ones another profile uses are disabled and say which profile. */
+export function providerPortOptions(p: ProviderLike, profileId: string | null): PortOption[] | null {
+  if (p.portFrom == null || p.portTo == null) return null;
+  if (p.portTo - p.portFrom + 1 > MAX_PORT_OPTIONS) return null;
+  const used = new Map(p.portsInUse.map((u) => [u.port, u]));
+  const out: PortOption[] = [];
+  for (let port = p.portFrom; port <= p.portTo; port++) {
+    const u = used.get(port);
+    const mine = u?.profileId === profileId;
+    out.push({
+      port,
+      label: !u ? String(port) : mine ? `${port} · this profile` : `${port} · ${u.profileName}`,
+      disabled: Boolean(u) && !mine,
+    });
+  }
+  return out;
+}
+
+/** "Decodo · isp.decodo.com · 10001–10100" */
+export function providerLabel(p: Pick<ProviderLike, 'name' | 'host' | 'portFrom' | 'portTo'>) {
+  const range = p.portFrom != null && p.portTo != null ? ` · ${p.portFrom}–${p.portTo}` : '';
+  return `${p.name} · ${p.host}${range}`;
+}
+
+export function providerChoices(list: ProviderLike[], profileId: string | null): ProviderChoice[] {
+  return list.map((p) => ({
+    id: p.id,
+    name: p.name,
+    label: providerLabel(p),
+    portFrom: p.portFrom,
+    portTo: p.portTo,
+    ports: providerPortOptions(p, profileId),
+    usedPorts: p.portsInUse
+      .filter((u) => u.profileId !== profileId)
+      .map((u) => ({ port: u.port, profileName: u.profileName })),
+  }));
+}
+
+/** First port of the range nobody uses, else '' (the connect flow's and editor's default pick). */
+export function firstFreePort(c: ProviderChoice | undefined): string {
+  const free = c?.ports?.find((o) => !o.disabled);
+  return free ? String(free.port) : '';
+}
+
 /** What the session page shows for a browser-mode sign-in check. */
 export type SignInCheck =
   | { state: 'signed_in'; username: string }
@@ -149,6 +221,8 @@ export function profileView(p: Row, now = new Date(), node: NodeInfo | null = nu
       ? {
           provider: providerName || p.proxy.provider,
           providerFull: p.proxy.provider,
+          /** set: the profile uses a port of a workspace provider (Settings → Proxies) */
+          providerId: p.proxy.providerId ?? null,
           protocol: p.proxy.protocol,
           host: p.proxy.host ?? '',
           port: p.proxy.port ? String(p.proxy.port) : '',
