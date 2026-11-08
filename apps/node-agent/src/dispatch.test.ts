@@ -154,6 +154,27 @@ describe('Dispatcher', () => {
     expect(posts).toBe(1);
   });
 
+  it('never stores profile.whoami results: a repeat of its fixed cmdId reads again', async () => {
+    let reads = 0;
+    const { d, send, results } = setup({
+      'profile.whoami': async () => {
+        reads++;
+        return reads === 1
+          ? { outcome: 'ok', data: { loggedIn: false } }
+          : { outcome: 'ok', data: { loggedIn: true, name: 'jane', id: 'abc1' } };
+      },
+    });
+    const who: Command['cmd'] = { kind: 'profile.whoami', profileId: 'p1' };
+    await d.handle(cmd('bj-profile.whoami-p1', who), send);
+    await d.handle(cmd('bj-profile.whoami-p1', who), send);
+    expect(reads).toBe(2);
+    expect(d.cached('bj-profile.whoami-p1')).toBeUndefined();
+    expect(results().map((r) => r.data)).toEqual([
+      { loggedIn: false },
+      { loggedIn: true, name: 'jane', id: 'abc1' },
+    ]);
+  });
+
   it('turns a thrown handler into an error result with secrets scrubbed', async () => {
     const { d, send, results } = setup({
       'profile.start': async (c) => {

@@ -5,7 +5,7 @@
  * All traffic goes through the page. Never use `context.request` / `APIRequestContext`: it bypasses the
  * browser's credentialed proxy (ADR-0001), so it would leak the node's own IP to Reddit.
  */
-import { type Browser, type Page, chromium } from 'playwright-core';
+import { type Browser, type Page, type Response, chromium } from 'playwright-core';
 import type { HandlerContext } from '../registry';
 import { attachProxyAuth } from './proxy-auth';
 import type { ProxyLookup } from './proxy-store';
@@ -105,23 +105,26 @@ export async function openSession(
 const PROXY_NET_ERRORS =
   /net::ERR_(PROXY_[A-Z_]+|TUNNEL_CONNECTION_FAILED|SOCKS_[A-Z_]+|NO_SUPPORTED_PROXIES)/;
 
-/** Navigate and map network failures: proxy errors (and a 407 page) become `proxy_failed`. */
-export async function goto(session: Session, url: string): Promise<void> {
-  let status: number | undefined;
+/**
+ * Navigate and map network failures: proxy errors (and a 407 page) become `proxy_failed`. Returns the main
+ * document's response (null for same-document navigations).
+ */
+export async function goto(session: Session, url: string): Promise<Response | null> {
+  let res: Response | null;
   try {
-    const res = await session.page.goto(url, {
+    res = await session.page.goto(url, {
       waitUntil: 'domcontentloaded',
       timeout: session.stepTimeout(),
     });
-    status = res?.status();
   } catch (err) {
     const msg = errMessage(err);
     const proxyErr = msg.match(PROXY_NET_ERRORS);
     if (proxyErr) throw new ActionError('proxy_failed', `proxy error: ${proxyErr[0]}`, 'proxy_failed');
     throw new ActionError('navigation_failed', `could not load ${redactUrl(url)}: ${firstLine(msg)}`);
   }
-  if (status === 407)
+  if (res?.status() === 407)
     throw new ActionError('proxy_auth_failed', 'proxy rejected the credentials', 'proxy_failed');
+  return res;
 }
 
 export function errMessage(err: unknown): string {

@@ -1,0 +1,21 @@
+{
+  "kind": "t2",
+  "data": {
+    "is_employee": false,
+    "has_mail": false,
+    "name": "testkit_poster",
+    "id": "1a2b3c",
+    "created": 1546300800.0,
+    "created_utc": 1546300800.0,
+    "link_karma": 120,
+    "comment_karma": 2040,
+    "total_karma": 2160,
+    "verified": true,
+    "has_verified_email": true,
+    "over_18": false,
+    "pref_show_snoovatar": false,
+    "inbox_count": 0,
+    "modhash": "testkit-not-a-real-modhash",
+    "icon_img": ""
+  }
+}
