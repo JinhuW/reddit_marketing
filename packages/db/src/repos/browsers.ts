@@ -2,7 +2,13 @@
 // Browser-node functions (assignNode … getProfileForDispatch): docs/plans/0001-infra-implementation.md §3.
 import { createHash, randomBytes } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
-import { CloakGpu, CloakPersona, type PauseReason, type ProxySpec } from '@threadline/shared';
+import {
+  type AccountAuthMode,
+  CloakGpu,
+  CloakPersona,
+  type PauseReason,
+  type ProxySpec,
+} from '@threadline/shared';
 import { decrypt } from '@threadline/shared/crypto';
 import { prisma } from '../client';
 import { writeAudit } from './audit';
@@ -132,18 +138,163 @@ export async function saveProxy(
 
 // ── browser nodes and CloakBrowser (ADR-0001) ──
 
-/** Runs the profile on a node (or detaches it with null). The node must belong to the same workspace. */
-export async function assignNode(workspaceId: string, profileId: string, nodeId: string | null) {
-  return prisma.$transaction(async (tx) => {
-    await tx.browserProfile.findFirstOrThrow({ where: { workspaceId, id: profileId }, select: { id: true } });
-    if (nodeId)
-      await tx.browserNode.findFirstOrThrow({ where: { workspaceId, id: nodeId }, select: { id: true } });
-    return tx.browserProfile.update({
-      where: { id: profileId },
-      data: { nodeId },
-      select: { id: true, nodeId: true },
-    });
+type Db = Prisma.TransactionClient;
+
+/** {@link assignNode} inside `tx`: writes `profile.node_assigned` { from, to } when the node changes. */
+export async function assignNodeTx(
+  tx: Db,
+  workspaceId: string,
+  profileId: string,
+  nodeId: string | null,
+  actorMemberId: string | null = null,
+) {
+  const profile = await tx.browserProfile.findFirstOrThrow({
+    where: { workspaceId, id: profileId },
+    select: { id: true, name: true, accountId: true, nodeId: true, node: { select: { name: true } } },
   });
+  const to = nodeId
+    ? await tx.browserNode.findFirstOrThrow({
+        where: { workspaceId, id: nodeId },
+        select: { id: true, name: true },
+      })
+    : null;
+  const row = await tx.browserProfile.update({
+    where: { id: profileId },
+    data: { nodeId },
+    select: { id: true, nodeId: true },
+  });
+  if (profile.nodeId !== nodeId) {
+    await writeAudit(
+      {
+        workspaceId,
+        actorMemberId,
+        action: 'profile.node_assigned',
+        targetType: 'BrowserProfile',
+        targetId: profileId,
+        accountId: profile.accountId,
+        meta: {
+          item: `${profile.name} → ${to?.name ?? 'no node'}`,
+          from: profile.node?.name ?? null,
+          to: to?.name ?? null,
+          fromNodeId: profile.nodeId,
+          toNodeId: to?.id ?? null,
+        },
+      },
+      tx,
+    );
+  }
+  return row;
+}
+
+/** Runs the profile on a node (or detaches it with null). The node must belong to the same workspace. */
+export async function assignNode(
+  workspaceId: string,
+  profileId: string,
+  nodeId: string | null,
+  actorMemberId: string | null = null,
+) {
+  return prisma.$transaction((tx) => assignNodeTx(tx, workspaceId, profileId, nodeId, actorMemberId));
+}
+
+// ── proxies (one workspace's proxies can be shared by several profiles) ──
+
+/** Proxy fields that are safe to show. The encrypted username/password are never returned. */
+export interface ProxyListItem {
+  id: string;
+  provider: string;
+  protocol: 'http' | 'socks5' | 'none';
+  host: string | null;
+  port: number | null;
+  sticky: boolean;
+  region: string | null;
+  lastTest: ProxyTest | null;
+  /** a username or password is saved (encrypted); the values are not returned */
+  hasCredentials: boolean;
+  profileCount: number;
+  createdAt: Date;
+}
+
+/** The workspace's proxies, oldest first (the "use an existing proxy" picker). */
+export async function listProxies(workspaceId: string): Promise<ProxyListItem[]> {
+  const rows = await prisma.proxy.findMany({
+    where: { workspaceId },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      provider: true,
+      protocol: true,
+      host: true,
+      port: true,
+      sticky: true,
+      region: true,
+      lastTest: true,
+      createdAt: true,
+      usernameEnc: true,
+      passwordEnc: true,
+      _count: { select: { profiles: true } },
+    },
+  });
+  return rows.map(({ usernameEnc, passwordEnc, _count, lastTest, ...r }) => ({
+    ...r,
+    lastTest: (lastTest ?? null) as ProxyTest | null,
+    hasCredentials: Boolean(usernameEnc || passwordEnc),
+    profileCount: _count.profiles,
+  }));
+}
+
+/** {@link attachProxy} inside `tx`. */
+export async function attachProxyTx(
+  tx: Db,
+  workspaceId: string,
+  profileId: string,
+  proxyId: string,
+  actorMemberId: string | null = null,
+): Promise<{ changed: boolean }> {
+  const profile = await tx.browserProfile.findFirstOrThrow({
+    where: { workspaceId, id: profileId },
+    select: { id: true, name: true, accountId: true, proxyId: true },
+  });
+  const proxy = await tx.proxy.findFirst({
+    where: { workspaceId, id: proxyId },
+    select: { id: true, protocol: true, host: true, port: true },
+  });
+  if (!proxy) throw new Error('Proxy not found');
+  if (profile.proxyId === proxy.id) return { changed: false };
+  await tx.browserProfile.update({ where: { id: profile.id }, data: { proxyId: proxy.id } });
+  await writeAudit(
+    {
+      workspaceId,
+      actorMemberId,
+      action: 'profile.proxy_updated',
+      targetType: 'BrowserProfile',
+      targetId: profile.id,
+      accountId: profile.accountId,
+      meta: {
+        item: `Proxy settings for ${profile.name}`,
+        attachedProxyId: proxy.id,
+        previousProxyId: profile.proxyId,
+        protocol: proxy.protocol,
+        host: proxy.host,
+        port: proxy.port,
+        credentialsChanged: false,
+      },
+    },
+    tx,
+  );
+  return { changed: true };
+}
+
+/**
+ * Points a profile at an existing proxy of the same workspace; no-op when it already uses it. Nothing is
+ * decrypted. The previous proxy, if any, stays for the profiles that still use it.
+ */
+export function attachProxy(
+  workspaceId: string,
+  profileId: string,
+  proxyId: string,
+  actorMemberId: string | null = null,
+): Promise<{ changed: boolean }> {
+  return prisma.$transaction((tx) => attachProxyTx(tx, workspaceId, profileId, proxyId, actorMemberId));
 }
 
 /** Seed in [0, 2^31) from the profile id and a salt: fits `Int` and CloakBrowser's `--fingerprint`. */
@@ -171,16 +322,28 @@ export interface CloakFingerprint {
  * in `fingerprint.cloakSalt`. Persona defaults to the owner's captured OS, GPU to `intel`.
  * Writes `profile.fingerprint_assigned` only on the call that assigns it.
  */
-export async function ensureCloakFingerprint(input: {
+export function ensureCloakFingerprint(
+  input: EnsureCloakInput,
+): Promise<CloakFingerprint & { assigned: boolean }> {
+  return prisma.$transaction((tx) => ensureCloakFingerprintTx(tx, input));
+}
+
+export interface EnsureCloakInput {
   workspaceId: string;
   profileId: string;
   persona?: CloakPersona;
   gpu?: CloakGpu;
   actorMemberId?: string | null;
-}): Promise<CloakFingerprint & { assigned: boolean }> {
+}
+
+/** {@link ensureCloakFingerprint} inside `tx` (accounts.startBrowserConnect creates the profile in the same one). */
+export async function ensureCloakFingerprintTx(
+  tx: Db,
+  input: EnsureCloakInput,
+): Promise<CloakFingerprint & { assigned: boolean }> {
   if (input.persona && !CloakPersona.includes(input.persona)) throw new Error('unknown persona');
   if (input.gpu && !CloakGpu.includes(input.gpu)) throw new Error('unknown gpu');
-  return prisma.$transaction(async (tx) => {
+  {
     const existing = (p: {
       cloakSeed: number | null;
       cloakPersona: string | null;
@@ -229,7 +392,7 @@ export async function ensureCloakFingerprint(input: {
       tx,
     );
     return { ...out, assigned: true };
-  });
+  }
 }
 
 /**
@@ -330,7 +493,15 @@ export interface DispatchProfile {
   workspaceId: string;
   name: string;
   accountId: string;
-  account: { id: string; username: string; ownerMemberId: string; pausedReason: PauseReason | null };
+  account: {
+    id: string;
+    username: string;
+    ownerMemberId: string;
+    pausedReason: PauseReason | null;
+    authMode: AccountAuthMode;
+    /** null = nobody has signed in to this browser-mode account yet: never dispatch actions (isIdentified) */
+    identifiedAt: Date | null;
+  };
   node: { id: string; name: string; status: string } | null;
   /** null until ensureCloakFingerprint ran: the gateway must not start the profile without it */
   cloak: CloakFingerprint | null;
@@ -355,7 +526,16 @@ export async function getProfileForDispatch(
     include: {
       proxy: true,
       node: { select: { id: true, name: true, status: true } },
-      account: { select: { id: true, username: true, ownerMemberId: true, pausedReason: true } },
+      account: {
+        select: {
+          id: true,
+          username: true,
+          ownerMemberId: true,
+          pausedReason: true,
+          authMode: true,
+          identifiedAt: true,
+        },
+      },
     },
   });
   if (!p) return null;

@@ -99,6 +99,29 @@ export function listOnline(workspaceId?: string): Promise<NodeRow[]> {
   });
 }
 
+/**
+ * Node for a new profile: the ONLINE node of this workspace with the fewest assigned profiles that still has
+ * room (`profiles < maxProfiles`); ties go to the name that sorts first. Null when no online node has room.
+ * Pass the transaction client when the profile is created in the same transaction.
+ */
+export async function pickForProfile(
+  workspaceId: string,
+  db: Prisma.TransactionClient | typeof prisma = prisma,
+): Promise<NodeRow | null> {
+  const rows = await db.browserNode.findMany({
+    where: { workspaceId, status: 'online' },
+    select: { ...publicSelect, _count: { select: { profiles: true } } },
+  });
+  const pick = rows
+    .filter((n) => n._count.profiles < n.maxProfiles)
+    .sort(
+      (a, b) => a._count.profiles - b._count.profiles || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
+    )[0];
+  if (!pick) return null;
+  const { _count: _omit, ...node } = pick;
+  return node;
+}
+
 export interface HelloInfo {
   agentVersion: string;
   imageDigest: string | null;

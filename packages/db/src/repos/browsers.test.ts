@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { encrypt } from '@threadline/shared/crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../client';
+import { testWorkspace, uniq } from '../testing/fixtures';
 import * as browsers from './browsers';
 import * as nodes from './nodes';
 
@@ -201,6 +202,120 @@ describe('browsers.assignNode / getProfileForDispatch', () => {
     } finally {
       await prisma.browserProfile.update({ where: { id: profileId }, data: { proxyId: before.proxyId } });
       await prisma.proxy.delete({ where: { id: proxy.id } });
+    }
+  });
+});
+
+describe('browsers.assignNode audit', () => {
+  it('writes profile.node_assigned { from, to } on each change, nothing when unchanged', async () => {
+    const ws = await testWorkspace();
+    try {
+      const a = await ws.node({ name: uniq('t00-a') });
+      const b = await ws.node({ name: uniq('t00-b') });
+      const { profileId: pid } = await ws.profileOn(null);
+      const actor = await ws.member('Admin Person');
+      await browsers.assignNode(ws.id, pid, a.id, actor.id);
+      await browsers.assignNode(ws.id, pid, a.id, actor.id); // unchanged: no row
+      await browsers.assignNode(ws.id, pid, b.id);
+      await browsers.assignNode(ws.id, pid, null);
+      const rows = await prisma.auditEvent.findMany({
+        where: { workspaceId: ws.id, action: 'profile.node_assigned', targetId: pid },
+        orderBy: { at: 'asc' },
+      });
+      expect(rows.map((r) => r.meta)).toMatchObject([
+        { from: null, to: a.name, toNodeId: a.id },
+        { from: a.name, to: b.name, fromNodeId: a.id, toNodeId: b.id },
+        { from: b.name, to: null, toNodeId: null },
+      ]);
+      expect(rows[0]!.actorMemberId).toBe(actor.id);
+      expect(rows[1]!.actorMemberId).toBeNull();
+      expect(rows.every((r) => r.targetType === 'BrowserProfile')).toBe(true);
+    } finally {
+      await ws.cleanup();
+    }
+  });
+
+  it("refuses another workspace's node and writes nothing", async () => {
+    const ws = await testWorkspace();
+    const other = await testWorkspace();
+    try {
+      const n = await other.node();
+      const { profileId: pid } = await ws.profileOn(null);
+      await expect(browsers.assignNode(ws.id, pid, n.id)).rejects.toThrow();
+      expect((await prisma.browserProfile.findUniqueOrThrow({ where: { id: pid } })).nodeId).toBeNull();
+      expect(
+        await prisma.auditEvent.count({ where: { action: 'profile.node_assigned', targetId: pid } }),
+      ).toBe(0);
+    } finally {
+      await ws.cleanup();
+      await other.cleanup();
+    }
+  });
+});
+
+describe('browsers.listProxies / attachProxy', () => {
+  it('lists the workspace proxies without any encrypted field', async () => {
+    const ws = await testWorkspace();
+    const other = await testWorkspace();
+    try {
+      const withCreds = await prisma.proxy.create({
+        data: {
+          workspaceId: ws.id,
+          provider: 'Decodo',
+          protocol: 'http',
+          host: 'isp.decodo.test',
+          port: 10001,
+          usernameEnc: encrypt('user-t00-secret'),
+          passwordEnc: encrypt('pass-t00-secret'),
+        },
+      });
+      await prisma.proxy.create({ data: { workspaceId: ws.id, provider: 'none', protocol: 'none' } });
+      const { profileId: pid } = await ws.profileOn(null);
+      await prisma.browserProfile.update({ where: { id: pid }, data: { proxyId: withCreds.id } });
+
+      const list = await browsers.listProxies(ws.id);
+      expect(list.map((p) => p.provider)).toEqual(['Decodo', 'none']);
+      expect(list[0]).toMatchObject({
+        host: 'isp.decodo.test',
+        port: 10001,
+        hasCredentials: true,
+        profileCount: 1,
+      });
+      expect(list[1]).toMatchObject({ hasCredentials: false, profileCount: 0 });
+      const wire = JSON.stringify(list);
+      expect(wire).not.toMatch(/usernameEnc|passwordEnc|t00-secret/);
+      expect(wire).not.toContain(withCreds.passwordEnc!);
+      expect(await browsers.listProxies(other.id)).toEqual([]);
+    } finally {
+      await ws.cleanup();
+      await other.cleanup();
+    }
+  });
+
+  it('attaches an existing proxy once (audit profile.proxy_updated), only within the workspace', async () => {
+    const ws = await testWorkspace();
+    const other = await testWorkspace();
+    try {
+      const px = await prisma.proxy.create({
+        data: { workspaceId: ws.id, provider: 'Decodo', protocol: 'http', host: 'h.test', port: 1 },
+      });
+      const foreign = await prisma.proxy.create({
+        data: { workspaceId: other.id, provider: 'x', protocol: 'http', host: 'f.test', port: 2 },
+      });
+      const { profileId: pid } = await ws.profileOn(null);
+      expect(await browsers.attachProxy(ws.id, pid, px.id)).toEqual({ changed: true });
+      expect(await browsers.attachProxy(ws.id, pid, px.id)).toEqual({ changed: false });
+      expect((await prisma.browserProfile.findUniqueOrThrow({ where: { id: pid } })).proxyId).toBe(px.id);
+      await expect(browsers.attachProxy(ws.id, pid, foreign.id)).rejects.toThrow(/Proxy not found/);
+      expect((await prisma.browserProfile.findUniqueOrThrow({ where: { id: pid } })).proxyId).toBe(px.id);
+      const rows = await prisma.auditEvent.findMany({
+        where: { action: 'profile.proxy_updated', targetId: pid },
+      });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.meta).toMatchObject({ attachedProxyId: px.id, previousProxyId: null, host: 'h.test' });
+    } finally {
+      await ws.cleanup();
+      await other.cleanup();
     }
   });
 });

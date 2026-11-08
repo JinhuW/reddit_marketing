@@ -5,6 +5,7 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { prisma } from '../client';
+import { testWorkspace, uniq as uniqName } from '../testing/fixtures';
 import * as nodes from './nodes';
 
 let workspaceId = '';
@@ -169,5 +170,56 @@ describe('nodes.registerInWorkspace', () => {
     await expect(
       nodes.registerInWorkspace({ workspaceSlug: 'no-such-ws', name: uniq(), token: token() }),
     ).rejects.toThrow(/no workspace/);
+  });
+});
+
+describe('nodes.pickForProfile', () => {
+  it('picks the least-loaded online node with room; ties by name; null when none', async () => {
+    const ws = await testWorkspace();
+    try {
+      expect(await nodes.pickForProfile(ws.id)).toBeNull();
+      // offline and draining nodes never get new profiles, even when empty
+      await ws.node({ name: uniqName('a-off'), status: 'offline' });
+      await ws.node({ name: uniqName('a-drain'), status: 'draining' });
+      expect(await nodes.pickForProfile(ws.id)).toBeNull();
+
+      const base = uniqName('n');
+      const full = await ws.node({ name: `${base}-a-full`, maxProfiles: 1 });
+      await ws.profileOn(full.id);
+      expect(await nodes.pickForProfile(ws.id)).toBeNull(); // the only online node is full
+
+      const busy = await ws.node({ name: `${base}-b-busy`, maxProfiles: 8 });
+      await ws.profileOn(busy.id);
+      await ws.profileOn(busy.id);
+      const light = await ws.node({ name: `${base}-c-light`, maxProfiles: 8 });
+      await ws.profileOn(light.id);
+      expect((await nodes.pickForProfile(ws.id))?.id).toBe(light.id);
+
+      // equal load: the name that sorts first wins
+      const twin = await ws.node({ name: `${base}-b-twin`, maxProfiles: 8 });
+      await ws.profileOn(twin.id);
+      const pick = await nodes.pickForProfile(ws.id);
+      expect(pick?.id).toBe(twin.id);
+      expect(pick).not.toHaveProperty('tokenHash');
+      expect(pick).not.toHaveProperty('_count');
+
+      // unassigned profiles do not count against any node
+      await ws.profileOn(null);
+      expect((await nodes.pickForProfile(ws.id))?.id).toBe(twin.id);
+    } finally {
+      await ws.cleanup();
+    }
+  });
+
+  it('never picks a node of another workspace', async () => {
+    const a = await testWorkspace();
+    const b = await testWorkspace();
+    try {
+      await b.node();
+      expect(await nodes.pickForProfile(a.id)).toBeNull();
+    } finally {
+      await a.cleanup();
+      await b.cleanup();
+    }
   });
 });

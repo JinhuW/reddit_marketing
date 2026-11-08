@@ -69,6 +69,7 @@ export const BROWSER_DEADLINE_MS: Record<BrowserJobKind, number> = {
   'action.submitComment': 120_000,
   'action.sendDm': 120_000,
   'profile.testProxy': 45_000,
+  'profile.whoami': 45_000,
   'health.check': 15_000,
 };
 
@@ -419,6 +420,9 @@ export class Dispatcher {
         const result = await this.send(node.name, gate.cmd, cmdId, job.kind);
         return this.apply(ctx, result);
       }
+      case 'profile.whoami':
+        // Protocol and job kind exist (plan 0002, B1); the gateway handler lands with B3.
+        throw new DispatchRefused('profile.whoami is not handled by this gateway yet');
     }
   }
 

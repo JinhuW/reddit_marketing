@@ -115,6 +115,12 @@ export const VncOpenCmd = z.object({
   token: z.string().min(1),
 });
 export const HealthCheckCmd = z.object({ kind: z.literal('health.check') });
+/**
+ * Reads the Reddit identity of whoever is signed in to the profile's browser
+ * (`https://www.reddit.com/api/me.json` inside the profile's own context: its cookies, its proxy).
+ * Result data: {@link WhoamiData}. The agent never logs the response body.
+ */
+export const ProfileWhoamiCmd = z.object({ kind: z.literal('profile.whoami'), profileId: id });
 
 export const Cmd = z.discriminatedUnion('kind', [
   ProfileStartCmd,
@@ -124,6 +130,7 @@ export const Cmd = z.discriminatedUnion('kind', [
   TestProxyCmd,
   VncOpenCmd,
   HealthCheckCmd,
+  ProfileWhoamiCmd,
 ]);
 export type Cmd = z.infer<typeof Cmd>;
 export type CmdKind = Cmd['kind'];
@@ -142,6 +149,24 @@ export const HealthData = z.object({
   docker: z.enum(['ok', 'error']),
 });
 export type HealthData = z.infer<typeof HealthData>;
+
+/**
+ * `profile.whoami` with outcome `ok`: nobody signed in, or the signed-in Reddit user. `id` is the base-36
+ * account id without the `t2_` prefix (what `me.json` returns); `createdUtc` is epoch seconds.
+ */
+export const WhoamiData = z.discriminatedUnion('loggedIn', [
+  z.object({ loggedIn: z.literal(false) }).strict(),
+  z
+    .object({
+      loggedIn: z.literal(true),
+      name: z.string().regex(/^[A-Za-z0-9_-]{1,32}$/, 'reddit username'),
+      id: z.string().regex(/^[a-z0-9]{1,16}$/, 'reddit account id (base 36, no t2_ prefix)'),
+      totalKarma: z.number().int().optional(),
+      createdUtc: z.number().nonnegative().optional(),
+    })
+    .strict(),
+]);
+export type WhoamiData = z.infer<typeof WhoamiData>;
 
 /** `action.submitComment` / `action.sendDm` with outcome `posted` → the new item's fullname. */
 export const PostedData = z.object({ fullname: z.string().min(1) });

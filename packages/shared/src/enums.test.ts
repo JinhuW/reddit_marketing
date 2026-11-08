@@ -18,6 +18,7 @@ describe('enums mirror prisma', () => {
     'Plan',
     'MemberRole',
     'AccountRoleLabel',
+    'AccountAuthMode',
     'AccountHealth',
     'BrowserProfileStatus',
     'ProxyProtocol',
@@ -54,7 +55,7 @@ describe('enums mirror prisma', () => {
 });
 
 describe('browser node enums', () => {
-  it('AuditAction has the node and pause actions', () => {
+  it('AuditAction has the node, pause and browser-connect actions', () => {
     for (const a of [
       'node.online',
       'node.offline',
@@ -64,6 +65,9 @@ describe('browser node enums', () => {
       'profile.fingerprint_assigned',
       'account.paused',
       'account.resumed',
+      'account.connect_started',
+      'account.connected',
+      'profile.node_assigned',
     ] as const) {
       expect(E.AuditAction).toContain(a);
     }
@@ -74,5 +78,11 @@ describe('browser node enums', () => {
       expect(E.BrowserOutcome).toContain(r);
       expect(E.PauseReason).toContain(r);
     }
+  });
+});
+
+describe('browser mode enums', () => {
+  it('AccountAuthMode is oauth | browser, oauth first (the Prisma default)', () => {
+    expect([...E.AccountAuthMode]).toEqual(['oauth', 'browser']);
   });
 });

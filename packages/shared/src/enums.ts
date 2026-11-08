@@ -11,6 +11,10 @@ export type MemberRole = (typeof MemberRole)[number];
 export const AccountRoleLabel = ['founder', 'support', 'brand'] as const;
 export type AccountRoleLabel = (typeof AccountRoleLabel)[number];
 
+/** How Threadline talks to Reddit for an account: the Reddit API (OAuth app) or the account's own browser profile. */
+export const AccountAuthMode = ['oauth', 'browser'] as const;
+export type AccountAuthMode = (typeof AccountAuthMode)[number];
+
 export const AccountHealth = ['healthy', 'watch', 'blocked'] as const;
 export type AccountHealth = (typeof AccountHealth)[number];
 
@@ -157,6 +161,8 @@ export const AuditAction = [
   'profile.fingerprint_assigned',
   'account.paused',
   'account.resumed',
+  'account.connect_started',
+  'profile.node_assigned',
 ] as const;
 export type AuditAction = (typeof AuditAction)[number];
 
