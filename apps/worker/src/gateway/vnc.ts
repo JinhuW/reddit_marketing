@@ -31,6 +31,11 @@ import type { AddressInfo } from 'node:net';
 import type { Duplex } from 'node:stream';
 import { audit, browsers, nodes } from '@threadline/db';
 import { VNC_TOKEN_TTL_SEC } from '@threadline/shared';
+import {
+  INTERNAL_URL_MAX_TTL_SEC,
+  INTERNAL_VNC_PREFIX,
+  verifyInternalVncUrl,
+} from '@threadline/shared/vnc-sign';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
 import type { log as rootLog } from '../log';
 import type { GatewayContext, GatewayPlugin } from './index';
@@ -38,13 +43,13 @@ import type { GatewayContext, GatewayPlugin } from './index';
 // ── constants ──
 
 /** Web → gateway, private network only. */
-export const INTERNAL_VNC_PREFIX = '/internal/vnc/';
+export { INTERNAL_VNC_PREFIX } from '@threadline/shared/vnc-sign';
 /** Agent → gateway, the agent's second outbound socket. */
 export const VNC_UPSTREAM_PREFIX = '/vnc/';
 /** How long the gateway waits for the agent to dial back after `vnc.open`. */
 export const VNC_DIAL_TIMEOUT_MS = 10_000;
 /** Longest lifetime a web-signed `/internal/vnc` URL may claim. */
-export const INTERNAL_URL_MAX_TTL_SEC = 60;
+export { INTERNAL_URL_MAX_TTL_SEC } from '@threadline/shared/vnc-sign';
 /** At most one `session.log` activity row per session per this interval. */
 export const ACTIVITY_LOG_EVERY_MS = 5 * 60_000;
 /** How often open relays are checked against their BrowserSession (hand-back, idle end). */
@@ -68,6 +73,8 @@ const EDGE_HEADERS = ['x-forwarded-for', 'x-real-ip', 'x-railway-edge', 'x-railw
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 // ── signing: web → gateway ──
+// One implementation shared with the web side: packages/shared/src/vnc-sign.ts.
+export { signInternalVncUrl, verifyInternalVncUrl, type InternalCheck } from '@threadline/shared/vnc-sign';
 
 function hmac(secret: string, message: string): Buffer {
   return createHmac('sha256', secret).update(message).digest();
@@ -75,50 +82,6 @@ function hmac(secret: string, message: string): Buffer {
 
 function sameBytes(a: Buffer, b: Buffer): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
-}
-
-const internalMessage = (profileId: string, sessionId: string, exp: number) =>
-  `tl-vnc-internal.v1\n${profileId}\n${sessionId}\n${exp}`;
-
-/**
- * Web side of the contract (T23 implements the same in `apps/web/server.ts`):
- *
- *   path  = /internal/vnc/<profileId>
- *   exp   = unix seconds, at most 60 s ahead
- *   sig   = base64url(HMAC-SHA256(GATEWAY_INTERNAL_SECRET, "tl-vnc-internal.v1\n<profileId>\n<sessionId>\n<exp>"))
- *   query = ?session=<sessionId>&exp=<exp>&sig=<sig>
- */
-export function signInternalVncUrl(
-  secret: string,
-  input: { profileId: string; sessionId: string; now?: number; ttlSec?: number },
-): string {
-  const exp = Math.floor((input.now ?? Date.now()) / 1000) + (input.ttlSec ?? INTERNAL_URL_MAX_TTL_SEC);
-  const sig = hmac(secret, internalMessage(input.profileId, input.sessionId, exp)).toString('base64url');
-  const q = new URLSearchParams({ session: input.sessionId, exp: String(exp), sig });
-  return `${INTERNAL_VNC_PREFIX}${encodeURIComponent(input.profileId)}?${q}`;
-}
-
-export type InternalCheck =
-  | { ok: true; profileId: string; sessionId: string }
-  | { ok: false; status: 400 | 403; reason: string };
-
-/** Verifies a `/internal/vnc/<profileId>` URL signed with {@link signInternalVncUrl}. */
-export function verifyInternalVncUrl(secret: string, url: URL, now = Date.now()): InternalCheck {
-  const profileId = decodeURIComponent(url.pathname.slice(INTERNAL_VNC_PREFIX.length));
-  const sessionId = url.searchParams.get('session') ?? '';
-  const expRaw = url.searchParams.get('exp') ?? '';
-  const sig = url.searchParams.get('sig') ?? '';
-  if (!ID_RE.test(profileId) || !ID_RE.test(sessionId) || !/^\d{1,12}$/.test(expRaw) || !sig)
-    return { ok: false, status: 400, reason: 'malformed request' };
-  const exp = Number(expRaw);
-  const nowSec = Math.floor(now / 1000);
-  const want = hmac(secret, internalMessage(profileId, sessionId, exp));
-  if (!sameBytes(Buffer.from(sig, 'base64url'), want))
-    return { ok: false, status: 403, reason: 'bad signature' };
-  if (exp < nowSec) return { ok: false, status: 403, reason: 'expired' };
-  if (exp - nowSec > INTERNAL_URL_MAX_TTL_SEC + 5)
-    return { ok: false, status: 403, reason: 'expiry too far ahead' };
-  return { ok: true, profileId, sessionId };
 }
 
 // ── signing: gateway → agent (the token inside `vnc.open`) ──

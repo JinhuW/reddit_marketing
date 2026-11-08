@@ -319,3 +319,16 @@ describe('browsers.listProxies / attachProxy', () => {
     }
   });
 });
+
+describe('browsers.normalizeLocale', () => {
+  it('keeps one BCP 47 tag from a captured language list', () => {
+    expect(browsers.normalizeLocale('en-US, en, zh-CN')).toBe('en-US');
+    expect(browsers.normalizeLocale('de-DE;q=0.9,en')).toBe('de-DE');
+    expect(browsers.normalizeLocale('fr')).toBe('fr');
+  });
+  it('falls back to en-US for missing or malformed values', () => {
+    expect(browsers.normalizeLocale(undefined)).toBe('en-US');
+    expect(browsers.normalizeLocale('')).toBe('en-US');
+    expect(browsers.normalizeLocale('English (US)')).toBe('en-US');
+  });
+});

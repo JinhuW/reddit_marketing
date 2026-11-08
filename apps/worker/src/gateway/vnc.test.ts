@@ -414,3 +414,26 @@ describe('relay', () => {
     expect(await openViewer().outcome).toEqual({ open: false, status: 503 });
   });
 });
+
+describe('web ↔ gateway signature contract', () => {
+  it('the gateway accepts exactly what the web proxy signs (both use @threadline/shared/vnc-sign)', async () => {
+    const { signGatewayVncUrl } = await import('../../../web/vnc-proxy');
+    const now = Date.UTC(2026, 10, 8, 2, 0, 0);
+    const signed = new URL(
+      signGatewayVncUrl({
+        gatewayUrl: 'http://node-gateway.railway.internal:8080',
+        secret: SECRET,
+        profileId: 'p1',
+        sessionId: 's1',
+        nowMs: now,
+      }),
+    );
+    expect(
+      verifyInternalVncUrl(SECRET, new URL(`${signed.pathname}${signed.search}`, 'http://gw'), now),
+    ).toEqual({
+      ok: true,
+      profileId: 'p1',
+      sessionId: 's1',
+    });
+  });
+});

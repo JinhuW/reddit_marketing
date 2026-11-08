@@ -118,7 +118,6 @@ describe('gateway URL signature', () => {
       secret: SECRET,
       profileId: 'prof_1',
       sessionId: 'sess_1',
-      memberId: 'mem_1',
       nowMs: now,
     });
 
@@ -133,8 +132,6 @@ describe('gateway URL signature', () => {
       ok: true,
       profileId: 'prof_1',
       sessionId: 'sess_1',
-      memberId: 'mem_1',
-      exp: now / 1000 + 60,
     });
   });
 
@@ -144,19 +141,25 @@ describe('gateway URL signature', () => {
   });
 
   it('refuses a wrong secret, a tampered field, an expired URL and a malformed one', () => {
-    expect(verifyGatewayVncUrl(signed(), 'other-secret', now)).toEqual({
+    expect(verifyGatewayVncUrl(signed(), 'other-secret', now)).toMatchObject({
       ok: false,
-      reason: 'bad_signature',
+      reason: 'bad signature',
     });
     const tampered = new URL(signed());
     tampered.searchParams.set('session', 'sess_2');
-    expect(verifyGatewayVncUrl(tampered, SECRET, now)).toEqual({ ok: false, reason: 'bad_signature' });
+    expect(verifyGatewayVncUrl(tampered, SECRET, now)).toMatchObject({ ok: false, reason: 'bad signature' });
     const otherProfile = signed().replace('/internal/vnc/prof_1', '/internal/vnc/prof_2');
-    expect(verifyGatewayVncUrl(otherProfile, SECRET, now)).toEqual({ ok: false, reason: 'bad_signature' });
-    expect(verifyGatewayVncUrl(signed(), SECRET, now + 61_000)).toEqual({ ok: false, reason: 'expired' });
+    expect(verifyGatewayVncUrl(otherProfile, SECRET, now)).toMatchObject({
+      ok: false,
+      reason: 'bad signature',
+    });
+    expect(verifyGatewayVncUrl(signed(), SECRET, now + 61_000)).toMatchObject({
+      ok: false,
+      reason: 'expired',
+    });
     const noSig = new URL(signed());
     noSig.searchParams.delete('sig');
-    expect(verifyGatewayVncUrl(noSig, SECRET, now)).toEqual({ ok: false, reason: 'malformed' });
+    expect(verifyGatewayVncUrl(noSig, SECRET, now)).toMatchObject({ ok: false, reason: 'malformed request' });
   });
 });
 
@@ -216,7 +219,6 @@ describe('VNC upgrade', () => {
       ok: true,
       profileId: 'prof_1',
       sessionId: 'sess_1',
-      memberId: 'mem_owner',
     });
 
     const bytes = Buffer.from([0x52, 0x46, 0x42, 0x20, 0x00, 0xff, 0x10]);
@@ -269,7 +271,7 @@ describe('VNC upgrade', () => {
     const gw = await fakeGateway('a-different-secret');
     const web = await webServer({ gatewayUrl: gw.url, authorize: allow });
     expect((await dial(web.port, '/api/vnc/prof_1', web.origin)).status).toBe(502);
-    expect(gw.seen[0]?.check).toEqual({ ok: false, reason: 'bad_signature' });
+    expect(gw.seen[0]?.check).toMatchObject({ ok: false, reason: 'bad signature' });
   });
 
   it('answers 502 when the gateway is down', async () => {

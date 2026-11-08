@@ -522,6 +522,15 @@ export async function resumeAccount(input: {
 }
 
 /** `1512×982` / `1512x982` → `1512x982`; anything else → null. */
+/**
+ * One BCP 47 tag for the browser's LOCALE. The captured fingerprint holds the owner's `navigator.languages`
+ * ("en-US, en, zh-CN" or "en-US;q=0.9"); the container takes a single tag and exits on anything else.
+ */
+export function normalizeLocale(s: string | undefined): string {
+  const first = s?.split(',')[0]?.split(';')[0]?.trim() ?? '';
+  return /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(first) ? first : 'en-US';
+}
+
 function normalizeScreen(s: string | undefined): string | null {
   const m = s?.match(/^\s*(\d{3,5})\s*[x×X]\s*(\d{3,5})\s*$/);
   return m ? `${m[1]}x${m[2]}` : null;
@@ -606,7 +615,7 @@ export async function getProfileForDispatch(
             gpu: (p.cloakGpu ?? 'intel') as CloakGpu,
           },
     tz: fp.tz || 'UTC',
-    locale: fp.locale || 'en-US',
+    locale: normalizeLocale(fp.locale),
     screen: normalizeScreen(fp.screen) ?? '1920x1080',
     proxy,
   };
