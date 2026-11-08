@@ -1,5 +1,6 @@
 /**
- * Playwright actions over CDP (plan §4 T22): `action.submitComment`, `action.sendDm`, `profile.testProxy`.
+ * Playwright actions over CDP (plan §4 T22): `action.submitComment`, `action.sendDm`, `profile.testProxy`, and
+ * `profile.whoami` (plan 0002: the signed-in Reddit identity, read from `me.json` in the profile's own context).
  *
  * Each command connects to the profile's container browser, works in its own tab, and maps what happened to a
  * `BrowserOutcome`: `posted` with the new item's fullname, `needs_human` for verification / captcha / login walls
@@ -13,6 +14,7 @@ import { sendDm } from './send-dm';
 import { ActionError, type Session, defaultCdpUrl, errMessage, openSession } from './session';
 import { submitComment } from './submit-comment';
 import { DEFAULT_IP_URL, testProxy } from './test-proxy';
+import { whoami } from './whoami';
 
 export { profileProxies, ProfileProxies, type ProxyLookup } from './proxy-store';
 export { attachProxyAuth } from './proxy-auth';
@@ -25,7 +27,7 @@ export interface ActionOptions {
   cdpUrlFor?: (profileId: string) => string;
   /** Proxy a profile was started with; default {@link profileProxies}. */
   proxyFor?: ProxyLookup;
-  /** Where DMs are composed; default `https://www.reddit.com`. */
+  /** Where DMs are composed and `me.json` is read; default `https://www.reddit.com`. */
   redditOrigin?: string;
   /** IP echo for the connection test; default {@link DEFAULT_IP_URL}. */
   ipUrl?: string;
@@ -35,7 +37,10 @@ export interface ActionOptions {
   confirmTimeoutMs?: number;
 }
 
-type ActionKind = Extract<CmdKind, 'action.submitComment' | 'action.sendDm' | 'profile.testProxy'>;
+type ActionKind = Extract<
+  CmdKind,
+  'action.submitComment' | 'action.sendDm' | 'profile.testProxy' | 'profile.whoami'
+>;
 
 export function createActionHandlers(options: ActionOptions = {}): Pick<HandlerMap, ActionKind> {
   const o = {
@@ -79,6 +84,7 @@ export function createActionHandlers(options: ActionOptions = {}): Pick<HandlerM
       }
       return testProxy(s, cmd, { ipUrl: o.ipUrl, proxy, signal: ctx.signal });
     }),
+    'profile.whoami': action((s, cmd: CmdOf<'profile.whoami'>) => whoami(s, cmd, o)),
   };
 }
 
