@@ -1,0 +1,24 @@
+# Edge Worker for reddits.recycleservers.com. Deploy: deploy/cloudflare/deploy.sh
+# Next.js itself runs on Railway (`web`); see docs/DECISIONS.md "2026-11-08 — Cloudflare edge".
+name = "threadline-edge"
+main = "worker.mjs"
+compatibility_date = "2026-10-01"
+account_id = "cf0e09b533b74d32407f6fe1b558165b"
+workers_dev = false
+# Every public hostname must be listed here: a deploy reconciles the Worker's routes against this file.
+routes = [{ pattern = "reddits.recycleservers.com/*", zone_name = "recycleservers.com" }]
+
+[vars]
+ORIGIN_URL = "https://web-production-e42e5.up.railway.app"
+
+# Per-IP flood guards, counted per Cloudflare location (approximate). The app's own Redis limits stay lower
+# (lib/rate-limit.ts: collect 120/60 s, click counting 30/60 s); these only stop floods before Railway.
+[[ratelimits]]
+name = "COLLECT_LIMITER"
+namespace_id = "41001"
+simple = { limit = 300, period = 60 }
+
+[[ratelimits]]
+name = "R_LIMITER"
+namespace_id = "41002"
+simple = { limit = 600, period = 60 }

@@ -3,6 +3,23 @@
 Running log of choices made while building that docs/PLAN.md left open or that differ from it.
 Newest first.
 
+## 2026-11-08 — Cloudflare edge, Next.js stays on Railway
+
+- **The web app is not moved to Cloudflare Workers.** `apps/web` is a full Next.js server, not a static frontend:
+  most pages and server actions read Postgres and Redis directly, and `server.ts` handles the VNC websocket. On
+  Workers it would need Prisma's driver adapter with a client per request, Hyperdrive through a Cloudflare Tunnel
+  (or a public Postgres TCP proxy, which ADR-0001 rules out), an HTTP queue API on `node-gateway`, and a rewritten
+  VNC proxy, and every page query would cross from the edge to us-east4. The owner chose to harden the edge
+  instead. Revisit if `/r` or `tl.js` traffic grows; move those public routes to the edge first.
+- **`threadline-edge` lives in `deploy/cloudflare`** (deploy with `deploy/cloudflare/deploy.sh`; tests:
+  `node --test deploy/cloudflare/worker.test.mjs`). It redirects http → https and forwards everything to Railway
+  `web`, with two additions:
+  - It caches `/_next/static/*` at the edge (`immutable`, one year), and only when the response is a 200. A miss
+    gets `no-store`, so a chunk that 404s during a deploy is never cached.
+  - It adds per-IP flood guards from Workers rate-limit bindings, counted per Cloudflare location:
+    `POST /api/tl/collect` above 300/60 s and `/r/*` above 600/60 s get a 429. Both sit well above the app's own
+    Redis limits, because a tracked link must keep working. A missing or failing limiter lets the request through.
+
 ## 2026-11-07 — browser node contracts (infra plan T00)
 
 - **Contracts live in `packages/shared`**: `enums.ts` (BrowserNodeStatus, PauseReason, BrowserOutcome, CloakPersona,

@@ -12,3 +12,4 @@ playwright-report
 next-env.d.ts
 **/tests/e2e/.auth/
 .archify/
+.wrangler/

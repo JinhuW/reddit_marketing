@@ -31,6 +31,8 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      - name: Edge Worker tests
+        run: node --test deploy/cloudflare/worker.test.mjs
       - run: pnpm typecheck
       - run: psql postgresql://threadline:threadline@localhost:5432/threadline -c 'CREATE DATABASE threadline_shadow'
       - name: Migrations match schema
