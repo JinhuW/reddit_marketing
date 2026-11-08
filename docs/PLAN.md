@@ -257,7 +257,7 @@ cannot be approved; a warn rule shows in the rule-check panel and is logged with
 | Subreddit link rule | block | URLs in the body ≤ what Subreddit.linkRule allows today |
 | Daily posting limit | block | Posted items for this account today < dailyPostLimit |
 | Account eligible | block | Karma and age meet the subreddit's minimums; health is not blocked |
-| One account per person | block | RedditAccount.ownerMemberId is unique; connect flow refuses a second account |
+| One voice per person | block | A person may own several accounts (up to the plan's account limit), but a draft fails when another account of the same owner already has an approved, scheduled or posted draft in that thread, started the thread, or is the DM counterpart |
 | Human approval | block | post.publish only accepts approved/scheduled drafts with an approver who had canApprove |
 | DM only after engagement | block | A dm draft needs a Conversation with at least one inbound Message |
 | Self-promo ratio | warn | Promotional / all items in 7 days ≤ selfPromoMax after this post |

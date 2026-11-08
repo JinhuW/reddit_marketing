@@ -52,6 +52,16 @@ export interface RuleContext {
     isFirstOutbound: boolean;
   } | null;
   competitors?: string[];
+  /**
+   * The owner's other accounts (one person can own several — docs/DECISIONS.md 2026-11-08). Omitted or null when
+   * the owner has no other account. Feeds `one_voice_per_thread` (block).
+   */
+  ownerOtherAccounts?: {
+    /** Other accounts of this owner with an approved, scheduled or posted draft on the same Reddit post. */
+    inThread: string[];
+    /** The thread author or DM counterpart, when it is another account of this owner. */
+    counterpart: string | null;
+  } | null;
 }
 
 const normalize = (s: string) =>
@@ -228,6 +238,35 @@ export function evaluateDraft(ctx: RuleContext): RuleCheck[] {
     });
   }
 
+  // One voice per person per thread — block. One person may own several accounts, but never speaks with two of
+  // them in the same thread, and never answers or messages their own other account: that would look like
+  // independent people agreeing (sockpuppeting).
+  {
+    const other = ctx.ownerOtherAccounts;
+    const inThread = draft.type === 'post' ? [] : (other?.inThread ?? []);
+    const counterpart = other?.counterpart ?? null;
+    const problems: string[] = [];
+    if (counterpart)
+      problems.push(
+        draft.type === 'dm'
+          ? `u/${counterpart} is another account of the same person`
+          : `this thread was started by u/${counterpart}, another account of the same person`,
+      );
+    if (inThread.length)
+      problems.push(
+        `${inThread.map((u) => `u/${u}`).join(', ')} (same person) already ${inThread.length === 1 ? 'speaks' : 'speak'} in this thread`,
+      );
+    checks.push({
+      key: 'one_voice_per_thread',
+      label: 'One voice per person',
+      level: 'block',
+      passed: problems.length === 0,
+      detail: problems.length
+        ? `${problems.join('; ')}. A person uses one account per thread.`
+        : 'No other account of this person is in this thread.',
+    });
+  }
+
   // Self-promo ratio — warn
   {
     const promo = account.promoItems7d + (draft.promotional ? 1 : 0);
@@ -316,14 +355,6 @@ export function assertPublishable(
     throw new PolicyError(
       'Draft fails block rules at post time.',
       fails.map((f) => f.key),
-    );
-}
-
-/** One account per person — block. Used by the connect flow before creating a RedditAccount. */
-export function assertOneAccountPerMember(existingAccountForMember: { username: string } | null): void {
-  if (existingAccountForMember)
-    throw new PolicyError(
-      `You already own u/${existingAccountForMember.username}. Each person can connect one Reddit account.`,
     );
 }
 

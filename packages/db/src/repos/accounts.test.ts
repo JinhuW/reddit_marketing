@@ -163,28 +163,51 @@ describe('accounts.startBrowserConnect', () => {
     }
   });
 
-  it('still refuses a second connect once the account has a Reddit identity', async () => {
+  it('lets one person own several accounts once the first has a Reddit identity, each with its own profile', async () => {
     const ws = await testWorkspace();
     try {
-      const owner = await ws.member('Ivo');
-      const { accountId } = await accounts.startBrowserConnect({
+      const owner = await ws.member('Ivo Petrov');
+      const first = await accounts.startBrowserConnect({
         ...base,
         workspaceId: ws.id,
         ownerMemberId: owner.id,
       });
-      await prisma.redditAccount.update({ where: { id: accountId }, data: { identifiedAt: new Date() } });
-      await expect(
-        accounts.startBrowserConnect({ ...base, workspaceId: ws.id, ownerMemberId: owner.id }),
-      ).rejects.toThrow(/already own/);
+      await prisma.redditAccount.update({
+        where: { id: first.accountId },
+        data: { identifiedAt: new Date() },
+      });
+      const second = await accounts.startBrowserConnect({
+        ...base,
+        workspaceId: ws.id,
+        ownerMemberId: owner.id,
+      });
+      expect(second.resumed).toBe(false);
+      expect(second.accountId).not.toBe(first.accountId);
+      expect(second.profileId).not.toBe(first.profileId);
+      const names = await prisma.browserProfile.findMany({
+        where: { workspaceId: ws.id },
+        orderBy: { createdAt: 'asc' },
+        select: { name: true },
+      });
+      expect(names.map((n) => n.name)).toEqual(['Ivo · Chrome', 'Ivo · Chrome 2']);
+      // The new one is pending: the next browser connect resumes it rather than starting a third.
+      const again = await accounts.startBrowserConnect({
+        ...base,
+        workspaceId: ws.id,
+        ownerMemberId: owner.id,
+      });
+      expect(again).toMatchObject({ resumed: true, accountId: second.accountId });
+      expect(await accounts.findPendingByOwner(ws.id, owner.id)).toMatchObject({ id: second.accountId });
     } finally {
       await ws.cleanup();
     }
   });
 
-  it('refuses a second account for the same owner, a non-member owner and a foreign proxy, atomically', async () => {
+  it('refuses a new account past the plan limit (blocked accounts free a slot), a non-member owner and a foreign proxy, atomically', async () => {
     const ws = await testWorkspace();
     const other = await testWorkspace();
     try {
+      await prisma.workspace.update({ where: { id: ws.id }, data: { plan: 'starter' } });
       const owner = await ws.member('Leo');
       const leo = await accounts.startBrowserConnect({
         ...base,
@@ -192,15 +215,17 @@ describe('accounts.startBrowserConnect', () => {
         ownerMemberId: owner.id,
       });
       await prisma.redditAccount.update({ where: { id: leo.accountId }, data: { identifiedAt: new Date() } });
+      expect(await accounts.accountRoom(ws.id)).toMatchObject({ used: 1, limit: 1, full: true });
       await expect(
         accounts.startBrowserConnect({ ...base, workspaceId: ws.id, ownerMemberId: owner.id }),
-      ).rejects.toThrow(/already own/);
+      ).rejects.toThrow(/Starter plan includes 1 Reddit accounts/);
 
       const outsider = await other.member('Out Sider');
       await expect(
         accounts.startBrowserConnect({ ...base, workspaceId: ws.id, ownerMemberId: outsider.id }),
       ).rejects.toThrow(/not a member/);
 
+      await prisma.workspace.update({ where: { id: ws.id }, data: { plan: 'pro' } });
       const foreign = await prisma.proxy.create({
         data: { workspaceId: other.id, provider: 'x', protocol: 'http', host: 'f.test', port: 1 },
       });
@@ -219,6 +244,11 @@ describe('accounts.startBrowserConnect', () => {
       expect(
         await prisma.auditEvent.count({ where: { workspaceId: ws.id, action: 'account.connect_started' } }),
       ).toBe(1);
+
+      // A disconnected (blocked) account no longer counts against the plan.
+      await prisma.workspace.update({ where: { id: ws.id }, data: { plan: 'starter' } });
+      await accounts.disconnect(ws.id, leo.accountId, owner.id);
+      expect(await accounts.accountRoom(ws.id)).toMatchObject({ used: 0, full: false });
     } finally {
       await ws.cleanup();
       await other.cleanup();
@@ -368,5 +398,66 @@ describe('publish gate: unidentified accounts', () => {
     const d = (await drafts.get(ws.id, d0.id))!;
     const check = (await drafts.evaluate(d)).find((c) => c.key === 'account_eligible')!;
     expect(check.detail).not.toMatch(/not signed in yet/);
+  });
+});
+
+describe('one voice per person per thread (block)', () => {
+  it('blocks a draft when another account of the same owner already spoke in the thread or started it', async () => {
+    const ws = await prisma.workspace.findUniqueOrThrow({ where: { slug: 'acme' } });
+    const d0 = await prisma.draft.findFirstOrThrow({
+      where: { workspaceId: ws.id, type: 'comment', opportunityId: { not: null }, status: 'pending' },
+      include: { account: true, opportunity: { include: { post: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    const check = async () =>
+      (await drafts.evaluate((await drafts.get(ws.id, d0.id))!)).find(
+        (c) => c.key === 'one_voice_per_thread',
+      )!;
+    expect(await check()).toMatchObject({ level: 'block', passed: true });
+
+    const alt = await prisma.redditAccount.create({
+      data: {
+        workspaceId: ws.id,
+        ownerMemberId: d0.account.ownerMemberId,
+        username: `alt_${Date.now().toString(36)}`,
+        redditId: `t2_alt${Date.now().toString(36)}`,
+        disclosureLine: 'Disclosure: I work on Acme',
+        identifiedAt: new Date(),
+      },
+    });
+    const post = d0.opportunity!.post;
+    try {
+      // Owning another account is fine on its own.
+      expect((await check()).passed).toBe(true);
+      // A pending draft from the other account does not count yet; an approved one does.
+      const other = await prisma.draft.create({
+        data: {
+          workspaceId: ws.id,
+          opportunityId: d0.opportunityId,
+          agentId: d0.agentId,
+          accountId: alt.id,
+          type: 'comment',
+          body: 'x',
+        },
+      });
+      expect((await check()).passed).toBe(true);
+      await prisma.draft.update({ where: { id: other.id }, data: { status: 'approved' } });
+      const c = await check();
+      expect(c.passed).toBe(false);
+      expect(c.detail).toContain(`u/${alt.username}`);
+      await prisma.draft.delete({ where: { id: other.id } });
+      expect((await check()).passed).toBe(true);
+
+      // Replying to a thread the same person started from the other account.
+      await prisma.post.update({
+        where: { id: post.id },
+        data: { authorUsername: alt.username.toUpperCase() },
+      });
+      expect(await check()).toMatchObject({ passed: false, detail: expect.stringMatching(/started by/) });
+    } finally {
+      await prisma.post.update({ where: { id: post.id }, data: { authorUsername: post.authorUsername } });
+      await prisma.draft.deleteMany({ where: { accountId: alt.id } });
+      await prisma.redditAccount.delete({ where: { id: alt.id } });
+    }
   });
 });

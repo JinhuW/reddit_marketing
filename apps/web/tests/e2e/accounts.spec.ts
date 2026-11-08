@@ -37,19 +37,14 @@ test('without a Reddit app the connect page offers the browser', async ({ page }
   await expect(page.getByTestId('reddit-not-configured')).toContainText('No Reddit app is configured');
   await expect(page.getByRole('link', { name: 'Sign in with Reddit' })).toHaveCount(0);
   await expect(page.getByRole('combobox', { name: 'Proxy' })).toBeVisible();
-  // Jane already owns an account
-  await expect(page.getByRole('button', { name: 'Open the browser to sign in' })).toBeDisabled();
+  // Jane already owns an account and may connect another one
+  await expect(page.getByRole('button', { name: 'Open the browser to sign in' })).toBeEnabled();
 });
 
-test('a member who already owns an account is refused a second one', async ({ page }) => {
+test('a member who already owns an account can connect another one', async ({ page }) => {
   await page.goto('/accounts/connect');
-  await expect(page.getByTestId('one-account-refusal')).toHaveText(
-    'You already own u/jane_from_acme. Each person can connect one Reddit account.',
-  );
-  // The OAuth start route refuses too, before any Reddit redirect.
-  await page.goto('/api/auth/reddit/start');
-  await expect(page).toHaveURL(/\/accounts\/connect\?error=already_owner/);
-  await expect(page.getByRole('alert').first()).toContainText('You already own a connected Reddit account');
+  await expect(page.getByText('This adds another account for you (you own u/jane_from_acme).')).toBeVisible();
+  await expect(page.getByTestId('plan-full')).toHaveCount(0);
 });
 
 /**
@@ -63,8 +58,7 @@ async function archive(memberId: string) {
     update: {},
   });
   const to = { workspaceId: ws.id };
-  const acc = await prisma.redditAccount.findUnique({ where: { ownerMemberId: memberId } });
-  if (acc) {
+  for (const acc of await prisma.redditAccount.findMany({ where: { ownerMemberId: memberId } })) {
     await prisma.browserSession.updateMany({ where: { profile: { accountId: acc.id } }, data: to });
     await prisma.browserProfile.updateMany({ where: { accountId: acc.id }, data: to });
     await prisma.redditAccount.update({ where: { id: acc.id }, data: to });
@@ -78,7 +72,7 @@ test('connect through the browser: pending account, sign-in session, identity, h
 }) => {
   test.skip(Boolean(process.env.REDDIT_CLIENT_ID), 'browser mode is the default only without a Reddit app');
   test.setTimeout(120_000);
-  // A fresh editor with no account (one account per person), signed in through the dev magic link.
+  // A fresh editor with no account, signed in through the dev magic link.
   const run = Date.now().toString(36);
   const email = `e2e-browser-${run}@acme.so`;
   const handle = `e2e_cs_${run}`;
@@ -119,7 +113,7 @@ test('connect through the browser: pending account, sign-in session, identity, h
     await panel.getByRole('button', { name: 'I’m signed in' }).click();
     await expect(panel.getByRole('alert')).toContainText('no browser node yet');
 
-    const acc = await prisma.redditAccount.findUniqueOrThrow({ where: { ownerMemberId: member.id } });
+    const acc = await prisma.redditAccount.findFirstOrThrow({ where: { ownerMemberId: member.id } });
     expect(acc).toMatchObject({ authMode: 'browser', identifiedAt: null });
     expect(acc.username).toMatch(/^pending-/);
 

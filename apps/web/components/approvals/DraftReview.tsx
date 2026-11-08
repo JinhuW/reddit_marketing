@@ -28,6 +28,8 @@ function blockReason(c: RuleCheck, disclosureLine: string) {
       return 'This account has reached its daily posting limit.';
     case 'dm_after_engagement':
       return 'This person has not messaged or replied to us, so a DM cannot be sent.';
+    case 'one_voice_per_thread':
+      return 'Another account of the same person is already in this thread. Use that account or skip it.';
     default:
       return c.detail;
   }

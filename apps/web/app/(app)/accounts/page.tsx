@@ -16,7 +16,7 @@ export default async function Page() {
     <>
       <PageHeader
         title="Reddit accounts"
-        sub="Connected through Reddit’s official sign-in. One account per real person — Threadline never posts from accounts it owns."
+        sub="Connected through Reddit’s official sign-in. Each account belongs to a real person, who may own several — never two in the same thread. Threadline never posts from accounts it owns."
         actions={
           <Link href="/accounts/connect" className="btn btn-primary">
             Connect account
@@ -29,9 +29,10 @@ export default async function Page() {
             <AccountCard key={a.id} a={a} canManage={me.role === 'admin' || me.id === a.ownerMemberId} />
           ))}
           <div className="panel flex min-h-[200px] flex-col items-center justify-center gap-2 !border-dashed !bg-transparent p-4 text-center">
-            <div className="text-sm font-semibold">Add a teammate’s account</div>
+            <div className="text-sm font-semibold">Add another account</div>
             <div className="muted max-w-[260px] text-[12.5px] leading-normal">
-              They sign in to Reddit themselves. Threadline only drafts; they or an approver still press post.
+              Yours or a teammate’s. The owner signs in to Reddit themselves. Threadline only drafts; they or
+              an approver still press post.
             </div>
             <Link href="/accounts/connect" className="btn mt-1">
               Connect account

@@ -8,7 +8,8 @@ import type { ConnectProps } from './ConnectAccountFlow';
 
 const ERRORS: Record<string, string> = {
   not_configured: 'Reddit app not configured — set REDDIT_CLIENT_ID/SECRET.',
-  already_owner: 'You already own a connected Reddit account. Each person can connect one.',
+  plan_full:
+    'Your plan has no room for another Reddit account. Upgrade the plan or disconnect an account first.',
   forbidden: 'Viewers can’t connect accounts.',
   state: 'The Reddit sign-in could not be verified. Start again.',
   denied: 'Reddit sign-in was cancelled.',
@@ -16,8 +17,9 @@ const ERRORS: Record<string, string> = {
 };
 
 export async function connectProps(me: CurrentMember, error?: string): Promise<ConnectProps> {
-  const [owned, proxies] = await Promise.all([
-    accounts.findByOwner(me.id),
+  const [pendingConnect, room, proxies] = await Promise.all([
+    accounts.findPendingByOwner(me.workspaceId, me.id),
+    accounts.accountRoom(me.workspaceId),
     browsers.listProxies(me.workspaceId),
   ]);
   const pending = openPending((await cookies()).get(PENDING_COOKIE)?.value, me.id);
@@ -25,8 +27,11 @@ export async function connectProps(me: CurrentMember, error?: string): Promise<C
   return {
     configured: redditConfigured(),
     ownerName: me.user.name ?? me.user.email,
-    alreadyOwns: owned && !accounts.isPendingConnect(owned) ? owned.username : null,
-    resumes: owned && accounts.isPendingConnect(owned) ? owned.username : null,
+    owns: me.ownedAccounts.filter((a) => accounts.isIdentified(a)).map((a) => a.username),
+    planFull: room.full
+      ? `Your ${room.plan[0]!.toUpperCase()}${room.plan.slice(1)} plan includes ${room.limit} Reddit accounts and all are in use. Upgrade the plan or disconnect an account first.`
+      : null,
+    resumes: pendingConnect?.username ?? null,
     canConnect: members.roleAtLeast(me.role, 'editor'),
     authorized: pending ? { username: pending.username, scopes: pending.scopes } : null,
     product: settings.product ?? me.workspace.name,

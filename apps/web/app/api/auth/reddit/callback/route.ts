@@ -35,7 +35,7 @@ export async function GET(req: Request) {
   if (!expected || !state || state !== expected) return back('error=state');
   const code = url.searchParams.get('code');
   if (!code) return back('error=denied');
-  if (await accounts.findByOwner(me.id)) return back('error=already_owner');
+  if ((await accounts.accountRoom(me.workspaceId)).full) return back('error=plan_full');
   try {
     const token = await exchangeCode(code);
     const who = await fetchMe(token.access_token);

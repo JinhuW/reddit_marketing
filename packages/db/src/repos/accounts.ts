@@ -1,12 +1,15 @@
 import { Prisma } from '@prisma/client';
 // Repository functions for the Accounts screen (docs/PLAN.md §7 row 9).
 // Browser-mode connect (startBrowserConnect / completeBrowserIdentity): docs/plans/0002-browser-mode.md.
-import { assertOneAccountPerMember } from '@threadline/agents';
 import type { AccountAuthMode, AccountRoleLabel } from '@threadline/shared';
 import { prisma } from '../client';
+import { PlanLimitError } from './agents';
 import { writeAudit } from './audit';
 import { attachProxyTx, ensureCloakFingerprintTx } from './browsers';
 import { pickForProfile } from './nodes';
+import { PLAN_LIMITS } from './shell';
+
+type Tx = Prisma.TransactionClient;
 
 /**
  * True once the account's Reddit identity is known (OAuth callback, or `profile.whoami` in browser mode).
@@ -17,8 +20,8 @@ export function isIdentified(account: { identifiedAt: Date | string | null | und
 }
 
 /**
- * A browser-mode connect that was started but never signed in to (no Reddit identity yet). It does not count
- * as the owner's one account: the next connect resumes it instead of being refused.
+ * A browser-mode connect that was started but never signed in to (no Reddit identity yet). The owner's next
+ * browser connect resumes it instead of starting another one.
  */
 export function isPendingConnect(account: {
   authMode: string;
@@ -95,11 +98,31 @@ export async function listCards(workspaceId: string, now = new Date()) {
 }
 export type AccountCard = Awaited<ReturnType<typeof listCards>>[number];
 
-export function findByOwner(ownerMemberId: string) {
-  return prisma.redditAccount.findUnique({
-    where: { ownerMemberId },
+/** The owner's unfinished browser connect ({@link isPendingConnect}), if any: the next browser connect resumes it. */
+export function findPendingByOwner(workspaceId: string, ownerMemberId: string) {
+  return prisma.redditAccount.findFirst({
+    where: { workspaceId, ownerMemberId, authMode: 'browser', identifiedAt: null },
+    orderBy: { createdAt: 'asc' },
     select: { id: true, username: true, authMode: true, identifiedAt: true },
   });
+}
+
+/** Accounts counted against the plan: every account that is not blocked (disconnected or banned). */
+export async function accountRoom(workspaceId: string, db: Tx | typeof prisma = prisma) {
+  const [ws, used] = await Promise.all([
+    db.workspace.findUniqueOrThrow({ where: { id: workspaceId }, select: { plan: true } }),
+    db.redditAccount.count({ where: { workspaceId, health: { not: 'blocked' } } }),
+  ]);
+  const limit = PLAN_LIMITS[ws.plan].accounts;
+  return { plan: ws.plan, used, limit, full: used >= limit };
+}
+
+async function assertAccountRoom(tx: Tx, workspaceId: string) {
+  const r = await accountRoom(workspaceId, tx);
+  if (r.full)
+    throw new PlanLimitError(
+      `Your ${r.plan[0]!.toUpperCase()}${r.plan.slice(1)} plan includes ${r.limit} Reddit accounts. Upgrade the plan or disconnect an account first.`,
+    );
 }
 
 export interface ConnectInput {
@@ -121,6 +144,7 @@ export interface ConnectInput {
 /** Creates RedditAccount + its BrowserProfile + AuditEvent in one transaction. */
 export async function connect(input: ConnectInput) {
   return prisma.$transaction(async (tx) => {
+    await assertAccountRoom(tx, input.workspaceId);
     const account = await tx.redditAccount.create({
       data: {
         workspaceId: input.workspaceId,
@@ -148,7 +172,10 @@ export async function connect(input: ConnectInput) {
       data: {
         workspaceId: input.workspaceId,
         accountId: account.id,
-        name: profileName(owner.user.name ?? input.username),
+        name: profileName(
+          owner.user.name ?? input.username,
+          await ownedBefore(tx, input.ownerMemberId, account.id),
+        ),
         fingerprint: input.fingerprint,
         cookiesVolume: `tl-profile-${account.id}`,
       },
@@ -169,10 +196,13 @@ export async function connect(input: ConnectInput) {
   });
 }
 
-/** "Jane Doe" → "Jane · Chrome" (one profile per account, named after its owner). */
-function profileName(ownerName: string): string {
-  return `${ownerName.split(' ')[0]} · Chrome`;
+/** "Jane Doe" → "Jane · Chrome" (one profile per account, named after its owner); later ones "Jane · Chrome 2". */
+function profileName(ownerName: string, ownedBefore = 0): string {
+  return `${ownerName.split(' ')[0]} · Chrome${ownedBefore ? ` ${ownedBefore + 1}` : ''}`;
 }
+
+const ownedBefore = (tx: Tx, ownerMemberId: string, accountId: string) =>
+  tx.redditAccount.count({ where: { ownerMemberId, id: { not: accountId } } });
 
 /** The account refused: another account in the workspace already has this Reddit identity, or it changed. */
 export class AccountConflictError extends Error {
@@ -213,9 +243,9 @@ export interface StartBrowserConnectResult {
  * BrowserProfile with a CloakBrowser fingerprint, a node (least-loaded online node with room) and the
  * optional proxy. Audit: `account.connect_started`, `profile.fingerprint_assigned`, and
  * `profile.node_assigned` / `profile.proxy_updated` when a node / proxy was set.
- * Refuses when the owner already owns an account (one account per person), except that an unfinished pending
- * connect ({@link isPendingConnect}) is resumed: its role, disclosure and limits are updated, the proxy is
- * attached when one is chosen, a node is assigned if it has none, and `account.connect_started` is written
+ * A person may own several accounts; a new one is refused only when the plan's account limit is reached. The
+ * owner's unfinished pending connect ({@link isPendingConnect}) is resumed instead of starting another: its role,
+ * disclosure and limits are updated, the proxy is attached when one is chosen, a node is assigned if it has none, and `account.connect_started` is written
  * with `resumed: true`. The profile and its fingerprint are kept.
  */
 export async function startBrowserConnect(
@@ -227,7 +257,10 @@ export async function startBrowserConnect(
       where: { id: input.ownerMemberId, workspaceId: input.workspaceId },
       include: {
         user: { select: { name: true, email: true } },
-        ownedAccount: {
+        ownedAccounts: {
+          where: { authMode: 'browser', identifiedAt: null },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
           select: {
             id: true,
             username: true,
@@ -239,14 +272,14 @@ export async function startBrowserConnect(
       },
     });
     if (!owner) throw new Error('Owner is not a member of this workspace');
-    const owned = owner.ownedAccount;
+    const owned = owner.ownedAccounts[0];
     if (owned && isPendingConnect(owned) && owned.browserProfile)
       return resumeBrowserConnectTx(tx, input, actor, {
         id: owned.id,
         username: owned.username,
         profile: owned.browserProfile,
       });
-    assertOneAccountPerMember(owned);
+    await assertAccountRoom(tx, input.workspaceId);
     if (input.proxyId) {
       const px = await tx.proxy.findFirst({
         where: { workspaceId: input.workspaceId, id: input.proxyId },
@@ -284,7 +317,10 @@ export async function startBrowserConnect(
       data: {
         workspaceId: input.workspaceId,
         accountId: account.id,
-        name: profileName(owner.user.name ?? owner.user.email.split('@')[0] ?? 'Owner'),
+        name: profileName(
+          owner.user.name ?? owner.user.email.split('@')[0] ?? 'Owner',
+          await ownedBefore(tx, input.ownerMemberId, account.id),
+        ),
         fingerprint: input.fingerprint,
         cookiesVolume: `tl-profile-${account.id}`,
       },
@@ -552,10 +588,10 @@ export async function disconnect(workspaceId: string, id: string, actorMemberId:
   });
 }
 
-/** Members who can own a newly connected account (no account yet). */
+/** Members who can own a newly connected account (anyone; a person may own several). */
 export async function ownerOptions(workspaceId: string) {
   return prisma.workspaceMember.findMany({
-    where: { workspaceId, ownedAccount: null },
+    where: { workspaceId },
     select: { id: true, user: { select: { name: true, email: true } } },
   });
 }

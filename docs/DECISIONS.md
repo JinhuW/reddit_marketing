@@ -3,6 +3,24 @@
 Running log of choices made while building that docs/PLAN.md left open or that differ from it.
 Newest first.
 
+## 2026-11-08 · One person may own several Reddit accounts; "one voice per thread" replaces "one account per person"
+
+- Asked for by the workspace owner: one person (a founder running a personal and a brand account, an agency
+  member running client accounts) needs more than one account. `RedditAccount.ownerMemberId` is no longer unique
+  (migration `20261110000000_accounts_per_owner`); `WorkspaceMember.ownedAccounts` is a list.
+- The old block rule (`assertOneAccountPerMember`) existed to stop sockpuppeting. It is **replaced, not dropped**,
+  by a block rule aimed at that harm directly: `one_voice_per_thread` in `evaluateDraft` fails when another
+  account of the same owner already has an approved, scheduled or posted draft on the same Reddit post, started
+  the thread, or is the DM counterpart. It runs at generation, edit, approval and again at post time
+  (`drafts.buildRuleContext` → `ownerOtherAccounts`). Pending drafts do not count, so two agents may both draft
+  for a thread; whichever is approved first wins and the other can no longer be approved.
+- The cap is now the plan's account limit (`PLAN_LIMITS[plan].accounts`, Starter 1 / Pro 5 / Agency 20), enforced
+  in `accounts.connect` and `accounts.startBrowserConnect` and before the OAuth redirect. Blocked accounts
+  (disconnected or banned) do not count. A person's unfinished browser connect is still resumed rather than
+  starting another, so pending accounts do not pile up.
+- Unchanged: every account belongs to a real member who signs in themselves, has its own disclosure line, its
+  own browser profile (named "Jane · Chrome 2", "… 3" for later ones) and its own daily and self-promo limits.
+
 ## 2026-11-08 — Cloudflare edge, Next.js stays on Railway
 
 - **The web app is not moved to Cloudflare Workers.** `apps/web` is a full Next.js server, not a static frontend:

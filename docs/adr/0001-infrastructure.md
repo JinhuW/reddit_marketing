@@ -106,7 +106,8 @@ account is paused with reason `node_offline`, and the owner is notified.
 | License failure | `license_denied`: do not open Reddit, pause the account, write an AuditEvent, notify the owner. A crashed container can hold a seat on the license server, so health reports seats in use and the agent waits before relaunching |
 
 CloakBrowser keeps each owner's real account on one stable device. It is not used to create identities or run
-more than one account per person, and PLAN §10's block rules are unchanged.
+accounts for anyone but their real owner. A person may own several accounts (DECISIONS 2026-11-08), each with its
+own profile, and PLAN §10's `one_voice_per_thread` block rule keeps two of them out of the same thread.
 
 ### Local VMs
 

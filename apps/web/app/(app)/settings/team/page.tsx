@@ -19,7 +19,7 @@ export default async function TeamPage() {
         email: r.email,
         role: r.role,
         canApprove: r.canApprove,
-        account: r.account,
+        accounts: r.accounts,
         lastActive: lastActive(r.lastActive, now),
       }))}
     />

@@ -12,7 +12,7 @@ export async function team(workspaceId: string) {
       user: {
         include: { sessions: { orderBy: { updatedAt: 'desc' }, take: 1, select: { updatedAt: true } } },
       },
-      ownedAccount: { select: { username: true } },
+      ownedAccounts: { select: { username: true }, orderBy: { createdAt: 'asc' } },
     },
   });
   return rows.map((m) => ({
@@ -22,7 +22,7 @@ export async function team(workspaceId: string) {
     email: m.user.email,
     role: m.role,
     canApprove: m.canApprove,
-    account: m.ownedAccount?.username ?? null,
+    accounts: m.ownedAccounts.map((a) => a.username),
     lastActive: [m.updatedAt, m.user.sessions[0]?.updatedAt]
       .filter(Boolean)
       .sort((a, b) => b!.getTime() - a!.getTime())[0]!,

@@ -12,7 +12,7 @@ export async function GET(req: Request) {
   const me = await getCurrentMember();
   if (!me) return NextResponse.redirect(new URL('/login', req.url));
   if (me.role === 'viewer') return back('forbidden');
-  if (await accounts.findByOwner(me.id)) return back('already_owner');
+  if ((await accounts.accountRoom(me.workspaceId)).full) return back('plan_full');
   if (!redditConfigured()) return back('not_configured');
   const state = randomBytes(24).toString('base64url');
   const res = NextResponse.redirect(authorizeUrl(state));

@@ -12,7 +12,7 @@ export interface TeamRow {
   email: string;
   role: MemberRole;
   canApprove: boolean;
-  account: string | null;
+  accounts: string[];
   lastActive: string;
 }
 
@@ -138,7 +138,9 @@ export function TeamTable({ rows, isAdmin }: { rows: TeamRow[]; isAdmin: boolean
                     {m.canApprove ? 'Yes' : 'No'}
                   </span>
                 </td>
-                <td className="muted">{m.account ? `u/${m.account}` : '—'}</td>
+                <td className="muted">
+                  {m.accounts.length ? m.accounts.map((u) => `u/${u}`).join(', ') : '—'}
+                </td>
                 <td className="muted whitespace-nowrap">{m.lastActive}</td>
               </tr>
             ))}

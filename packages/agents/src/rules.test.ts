@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   PolicyError,
   type RuleContext,
-  assertOneAccountPerMember,
   assertPublishable,
   blockingFailures,
   canApprove,
@@ -258,10 +257,46 @@ describe('human approval (block)', () => {
   });
 });
 
-describe('one account per person (block)', () => {
-  it('allows the first account', () => expect(() => assertOneAccountPerMember(null)).not.toThrow());
-  it('refuses a second', () =>
-    expect(() => assertOneAccountPerMember({ username: 'jane_from_acme' })).toThrow(/already own/));
+describe('one voice per person per thread (block)', () => {
+  const get = (c: ReturnType<typeof evaluateDraft>) => c.find((x) => x.key === 'one_voice_per_thread');
+  it('passes when the owner has no other account', () =>
+    expect(get(evaluateDraft(ctx()))).toMatchObject({ level: 'block', passed: true }));
+  it('passes when the owner’s other accounts are elsewhere', () =>
+    expect(get(evaluateDraft(ctx({ ownerOtherAccounts: { inThread: [], counterpart: null } })))?.passed).toBe(
+      true,
+    ));
+  it('blocks a second account of the same person in the thread', () => {
+    const c = evaluateDraft(ctx({ ownerOtherAccounts: { inThread: ['jane_alt'], counterpart: null } }));
+    expect(get(c)).toMatchObject({ level: 'block', passed: false });
+    expect(get(c)?.detail).toMatch(/u\/jane_alt/);
+    expect(canApprove(c)).toBe(false);
+  });
+  it('blocks replying to a thread the same person started from another account', () => {
+    const c = evaluateDraft(ctx({ ownerOtherAccounts: { inThread: [], counterpart: 'jane_alt' } }));
+    expect(get(c)?.passed).toBe(false);
+    expect(get(c)?.detail).toMatch(/started by u\/jane_alt/);
+  });
+  it('blocks a DM to the same person’s other account', () => {
+    const c = evaluateDraft(
+      ctx(
+        {
+          conversation: { inboundCount: 1, isFirstOutbound: true },
+          ownerOtherAccounts: { inThread: [], counterpart: 'jane_alt' },
+        },
+        { type: 'dm' },
+      ),
+    );
+    expect(get(c)?.passed).toBe(false);
+  });
+  it('is re-checked at post time', () => {
+    const c = evaluateDraft(ctx({ ownerOtherAccounts: { inThread: ['jane_alt'], counterpart: null } }));
+    const approved = {
+      status: 'approved' as const,
+      approverMemberId: 'm1',
+      approvedAt: SAT,
+    };
+    expect(() => assertPublishable(approved, true, c, SAT)).toThrow(/block rules/);
+  });
 });
 
 describe('proxy region mismatch (warn)', () => {

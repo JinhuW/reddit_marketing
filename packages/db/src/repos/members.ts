@@ -8,7 +8,14 @@ export async function findMembership(userId: string, workspaceSlug?: string | nu
   return prisma.workspaceMember.findFirst({
     where: { userId, ...(workspaceSlug ? { workspace: { slug: workspaceSlug } } : {}) },
     orderBy: { createdAt: 'asc' },
-    include: { user: true, workspace: true, ownedAccount: { select: { id: true, username: true } } },
+    include: {
+      user: true,
+      workspace: true,
+      ownedAccounts: {
+        select: { id: true, username: true, identifiedAt: true },
+        orderBy: { createdAt: 'asc' },
+      },
+    },
   });
 }
 
@@ -30,7 +37,7 @@ export const memberCanApprove = (m: { role: MemberRole; canApprove: boolean }) =
 export async function listMembers(workspaceId: string) {
   return prisma.workspaceMember.findMany({
     where: { workspaceId },
-    include: { user: true, ownedAccount: { select: { username: true } } },
+    include: { user: true, ownedAccounts: { select: { username: true } } },
     orderBy: { createdAt: 'asc' },
   });
 }

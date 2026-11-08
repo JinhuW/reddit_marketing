@@ -154,6 +154,39 @@ export function draftCompetitors(d: DraftWithContext): string[] {
   return [...set];
 }
 
+/**
+ * The owner's other accounts for `one_voice_per_thread` (block): which of them already spoke in this draft's
+ * thread (approved, scheduled or posted draft on the same Reddit post), and whether the thread author or the DM
+ * counterpart is one of them. Null when the owner has no other account.
+ */
+export async function ownerOtherAccounts(
+  d: DraftWithContext,
+  db: Tx | typeof prisma = prisma,
+): Promise<RuleContext['ownerOtherAccounts']> {
+  const others = await db.redditAccount.findMany({
+    where: { workspaceId: d.workspaceId, ownerMemberId: d.account.owner.id, id: { not: d.accountId } },
+    select: { id: true, username: true },
+  });
+  if (!others.length) return null;
+  const thread = d.opportunity?.post ?? d.conversation?.post ?? null;
+  const spoke = thread
+    ? await db.draft.findMany({
+        where: {
+          workspaceId: d.workspaceId,
+          accountId: { in: others.map((o) => o.id) },
+          status: { in: ['approved', 'scheduled', 'posted'] },
+          OR: [{ opportunity: { postId: thread.id } }, { conversation: { postId: thread.id } }],
+        },
+        select: { account: { select: { username: true } } },
+        distinct: ['accountId'],
+      })
+    : [];
+  const mine = new Map(others.map((o) => [o.username.toLowerCase(), o.username]));
+  const people = [thread?.authorUsername, d.conversation?.lead.redditUser.username];
+  const counterpart = people.map((u) => (u ? mine.get(u.toLowerCase()) : undefined)).find(Boolean) ?? null;
+  return { inThread: spoke.map((x) => x.account.username).sort(), counterpart };
+}
+
 /** Builds the RuleContext for evaluateDraft (pure). `body` overrides the stored body (for edits). */
 export async function buildRuleContext(
   d: DraftWithContext,
@@ -202,6 +235,7 @@ export async function buildRuleContext(
         ? { inboundCount: 0, isFirstOutbound: true }
         : null,
     competitors: draftCompetitors(d),
+    ownerOtherAccounts: await ownerOtherAccounts(d, opts.db),
   };
 }
 

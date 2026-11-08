@@ -309,7 +309,7 @@ model WorkspaceMember {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  ownedAccount      RedditAccount?
+  ownedAccounts     RedditAccount[]
   approverForAgents Agent[]          @relation("AgentApprover")
   approvedDrafts    Draft[]          @relation("DraftApprover")
   ownedLeads        Lead[]           @relation("LeadOwner")
@@ -327,8 +327,9 @@ model RedditAccount {
   workspaceId      String
   username         String
   redditId         String
-  /// One account per person: unique across the table.
-  ownerMemberId    String           @unique
+  /// The real person who owns and signs in to this account. A person may own several; `one_voice_per_thread`
+  /// (block) keeps two of them out of the same thread.
+  ownerMemberId    String
   roleLabel        AccountRoleLabel @default(founder)
   disclosureLine   String
   /// oauth = Reddit API token; browser = driven through the account's BrowserProfile (docs/plans/0002-browser-mode.md)
@@ -361,6 +362,7 @@ model RedditAccount {
 
   @@unique([workspaceId, redditId])
   @@unique([workspaceId, username])
+  @@index([ownerMemberId])
 }
 
 model BrowserProfile {

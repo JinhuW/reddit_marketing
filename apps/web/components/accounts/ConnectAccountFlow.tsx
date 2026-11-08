@@ -14,7 +14,10 @@ const ROLES = [
 export interface ConnectProps {
   configured: boolean;
   ownerName: string;
-  alreadyOwns: string | null;
+  /** accounts this person already owns (signed in); a person may own several */
+  owns: string[];
+  /** set when the workspace has no room left for another account on its plan */
+  planFull: string | null;
   /** the owner's unfinished browser connect (pending username), which the browser flow resumes */
   resumes: string | null;
   canConnect: boolean;
@@ -55,8 +58,8 @@ export function ConnectAccountFlow(p: ConnectProps) {
   }, []);
 
   const browser = mode === 'browser';
-  // OAuth cannot reuse a pending browser account, so only the browser flow can resume it.
-  const blocked = Boolean(p.alreadyOwns) || (!browser && Boolean(p.resumes)) || !p.canConnect;
+  // A pending browser account is resumed by the browser flow, so it needs no free slot; anything new does.
+  const blocked = !p.canConnect || (Boolean(p.planFull) && !(browser && p.resumes));
   const step1Done = !browser && Boolean(p.authorized);
   const later = browser ? blocked : !step1Done || blocked;
   const pending = browser ? browserPending : oauthPending;
@@ -125,27 +128,29 @@ export function ConnectAccountFlow(p: ConnectProps) {
           <div className="flex w-full flex-col gap-2">
             <div className="font-semibold">Who owns this account?</div>
             <input className="field" value={p.ownerName} readOnly aria-label="Owner" />
-            {p.alreadyOwns ? (
+            {!p.canConnect ? (
+              <p role="alert" className="m-0 text-xs text-bad">
+                Viewers can’t connect accounts.
+              </p>
+            ) : blocked && p.planFull ? (
               <p
                 role="alert"
                 className="m-0 rounded-[9px] bg-bad-soft px-3 py-2 text-[12.5px] text-bad"
-                data-testid="one-account-refusal"
+                data-testid="plan-full"
               >
-                You already own u/{p.alreadyOwns}. Each person can connect one Reddit account.
-              </p>
-            ) : !p.canConnect ? (
-              <p role="alert" className="m-0 text-xs text-bad">
-                Viewers can’t connect accounts.
+                {p.planFull}
               </p>
             ) : p.resumes ? (
               <div className="muted text-xs" data-testid="connect-resumes">
                 {browser
                   ? `You started connecting an account but didn’t finish signing in. This picks up u/${p.resumes} where you left off.`
-                  : `You have an unfinished browser sign-in (u/${p.resumes}). Finish it through the browser instead.`}
+                  : `You also have an unfinished browser sign-in (u/${p.resumes}). Connecting through the browser picks it up.`}
               </div>
             ) : (
               <div className="muted text-xs">
-                One account per real person. The account is connected to you, the person signing in.
+                {p.owns.length
+                  ? `This adds another account for you (you own ${p.owns.map((u) => `u/${u}`).join(', ')}). Your accounts never speak in the same thread.`
+                  : 'The account is connected to you, the person signing in.'}
               </div>
             )}
           </div>

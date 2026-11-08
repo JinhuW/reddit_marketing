@@ -3,8 +3,8 @@
 import { enqueueProfileJob } from '@/lib/browser-jobs';
 import { PENDING_COOKIE, openPending } from '@/lib/reddit-oauth';
 import { ForbiddenError, requireRole } from '@/lib/session';
-import { PolicyError, assertOneAccountPerMember } from '@threadline/agents';
-import { accounts, browsers } from '@threadline/db';
+import { PolicyError } from '@threadline/agents';
+import { accounts, agents, browsers } from '@threadline/db';
 import { AccountRoleLabel } from '@threadline/shared';
 import { revalidatePath } from 'next/cache';
 import { cookies } from 'next/headers';
@@ -39,7 +39,8 @@ const Fingerprint = z.object({
 
 const fail = (e: unknown): ActionState => {
   if (e instanceof z.ZodError) return { error: e.issues[0]?.message ?? 'Invalid input.' };
-  if (e instanceof PolicyError || e instanceof ForbiddenError) return { error: e.message };
+  if (e instanceof PolicyError || e instanceof ForbiddenError || e instanceof agents.PlanLimitError)
+    return { error: e.message };
   if (e instanceof Error && /Unique constraint/i.test(e.message))
     return { error: 'That Reddit account is already connected.' };
   return { error: e instanceof Error ? e.message : 'Something went wrong.' };
@@ -49,7 +50,6 @@ const fail = (e: unknown): ActionState => {
 export async function finishConnect(_: ActionState, f: FormData): Promise<ActionState> {
   try {
     const me = await requireRole('editor');
-    assertOneAccountPerMember(await accounts.findByOwner(me.id));
     const jar = await cookies();
     const pending = openPending(jar.get(PENDING_COOKIE)?.value, me.id);
     if (!pending)
@@ -101,9 +101,6 @@ export async function startBrowserConnect(_: ActionState, f: FormData): Promise<
   let profileId: string;
   try {
     const me = await requireRole('editor');
-    const owned = await accounts.findByOwner(me.id);
-    // An unfinished browser connect is resumed (accounts.startBrowserConnect), not refused.
-    if (!owned || !accounts.isPendingConnect(owned)) assertOneAccountPerMember(owned);
     const input = z
       .object({
         roleLabel: z.enum(AccountRoleLabel),
@@ -165,7 +162,7 @@ export async function saveLimits(_: ActionState, f: FormData): Promise<ActionSta
   try {
     const me = await requireRole('editor');
     const id = str(f, 'accountId');
-    const isOwner = me.ownedAccount?.id === id;
+    const isOwner = me.ownedAccounts.some((a) => a.id === id);
     if (me.role !== 'admin' && !isOwner)
       throw new ForbiddenError('Only an admin or the account owner can change limits.');
     const input = z.object({ disclosureLine: Disclosure, ...Limits }).parse({
@@ -184,7 +181,7 @@ export async function saveLimits(_: ActionState, f: FormData): Promise<ActionSta
 export async function disconnectAccount(f: FormData) {
   const me = await requireRole('editor');
   const id = str(f, 'accountId');
-  if (me.role !== 'admin' && me.ownedAccount?.id !== id)
+  if (me.role !== 'admin' && !me.ownedAccounts.some((a) => a.id === id))
     throw new ForbiddenError('Only an admin or the account owner can disconnect.');
   await accounts.disconnect(me.workspaceId, id, me.id);
   revalidatePath('/accounts');
