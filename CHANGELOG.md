@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/JinhuW/reddit_marketing/compare/v0.3.0...v0.4.0) (2026-11-08)
+
+
+### Features
+
+* **node:** run a second browser node on the same host ([c81ff24](https://github.com/JinhuW/reddit_marketing/commit/c81ff24d3a66e18763fee6baa241afced701083f))
+
+
+### Bug Fixes
+
+* **browsers:** keep the in-use saved proxy visible after "Use" and re-seed the manual form ([e715f68](https://github.com/JinhuW/reddit_marketing/commit/e715f685b11ad77df0a6276cab1a33873cfda5eb))
+
 ## [0.3.0](https://github.com/JinhuW/reddit_marketing/compare/v0.2.0...v0.3.0) (2026-11-08)
 
 
