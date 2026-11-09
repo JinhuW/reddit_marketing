@@ -18,7 +18,16 @@ function actionOrigins(): string[] {
   return [...hosts];
 }
 
+/**
+ * One id per build, shared by the server and the browser bundle (both inline it at build time). The update banner
+ * compares the id the open tab was built with against /api/version and asks for a reload when they differ.
+ * Railway passes RAILWAY_GIT_COMMIT_SHA as a Docker build arg (see Dockerfile).
+ */
+const BUILD_ID = (process.env.RAILWAY_GIT_COMMIT_SHA || `local-${Date.now().toString(36)}`).slice(0, 12);
+
 const nextConfig: NextConfig = {
+  generateBuildId: async () => BUILD_ID,
+  env: { NEXT_PUBLIC_BUILD_ID: BUILD_ID },
   transpilePackages: ['@threadline/shared', '@threadline/agents', '@threadline/db', '@threadline/ui-tokens'],
   serverExternalPackages: ['@prisma/client'],
   poweredByHeader: false,

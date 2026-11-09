@@ -1,4 +1,5 @@
 import { themeBootScript } from '@/components/shell/ThemeToggle';
+import { UpdateBanner } from '@/components/shell/UpdateBanner';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import type { ReactNode } from 'react';
@@ -24,7 +25,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         {/* biome-ignore lint/security/noDangerouslySetInnerHtml: static theme boot script, no user input */}
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
       </head>
-      <body>{children}</body>
+      <body>
+        <UpdateBanner />
+        {children}
+      </body>
     </html>
   );
 }

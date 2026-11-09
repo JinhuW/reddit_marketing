@@ -34,6 +34,8 @@ RUN pnpm install --frozen-lockfile --filter "@threadline/web..." --filter "@thre
 
 FROM deps AS build
 COPY . .
+# Railway sets this build arg; next.config.ts turns it into the build id the update banner compares.
+ARG RAILWAY_GIT_COMMIT_SHA
 RUN pnpm --filter @threadline/db generate && pnpm --filter @threadline/web build
 
 FROM build AS runtime
