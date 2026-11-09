@@ -60,7 +60,9 @@ jobs:
 
       - name: Merge the release PR
         id: merge
-        if: steps.release.outputs.prs_created == 'true' && vars.AUTO_RELEASE != 'false'
+        # `pr`, not `prs_created`: release-please reports prs_created=true with no PR when it skips a run that has
+        # only hidden commits (ci, docs, chore), and fromJSON('') then fails the run and Railway skips the deploy.
+        if: steps.release.outputs.pr != '' && vars.AUTO_RELEASE != 'false'
         env:
           PR: ${{ fromJSON(steps.release.outputs.pr).number }}
         run: |
