@@ -56,22 +56,27 @@ jobs:
 
       - name: Merge the release PR
         id: merge
-        # `pr`, not `prs_created`: release-please reports prs_created=true with no PR when it skips a run that has
-        # only hidden commits (ci, docs, chore), and fromJSON('') then fails the run and Railway skips the deploy.
-        if: steps.release.outputs.pr != '' && vars.AUTO_RELEASE != 'false'
+        if: vars.AUTO_RELEASE != 'false'
+        # Parsed in the shell, not with fromJSON(): when release-please skips a run with only hidden commits
+        # (ci, docs, chore) it reports prs_created=true but no PR, and fromJSON('') fails the whole run, which
+        # makes Railway skip the deploy.
         env:
-          PR: ${{ fromJSON(steps.release.outputs.pr).number }}
+          PR_JSON: ${{ steps.release.outputs.pr }}
         run: |
+          PR="$(jq -r '.number // empty' <<<"${PR_JSON:-null}" 2>/dev/null || true)"
+          if [ -z "$PR" ]; then echo "No release PR to merge"; exit 0; fi
           gh pr merge "$PR" --squash
           # Let the merge show up in the API before release-please looks for it.
           for _ in $(seq 1 12); do
-            [ "$(gh pr view "$PR" --json state -q .state)" = MERGED ] && exit 0
+            if [ "$(gh pr view "$PR" --json state -q .state)" = MERGED ]; then
+              echo "merged=true" >> "$GITHUB_OUTPUT"; exit 0
+            fi
             sleep 5
           done
           echo "::error::release PR #$PR did not reach MERGED"; exit 1
 
       - id: tag
-        if: steps.merge.outcome == 'success'
+        if: steps.merge.outputs.merged == 'true'
         uses: googleapis/release-please-action@v4
         with:
           token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
@@ -82,7 +87,7 @@ jobs:
 
       # Only needed with GITHUB_TOKEN: a push with RELEASE_TOKEN starts CI on its own.
       - name: Run CI on the release commit
-        if: steps.merge.outcome == 'success' && steps.token.outputs.own != 'true'
+        if: steps.merge.outputs.merged == 'true' && steps.token.outputs.own != 'true'
         run: gh workflow run ci.yml --ref main
 
       # Browser-node images for the new tag. Only with GITHUB_TOKEN: a tag created with RELEASE_TOKEN starts
