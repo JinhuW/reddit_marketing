@@ -1,5 +1,6 @@
 'use client';
 
+import { Icon } from '@/components/ui/icon';
 import { attachProxyAction, runProxyTestAction, saveProxyAction } from '@/lib/actions/browsers';
 import Link from 'next/link';
 import { useActionState, useState } from 'react';
@@ -98,6 +99,9 @@ export function ProfileEditor({
             {saving ? 'Saving…' : 'Save'}
           </button>
         ) : null}
+        <Link href="/browsers" className="btn btn-ghost !h-7 !px-2" aria-label="Close" title="Close">
+          <Icon name="x" size={14} />
+        </Link>
       </div>
       <BrowserControls p={p} canEdit={canEdit} isAdmin={isAdmin} nodeOptions={nodeOptions} />
       <AccountSection p={p} canEdit={canEdit} assignable={assignable} />

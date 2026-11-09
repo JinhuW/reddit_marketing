@@ -35,7 +35,8 @@ export default async function BrowsersPage({ searchParams }: { searchParams: Pro
     if (n && n.workspaceId === me.workspaceId) nodeById.set(n.id, n);
   const now = new Date();
   const profiles = rows.map((r) => profileView(r, now, r.nodeId ? (nodeById.get(r.nodeId) ?? null) : null));
-  const sel = profiles.find((p) => p.id === sp.id) ?? profiles[0] ?? null;
+  // The editor drawer opens only when a browser is picked (?id=); otherwise the table takes the full width.
+  const sel = profiles.find((p) => p.id === sp.id) ?? null;
   const selRow = rows.find((r) => r.id === sel?.id);
   const isAdmin = me.role === 'admin';
   const savedProxies = proxies.map((x) => ({ id: x.id, label: savedProxyLabel(x) }));
@@ -111,7 +112,11 @@ export default async function BrowsersPage({ searchParams }: { searchParams: Pro
         </Kpi>
       </div>
       <AutoRefresh />
-      {sel && selRow ? (
+      {profiles.length === 0 ? (
+        <div className="panel muted p-6 text-[13px]">
+          No browser profiles yet. Create one with New browser, or connect a Reddit account.
+        </div>
+      ) : sel && selRow ? (
         <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.55fr)_420px]">
           <ProfileTable profiles={profiles} selectedId={sel.id} />
           <ProfileEditor
@@ -126,9 +131,7 @@ export default async function BrowsersPage({ searchParams }: { searchParams: Pro
           />
         </div>
       ) : (
-        <div className="panel muted p-6 text-[13px]">
-          No browser profiles yet. Create one with New browser, or connect a Reddit account.
-        </div>
+        <ProfileTable profiles={profiles} selectedId={null} />
       )}
     </>
   );
