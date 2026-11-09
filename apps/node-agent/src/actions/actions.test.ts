@@ -149,6 +149,7 @@ describe.skipIf(!available)('actions over CDP', { timeout: 60_000 }, () => {
       ipUrl: target.urls.ip,
       stepTimeoutMs: 8_000,
       confirmTimeoutMs: 5_000,
+      human: { sleep: async () => {} },
     };
     handlers = createActionHandlers(opts);
   });

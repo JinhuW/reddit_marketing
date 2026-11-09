@@ -167,6 +167,7 @@ describe.skipIf(!available)('profile.signIn over CDP', { timeout: 60_000 }, () =
       redditOrigin: origin,
       stepTimeoutMs: 8_000,
       confirmTimeoutMs: 3_000,
+      human: { sleep: async () => {} },
     });
   });
 

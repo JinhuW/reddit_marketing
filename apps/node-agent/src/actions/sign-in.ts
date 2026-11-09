@@ -19,6 +19,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import type { CmdOf, WhoamiData } from '@threadline/shared';
 import type { Locator, Page } from 'playwright-core';
 import type { HandlerContext, HandlerResult } from '../registry';
+import { type HumanOptions, humanClick, humanFill } from './human';
 import { signIn as sel } from './selectors';
 import { ActionError, type Session, errMessage, goto, redactUrl } from './session';
 import { needsHuman } from './submit-comment';
@@ -36,6 +37,8 @@ export interface SignInOptions {
   pollMs?: number;
   /** Don't type a 2FA code with less than this left in its 30 s window; default 3 s. */
   totpMinMsLeft?: number;
+  /** Pacing of clicks and typing; tests pass a no-op sleep. */
+  human?: HumanOptions;
 }
 
 /** Cookie values shorter than this are not worth scrubbing ("1", "true", ...). */
@@ -126,10 +129,10 @@ async function logIn(
       'the Reddit login form did not show a username and password field',
     );
   }
-  await user.fill(creds.username);
-  await pass.fill(creds.password);
+  await humanFill(page, user, creds.username, opts.human);
+  await humanFill(page, pass, creds.password, opts.human);
   let base = await baseline(page);
-  await submit(page, pass);
+  await submit(page, pass, opts.human);
 
   let otpSent = false;
   for (;;) {
@@ -169,9 +172,9 @@ async function logIn(
         } catch {
           throw new ActionError('totp_secret_invalid', 'the account 2FA secret is not valid base32');
         }
-        await field.fill(code);
+        await humanFill(page, field, code, opts.human);
         base = await baseline(page);
-        await submit(page, field);
+        await submit(page, field, opts.human);
         otpSent = true;
         break;
       }
@@ -248,9 +251,9 @@ async function visibleErrors(page: Page): Promise<number> {
 }
 
 /** Clicks the visible submit button, or presses Enter in `field` when there is none. */
-async function submit(page: Page, field: Locator): Promise<void> {
+async function submit(page: Page, field: Locator, human?: HumanOptions): Promise<void> {
   const button = visible(page, sel.submit);
-  if ((await button.count()) > 0) await button.click();
+  if ((await button.count()) > 0) await humanClick(page, button.first(), human);
   else await field.press('Enter');
 }
 

@@ -4,6 +4,7 @@
  */
 import type { CmdOf, PostedData } from '@threadline/shared';
 import type { HandlerResult } from '../registry';
+import { humanClick, humanFill } from './human';
 import { dm as sel } from './selectors';
 import { ActionError, type Session, goto } from './session';
 import { type ConfirmOptions, afterSubmit, needsHuman } from './submit-comment';
@@ -32,14 +33,14 @@ export async function sendDm(
 
   const form = page.locator(sel.form).first();
   if ((await form.count()) === 0) throw new ActionError('compose_not_found', 'no message compose form');
-  await form.locator(sel.to).first().fill(recipientName(cmd.to));
-  await form.locator(sel.subject).first().fill(cmd.subject);
-  await form.locator(sel.text).first().fill(cmd.body);
+  await humanFill(page, form.locator(sel.to).first(), recipientName(cmd.to), opts.human);
+  await humanFill(page, form.locator(sel.subject).first(), cmd.subject, opts.human);
+  await humanFill(page, form.locator(sel.text).first(), cmd.body, opts.human);
 
   const failedBefore = await form.locator(sel.failed).count();
   // The send click is inside the wrapper: it can reject after the message went out (see submitComment).
   return afterSubmit(async () => {
-    await form.locator(sel.send).first().click();
+    await humanClick(page, form.locator(sel.send).first(), opts.human);
     const end = Date.now() + Math.min(opts.confirmTimeoutMs, session.stepTimeout());
     const sent = form.locator(sel.sent);
     while (Date.now() < end) {

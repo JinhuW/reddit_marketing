@@ -8,6 +8,7 @@
 import type { CmdOf, PostedData } from '@threadline/shared';
 import type { Locator } from 'playwright-core';
 import type { HandlerResult } from '../registry';
+import { type HumanOptions, humanClick, typeText } from './human';
 import { comment as sel } from './selectors';
 import { ActionError, type Session, goto } from './session';
 import { type Wall, detectWall } from './walls';
@@ -18,6 +19,8 @@ export interface ConfirmOptions {
   /** How long to wait for Reddit to show the new item after submit. */
   confirmTimeoutMs: number;
   pollMs?: number;
+  /** Pacing of clicks and typing; tests pass a no-op sleep. */
+  human?: HumanOptions;
 }
 
 export async function submitComment(
@@ -37,7 +40,7 @@ export async function submitComment(
     const host = page.locator(sel.topHost(parent));
     if ((await host.count()) === 0) throw new ActionError('composer_not_found', `no composer for ${parent}`);
     form = host.locator(sel.form).first();
-    if (!(await form.isVisible())) await host.locator(sel.topTrigger).first().click();
+    if (!(await form.isVisible())) await humanClick(page, host.locator(sel.topTrigger).first(), opts.human);
   } else {
     let target = page.locator(sel.byFullname(parent));
     if ((await target.count()) === 0) {
@@ -51,14 +54,15 @@ export async function submitComment(
     }
     target = target.first();
     form = target.locator(sel.ownComposer);
-    if ((await form.count()) === 0) await target.locator(sel.replyButton).first().click();
+    if ((await form.count()) === 0)
+      await humanClick(page, target.locator(sel.replyButton).first(), opts.human);
     form = target.locator(sel.ownComposer).first();
   }
 
   await form.waitFor({ state: 'visible' });
   const box = form.locator(sel.textbox).first();
-  await box.click();
-  await page.keyboard.insertText(cmd.body);
+  await humanClick(page, box, opts.human);
+  await typeText(page, cmd.body, opts.human);
   const submit = form.locator(sel.submit).first();
   await waitEnabled(submit, session.stepTimeout());
 
@@ -70,7 +74,7 @@ export async function submitComment(
   // itself is inside the wrapper because it can reject after the submit went out (a navigation it started outlived
   // the step timeout, or the deadline abort closed the browser mid-click).
   return afterSubmit(async () => {
-    await submit.click();
+    await humanClick(page, submit, opts.human);
     const end = Date.now() + Math.min(opts.confirmTimeoutMs, session.stepTimeout());
     while (Date.now() < end) {
       const fresh = (await fullnames(children)).find((f) => !before.has(f) && /^t1_[a-z0-9]+$/i.test(f));

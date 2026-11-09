@@ -10,6 +10,7 @@
  */
 import type { CmdKind, CmdOf } from '@threadline/shared';
 import type { HandlerContext, HandlerMap, HandlerResult } from '../registry';
+import type { HumanOptions } from './human';
 import { type ProxyLookup, profileProxies } from './proxy-store';
 import { proxyAuthWatchers } from './proxy-watch';
 import { sendDm } from './send-dm';
@@ -41,6 +42,8 @@ export interface ActionOptions {
   stepTimeoutMs?: number;
   /** How long to wait for Reddit to show a submitted item (or answer a login submit); default 20 s. */
   confirmTimeoutMs?: number;
+  /** Pacing of clicks and typing ({@link HumanOptions}); tests pass a no-op sleep. */
+  human?: HumanOptions;
 }
 
 type ActionKind = Extract<
@@ -58,6 +61,7 @@ export function createActionHandlers(options: ActionOptions = {}): Pick<HandlerM
     ipUrl: options.ipUrl ?? DEFAULT_IP_URL,
     stepTimeoutMs: options.stepTimeoutMs ?? 15_000,
     confirmTimeoutMs: options.confirmTimeoutMs ?? 20_000,
+    human: options.human,
   };
   const locks = new ProfileLocks();
 
