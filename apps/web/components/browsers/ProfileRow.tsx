@@ -25,6 +25,7 @@ export function ProfileRow({
     router.push(href);
   };
   return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: the row's profile link is the keyboard path; the row click only widens the mouse target
     <tr
       data-profile={name}
       onClick={onClick}
