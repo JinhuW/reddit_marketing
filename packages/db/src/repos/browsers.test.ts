@@ -79,11 +79,11 @@ describe('browsers.ensureCloakFingerprint', () => {
     expect([a.assigned, b.assigned].filter(Boolean)).toHaveLength(1);
   });
 
-  it('derives persona from the captured OS', () => {
-    expect(browsers.personaFromOs('macOS 15')).toBe('macos');
-    expect(browsers.personaFromOs('Windows 11')).toBe('windows');
-    expect(browsers.personaFromOs('Ubuntu 24.04')).toBe('linux');
-    expect(browsers.personaFromOs(undefined)).toBe('windows');
+  it('gives every new profile the windows persona, whatever the owner runs', () => {
+    // The image only has Windows-metric fonts and no Apple GPU vendor: a macos/linux persona is incoherent.
+    for (const os of ['macOS 15', 'Windows 11', 'Ubuntu 24.04', undefined]) {
+      expect(browsers.personaFromOs(os)).toBe('windows');
+    }
   });
 
   it('different salts give different seeds for one profile', () => {

@@ -351,11 +351,13 @@ export function deriveCloakSeed(profileId: string, salt: string): number {
   return createHash('sha256').update(`${profileId}:${salt}`, 'utf8').digest().readUInt32BE(0) >>> 1;
 }
 
-/** Owner's OS (as captured at connect time) → CloakBrowser persona. */
-export function personaFromOs(os: string | undefined): CloakPersona {
-  if (!os) return 'windows';
-  if (/mac|darwin|os ?x/i.test(os)) return 'macos';
-  if (/linux|ubuntu|debian|fedora|chrome ?os/i.test(os)) return 'linux';
+/**
+ * Owner's OS (as captured at connect time) → CloakBrowser persona. Always `windows` for now, whatever the owner
+ * runs: the profile image ships only Windows-metric fonts, and `CloakGpu` has no Apple vendor, so a `macos`
+ * persona showed an Intel WebGL vendor on an Apple renderer and no macOS system fonts (DECISIONS.md, 2026-11-09).
+ * Mirroring the owner's OS buys nothing: Reddit never sees the owner's device, only the profile's.
+ */
+export function personaFromOs(_os: string | undefined): CloakPersona {
   return 'windows';
 }
 
@@ -368,7 +370,7 @@ export interface CloakFingerprint {
 /**
  * Gives the profile its CloakBrowser fingerprint once, at connect time, and never changes it: a new seed
  * would look like a new device. The seed is derived from the profile id and a random salt that is stored
- * in `fingerprint.cloakSalt`. Persona defaults to the owner's captured OS, GPU to `intel`.
+ * in `fingerprint.cloakSalt`. Persona defaults to `windows` ({@link personaFromOs}), GPU to `intel`.
  * Writes `profile.fingerprint_assigned` only on the call that assigns it.
  */
 export function ensureCloakFingerprint(

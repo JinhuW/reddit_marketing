@@ -69,7 +69,7 @@ describe('accounts.startBrowserConnect', () => {
         cookiesVolume: `tl-profile-${acc.id}`,
         nodeId: node.id,
         proxyId: px.id,
-        cloakPersona: 'macos',
+        cloakPersona: 'windows', // a macOS creator still gets windows (personaFromOs)
         cloakGpu: 'intel',
       });
       expect(prof.cloakSeed).toEqual(expect.any(Number));

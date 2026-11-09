@@ -252,3 +252,17 @@ existing Browsers editor and the owner's reference (an anti-detect-browser "edit
   gateway `/healthz`. It alerts through a `prod-smoke` issue, because nobody is notified about a failed run that
   Railway's bot started. It does not roll back on its own: that would need a Railway token in GitHub, which ADR-0001
   avoids.
+
+## 2026-11-09 · Profiles look like Windows users and type like people
+
+A live profile (persona `macos`, GPU `intel`) was flagged as a bot. Its fingerprint contradicted itself: WebGL vendor
+`Google Inc. (Intel)` with renderer `Apple M5 Max`, and none of the macOS system fonts (Helvetica Neue, Menlo, Apple
+Color Emoji), because the image ships Windows-metric fonts and `CloakGpu` has no Apple value.
+
+- New profiles always get the `windows` persona. Mirroring the owner's OS bought nothing, since Reddit never sees the
+  owner's device. Existing profiles keep their locked seed, persona and GPU: changing them is a device change, so
+  move one only if it keeps being flagged.
+- Actions no longer use `fill()`, `keyboard.insertText()` or a bare `click()`. `apps/node-agent/src/actions/human.ts`
+  moves the pointer along a curve to an off-centre point, then types key by key with varying delays. Typing one value
+  is capped at 25 s (long text speeds up) so a comment still fits the 120 s command deadline.
+- Not addressed yet: Playwright's CDP side effects (Runtime domain) and software-rendered WebGL under Xvfb.
