@@ -36,9 +36,9 @@ Releases are cut on GitHub by `.github/workflows/release.yml`. Nothing runs on a
 1. On every push to `main`, release-please opens or updates one PR against `main` titled `chore: release x.y.z`.
    The PR bumps `package.json` and `.release-please-manifest.json` and prepends the new section to `CHANGELOG.md`.
 2. The same run squash-merges that PR, then runs release-please again. That run tags `vX.Y.Z`, publishes a
-   GitHub Release with the same notes, and calls `images.yml` for the browser-node images.
+   GitHub Release with the same notes, and starts `images.yml` for the browser-node images.
 3. The run uses the repo secret `RELEASE_TOKEN`, a fine-grained PAT of the repo owner. It covers only this repo,
-   with Contents, Pull requests and Workflows read/write. So the release commit and tag are the owner's: CI and
+   with Contents and Pull requests read/write. So the release commit and tag are the owner's: CI and
    `images.yml` start from their pushes, and Railway deploys the commit without asking. When the PAT expires,
    renew it with `gh secret set RELEASE_TOKEN`. Without the secret the run falls back to `GITHUB_TOKEN`: it
    dispatches CI and builds the images itself, but Railway holds every release commit (author
@@ -59,7 +59,7 @@ Every push to `main` goes to production on its own once its checks pass. Nobody 
 | `web`, `worker`, `node-gateway` (Railway) | Each service's source is the GitHub repo, branch `main`, built from the repo `Dockerfile` | Railway "Wait for CI" (`checkSuites`): it deploys only when every GitHub check on the commit has passed |
 | Database migrations | Pre-deploy command `pnpm --filter @threadline/db migrate:deploy` on all three services; Prisma's advisory lock serializes them, so no service starts on an old schema | Same as above |
 | Browser nodes `browser-1`, `browser-2` (homelab) | `.github/workflows/deploy-node.yml` on the self-hosted runner `homelab-browser-node` (label `browser-node`), after CI succeeds on `main`. It runs `deploy/node/install.sh` for each install dir in the repo variable `NODE_PREFIXES` | CI green, and the commits since the last node deploy touch `apps/node-agent/`, `apps/browser-profile/`, `packages/shared/`, `deploy/node/` or the lockfile |
-| Browser-node images in GHCR | `images.yml`, called by `release.yml` when a release is tagged. browser-profile is skipped with a warning while `CLOAKBROWSER_LICENSE_KEY` is not set | Release tag |
+| Browser-node images in GHCR | `images.yml`, started by the release tag (or dispatched by `release.yml` without `RELEASE_TOKEN`). browser-profile is skipped with a warning while `CLOAKBROWSER_LICENSE_KEY` is not set | Release tag |
 
 If a check fails, the commit is not deployed: fix forward with a new commit. To roll back Railway, redeploy the
 previous deployment from the dashboard (or `railway redeploy`); nodes: run **Deploy node** by hand with the previous

@@ -3,14 +3,14 @@
 #   1. release-please opens or updates the "chore: release x.y.z" PR against main (version bump + CHANGELOG.md);
 #   2. that PR is squash-merged here (turn off with repo variable AUTO_RELEASE=false to review releases by hand);
 #   3. release-please runs again on the merged PR, tags vX.Y.Z and publishes the GitHub Release;
-#   4. images.yml builds the browser-node images for the tag.
+#   4. images.yml builds the browser-node images for the tag (dispatched; see the last step).
 #
-# Token: repo secret RELEASE_TOKEN, a fine-grained PAT of the repo owner (this repo only; Contents, Pull requests
-# and Workflows read/write). The release commit and tag are then the owner's, so the merge push starts CI, the tag
+# Token: repo secret RELEASE_TOKEN, a fine-grained PAT of the repo owner (this repo only; Contents and Pull requests
+# read/write). The release commit and tag are then the owner's, so the merge push starts CI, the tag
 # push starts images.yml, and Railway deploys the commit without asking for approval. Railway holds commits by
 # github-actions[bot] for approval because the bot is not a workspace member.
 # Without the secret this falls back to GITHUB_TOKEN. Its pushes start no workflows, so the run dispatches CI and
-# calls images.yml itself, and each release commit needs Approve in the Railway dashboard.
+# dispatches images.yml itself, and each release commit needs Approve in the Railway dashboard.
 name: Release
 on:
   push:
@@ -32,11 +32,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      actions: write # dispatch CI on the release commit
-    outputs:
-      released: ${{ steps.release.outputs.release_created || steps.tag.outputs.release_created }}
-      tag: ${{ steps.release.outputs.tag_name || steps.tag.outputs.tag_name }}
-      own_token: ${{ steps.token.outputs.own }}
+      actions: write # dispatch CI and Images
     env:
       GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
@@ -89,15 +85,11 @@ jobs:
         if: steps.merge.outcome == 'success' && steps.token.outputs.own != 'true'
         run: gh workflow run ci.yml --ref main
 
-  # Browser-node images for the new tag. Only with GITHUB_TOKEN: its tag does not trigger images.yml's own
-  # `push: tags`, while a tag created with RELEASE_TOKEN does.
-  images:
-    needs: release-please
-    if: needs.release-please.outputs.released == 'true' && needs.release-please.outputs.own_token != 'true'
-    permissions:
-      contents: read
-      packages: write
-    uses: ./.github/workflows/images.yml
-    with:
-      tag: ${{ needs.release-please.outputs.tag }}
-    secrets: inherit
+      # Browser-node images for the new tag. Only with GITHUB_TOKEN: a tag created with RELEASE_TOKEN starts
+      # images.yml's own `push: tags`. Dispatched, not called as a reusable workflow: on 2026-11-09 the called
+      # job's GHCR push was refused twice (write_package / unauthenticated) while a dispatched run pushed fine.
+      - name: Build the browser-node images
+        if: steps.token.outputs.own != 'true' && (steps.release.outputs.release_created || steps.tag.outputs.release_created)
+        env:
+          TAG: ${{ steps.release.outputs.tag_name || steps.tag.outputs.tag_name }}
+        run: gh workflow run images.yml --ref "$TAG" -f tag="$TAG"

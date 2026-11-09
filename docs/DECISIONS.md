@@ -238,7 +238,7 @@ existing Browsers editor and the owner's reference (an anti-detect-browser "edit
   laptop (`npx release-please …`, `gh pr merge`), because the workflow targeted the repo's default branch
   (`claude/pensive-galileo-2wyj7e`) instead of `main`. It now pins `target-branch: main`, and `main` is the
   default branch.
-- release-please uses `RELEASE_TOKEN`, a fine-grained PAT limited to this repo, rather than `GITHUB_TOKEN`.
+- release-please uses `RELEASE_TOKEN`, a fine-grained PAT limited to this repo (Contents and Pull requests), rather than `GITHUB_TOKEN`.
   Railway held the first bot-merged release commit (v0.6.1) as NEEDS_APPROVAL, and a `GITHUB_TOKEN` push starts no
-  workflows. Without the secret the workflow still releases, by dispatching CI and calling images.yml itself.
+  workflows. Without the secret the workflow still releases, by dispatching CI and images.yml itself; images.yml is dispatched, not called, because the called job's GHCR push was refused.
   `AUTO_RELEASE=false` (repo variable) pauses at the release PR for a human review.
