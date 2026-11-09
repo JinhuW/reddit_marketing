@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.3](https://github.com/JinhuW/reddit_marketing/compare/v0.6.2...v0.6.3) (2026-11-09)
+
+
+### Bug Fixes
+
+* **browsers:** give every new profile the windows persona ([df4d17b](https://github.com/JinhuW/reddit_marketing/commit/df4d17bac565e5487004d56a4e501201e2f2749d))
+* **node-agent:** click and type like a person in browser actions ([f2204de](https://github.com/JinhuW/reddit_marketing/commit/f2204def87517a8103da4e4e98258805412a7a9b))
+
 ## [0.6.2](https://github.com/JinhuW/reddit_marketing/compare/v0.6.1...v0.6.2) (2026-11-09)
 
 
