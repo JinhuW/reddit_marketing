@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/JinhuW/reddit_marketing/compare/v0.6.1...v0.6.2) (2026-11-09)
+
+
+### Bug Fixes
+
+* **release:** skip the release merge when release-please opened no PR ([7fc8b1d](https://github.com/JinhuW/reddit_marketing/commit/7fc8b1df161c6c415f1dd262fdfebdd6738690bd))
+
 ## [0.6.1](https://github.com/JinhuW/reddit_marketing/compare/v0.6.0...v0.6.1) (2026-11-09)
 
 
