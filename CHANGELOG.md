@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0](https://github.com/JinhuW/reddit_marketing/compare/v0.5.2...v0.6.0) (2026-11-09)
+
+
+### Features
+
+* **web:** show a reload banner when a newer build is deployed ([a22cf54](https://github.com/JinhuW/reddit_marketing/commit/a22cf545aa6338fcd957d53e57bc25ebb1d65e28))
+
+
+### Bug Fixes
+
+* **browsers:** open the browser drawer when any part of a profile row is clicked ([4433238](https://github.com/JinhuW/reddit_marketing/commit/4433238c4ead4cb027747a409755081c46fb7299))
+* **browsers:** show the live view as off, not connecting, until someone takes control ([8e1074b](https://github.com/JinhuW/reddit_marketing/commit/8e1074b11e428d52988d07a23385a46fa1f3e38f))
+
 ## [0.5.2](https://github.com/JinhuW/reddit_marketing/compare/v0.5.1...v0.5.2) (2026-11-09)
 
 
