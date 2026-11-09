@@ -3,9 +3,14 @@
 #   1. release-please opens or updates the "chore: release x.y.z" PR against main (version bump + CHANGELOG.md);
 #   2. that PR is squash-merged here (turn off with repo variable AUTO_RELEASE=false to review releases by hand);
 #   3. release-please runs again on the merged PR, tags vX.Y.Z and publishes the GitHub Release;
-#   4. images.yml builds the browser-node images for the tag;
-#   5. CI is dispatched on the release commit. A push made with GITHUB_TOKEN starts no workflows, but
-#      workflow_dispatch does; Railway's "Wait for CI" reads those checks before it deploys.
+#   4. images.yml builds the browser-node images for the tag.
+#
+# Token: repo secret RELEASE_TOKEN, a fine-grained PAT of the repo owner (this repo only; Contents, Pull requests
+# and Workflows read/write). The release commit and tag are then the owner's, so the merge push starts CI, the tag
+# push starts images.yml, and Railway deploys the commit without asking for approval. Railway holds commits by
+# github-actions[bot] for approval because the bot is not a workspace member.
+# Without the secret this falls back to GITHUB_TOKEN. Its pushes start no workflows, so the run dispatches CI and
+# calls images.yml itself, and each release commit needs Approve in the Railway dashboard.
 name: Release
 on:
   push:
@@ -31,14 +36,24 @@ jobs:
     outputs:
       released: ${{ steps.release.outputs.release_created || steps.tag.outputs.release_created }}
       tag: ${{ steps.release.outputs.tag_name || steps.tag.outputs.tag_name }}
+      own_token: ${{ steps.token.outputs.own }}
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
     steps:
+      - name: Which token
+        id: token
+        env:
+          HAS_PAT: ${{ secrets.RELEASE_TOKEN != '' }}
+        run: |
+          if [ "$HAS_PAT" = true ]; then echo "own=true" >> "$GITHUB_OUTPUT"
+          else echo "::warning::secret RELEASE_TOKEN not set; using GITHUB_TOKEN, so Railway will ask to approve the release commit"; fi
+
       # Opens/updates the release PR, and also tags a release PR that was merged by hand.
       - id: release
         uses: googleapis/release-please-action@v4
         with:
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
           target-branch: main
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
@@ -61,20 +76,22 @@ jobs:
         if: steps.merge.outcome == 'success'
         uses: googleapis/release-please-action@v4
         with:
+          token: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
           target-branch: main
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           skip-github-pull-request: true
 
+      # Only needed with GITHUB_TOKEN: a push with RELEASE_TOKEN starts CI on its own.
       - name: Run CI on the release commit
-        if: steps.merge.outcome == 'success'
+        if: steps.merge.outcome == 'success' && steps.token.outputs.own != 'true'
         run: gh workflow run ci.yml --ref main
 
-  # Browser-node images for the new tag. Called here because a tag that release-please creates with
-  # GITHUB_TOKEN does not trigger images.yml's own `push: tags`.
+  # Browser-node images for the new tag. Only with GITHUB_TOKEN: its tag does not trigger images.yml's own
+  # `push: tags`, while a tag created with RELEASE_TOKEN does.
   images:
     needs: release-please
-    if: needs.release-please.outputs.released == 'true'
+    if: needs.release-please.outputs.released == 'true' && needs.release-please.outputs.own_token != 'true'
     permissions:
       contents: read
       packages: write

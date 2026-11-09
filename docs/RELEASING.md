@@ -37,8 +37,12 @@ Releases are cut on GitHub by `.github/workflows/release.yml`. Nothing runs on a
    The PR bumps `package.json` and `.release-please-manifest.json` and prepends the new section to `CHANGELOG.md`.
 2. The same run squash-merges that PR, then runs release-please again. That run tags `vX.Y.Z`, publishes a
    GitHub Release with the same notes, and calls `images.yml` for the browser-node images.
-3. A push made with `GITHUB_TOKEN` starts no workflows, so the run then dispatches **CI** on the release commit.
-   Railway's "Wait for CI" uses those checks like any other.
+3. The run uses the repo secret `RELEASE_TOKEN`, a fine-grained PAT of the repo owner. It covers only this repo,
+   with Contents, Pull requests and Workflows read/write. So the release commit and tag are the owner's: CI and
+   `images.yml` start from their pushes, and Railway deploys the commit without asking. When the PAT expires,
+   renew it with `gh secret set RELEASE_TOKEN`. Without the secret the run falls back to `GITHUB_TOKEN`: it
+   dispatches CI and builds the images itself, but Railway holds every release commit (author
+   `github-actions[bot]`, not a workspace member) until someone clicks **Approve**.
 4. Nothing to deploy by hand: see **Continuous deployment** below.
 
 To review release notes before they ship, set the repo variable `AUTO_RELEASE=false`. The release PR then stays
