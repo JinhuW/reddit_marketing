@@ -1,28 +1,74 @@
 # Release process: docs/RELEASING.md
-# On every push to main, release-please opens or updates a "chore: release x.y.z" PR that bumps the version
-# and writes CHANGELOG.md from Conventional Commit messages. Merging that PR tags vX.Y.Z and publishes a
-# GitHub Release.
+# Every push to main is released with no local step:
+#   1. release-please opens or updates the "chore: release x.y.z" PR against main (version bump + CHANGELOG.md);
+#   2. that PR is squash-merged here (turn off with repo variable AUTO_RELEASE=false to review releases by hand);
+#   3. release-please runs again on the merged PR, tags vX.Y.Z and publishes the GitHub Release;
+#   4. images.yml builds the browser-node images for the tag;
+#   5. CI is dispatched on the release commit. A push made with GITHUB_TOKEN starts no workflows, but
+#      workflow_dispatch does; Railway's "Wait for CI" reads those checks before it deploys.
 name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: write
 
+# One release at a time: two quick pushes must not both merge the same release PR.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write # dispatch CI on the release commit
     outputs:
-      released: ${{ steps.release.outputs.release_created }}
-      tag: ${{ steps.release.outputs.tag_name }}
+      released: ${{ steps.release.outputs.release_created || steps.tag.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name || steps.tag.outputs.tag_name }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
     steps:
+      # Opens/updates the release PR, and also tags a release PR that was merged by hand.
       - id: release
         uses: googleapis/release-please-action@v4
         with:
+          target-branch: main
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      - name: Merge the release PR
+        id: merge
+        if: steps.release.outputs.prs_created == 'true' && vars.AUTO_RELEASE != 'false'
+        env:
+          PR: ${{ fromJSON(steps.release.outputs.pr).number }}
+        run: |
+          gh pr merge "$PR" --squash
+          # Let the merge show up in the API before release-please looks for it.
+          for _ in $(seq 1 12); do
+            [ "$(gh pr view "$PR" --json state -q .state)" = MERGED ] && exit 0
+            sleep 5
+          done
+          echo "::error::release PR #$PR did not reach MERGED"; exit 1
+
+      - id: tag
+        if: steps.merge.outcome == 'success'
+        uses: googleapis/release-please-action@v4
+        with:
+          target-branch: main
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-pull-request: true
+
+      - name: Run CI on the release commit
+        if: steps.merge.outcome == 'success'
+        run: gh workflow run ci.yml --ref main
 
   # Browser-node images for the new tag. Called here because a tag that release-please creates with
   # GITHUB_TOKEN does not trigger images.yml's own `push: tags`.

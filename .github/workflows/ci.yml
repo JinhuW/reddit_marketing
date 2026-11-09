@@ -3,6 +3,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # release.yml dispatches CI on the release commit it merges (its GITHUB_TOKEN push starts no workflows).
+  workflow_dispatch:
 
 jobs:
   check:

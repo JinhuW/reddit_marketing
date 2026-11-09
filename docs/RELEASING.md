@@ -31,13 +31,20 @@ adding `Release-As: 1.0.0` to a commit body.
 
 ## Cutting a release
 
-1. Every push to `main` runs `.github/workflows/release.yml`. release-please keeps one open PR titled
-   `chore: release x.y.z` that bumps `package.json`, `.release-please-manifest.json` and prepends the new
-   section to `CHANGELOG.md`.
-2. Review that PR: check the notes read well and that anything operators must do (migrations, new env vars)
-   is called out. Edit the release PR's changelog text if needed before merging.
-3. **Merge the release PR.** release-please tags `vX.Y.Z` and publishes a GitHub Release with the same notes.
-4. Nothing to deploy by hand: see **Continuous deployment** below. A release commit deploys like any other push.
+Releases are cut on GitHub by `.github/workflows/release.yml`. Nothing runs on a laptop.
+
+1. On every push to `main`, release-please opens or updates one PR against `main` titled `chore: release x.y.z`.
+   The PR bumps `package.json` and `.release-please-manifest.json` and prepends the new section to `CHANGELOG.md`.
+2. The same run squash-merges that PR, then runs release-please again. That run tags `vX.Y.Z`, publishes a
+   GitHub Release with the same notes, and calls `images.yml` for the browser-node images.
+3. A push made with `GITHUB_TOKEN` starts no workflows, so the run then dispatches **CI** on the release commit.
+   Railway's "Wait for CI" uses those checks like any other.
+4. Nothing to deploy by hand: see **Continuous deployment** below.
+
+To review release notes before they ship, set the repo variable `AUTO_RELEASE=false`. The release PR then stays
+open until someone merges it, and the next push to `main` tags it. The **Release** workflow can also be run by hand
+(workflow_dispatch). Anything operators must do (migrations, new env vars) belongs in the feature PR's commit body,
+so it reaches the changelog without a manual edit.
 
 ## Continuous deployment
 
@@ -76,7 +83,7 @@ hotfix branch back into `main`.
 
 ## One-time repository settings
 
-- Default branch: `main`. Protect it: require the `CI` and `PR title` checks, require a PR, allow squash and rebase
-  merges only.
+- Default branch: `main`. It must be `main`: `workflow_run` (Deploy node) runs the workflow file from the default
+  branch, and release PRs target `main`.
 - Settings → Actions → General → Workflow permissions: "Read and write", and allow GitHub Actions to create and
-  approve pull requests (release-please opens the release PR).
+  approve pull requests (release-please opens and merges the release PR).

@@ -231,3 +231,13 @@ existing Browsers editor and the owner's reference (an anti-detect-browser "edit
   release, since a red release commit would hold back the Railway deploy.
 - GitHub Actions may now open PRs (repo setting), so release-please runs in CI again. PRs it opens with
   `GITHUB_TOKEN` do not trigger other workflows; the code in them already passed CI on `main`.
+
+## 2026-11-09 · Releases cut entirely in GitHub Actions
+
+- `release.yml` merges the release-please PR, tags it and builds the images. Before this, release-please ran from a
+  laptop (`npx release-please …`, `gh pr merge`), because the workflow targeted the repo's default branch
+  (`claude/pensive-galileo-2wyj7e`) instead of `main`. It now pins `target-branch: main`, and `main` is the
+  default branch.
+- No personal access token is used. The merge happens with `GITHUB_TOKEN`, so the release commit starts no
+  workflows. The same run calls release-please a second time to tag the release, and dispatches CI on the release
+  commit. `AUTO_RELEASE=false` (repo variable) pauses at the release PR for a human review.
