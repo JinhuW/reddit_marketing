@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/JinhuW/reddit_marketing/compare/v0.5.1...v0.5.2) (2026-11-09)
+
+
+### Bug Fixes
+
+* **browsers:** open the browser drawer only when a browser is clicked ([225fe62](https://github.com/JinhuW/reddit_marketing/commit/225fe623cfc17680d19b4f0c8b30d21d14a801e4))
+
 ## [0.5.1](https://github.com/JinhuW/reddit_marketing/compare/v0.5.0...v0.5.1) (2026-11-08)
 
 
