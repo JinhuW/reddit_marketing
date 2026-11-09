@@ -1,6 +1,7 @@
 import { Avatar } from '@/components/ui/avatar';
 import { Icon } from '@/components/ui/icon';
 import Link from 'next/link';
+import { ProfileRow } from './ProfileRow';
 import type { ProfileView } from './view';
 
 export function Dot({ color }: { color: string }) {
@@ -44,10 +45,11 @@ export function ProfileTable({
           </thead>
           <tbody>
             {profiles.map((p) => (
-              <tr
+              <ProfileRow
                 key={p.id}
-                data-profile={p.name}
-                className={p.id === selectedId ? 'bg-surface-3' : 'row-hover'}
+                href={`/browsers?id=${p.id}`}
+                selected={p.id === selectedId}
+                name={p.name}
               >
                 <td>
                   <Link
@@ -122,7 +124,7 @@ export function ProfileTable({
                     {p.action}
                   </Link>
                 </td>
-              </tr>
+              </ProfileRow>
             ))}
           </tbody>
         </table>

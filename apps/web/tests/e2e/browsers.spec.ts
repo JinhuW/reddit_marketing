@@ -26,7 +26,8 @@ test('profile table lists 3 profiles and flags Sam’s region mismatch', async (
   const sam = page.locator('tr[data-profile="Sam · Chrome"]');
   await expect(sam.locator('.chip-warn').first()).toContainText('New York');
   await expect(sam.getByRole('link', { name: 'Fix' })).toBeVisible();
-  await sam.getByRole('link', { name: /Sam · Chrome/ }).click();
+  await sam.getByTestId('node-cell').click(); // any cell of the row opens the drawer, not just the links
+  await expect(page).toHaveURL(/[?&]id=/);
   await expect(page.getByTestId('connection-test')).toContainText('owner is in Austin, US');
   await expect(page.getByRole('note')).toContainText('Region mismatch');
 });
