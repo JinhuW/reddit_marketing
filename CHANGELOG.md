@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/JinhuW/reddit_marketing/compare/v0.6.0...v0.6.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* **browsers:** satisfy the a11y lint on the clickable profile row ([8f6509e](https://github.com/JinhuW/reddit_marketing/commit/8f6509e275153f513ca9aac1cd298740af4fa226))
+
 ## [0.6.0](https://github.com/JinhuW/reddit_marketing/compare/v0.5.2...v0.6.0) (2026-11-09)
 
 
