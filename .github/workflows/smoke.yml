@@ -1,0 +1,85 @@
+# Production smoke check (docs/RELEASING.md "Continuous deployment"). Railway posts a GitHub deployment for each
+# push to main; when it reports success, this checks that production serves that commit and answers:
+#   - web: GET /api/version returns the commit's first 12 characters, and GET /login answers 200;
+#   - node-gateway: GET /healthz answers 200.
+# The worker has no HTTP endpoint; Railway's restart policy covers it.
+#
+# A run started by Railway's bot notifies nobody when it fails, so a failure opens (or comments on) an issue
+# labelled `prod-smoke`, and the next passing run closes it. Rollback stays manual (docs/RELEASING.md).
+#
+# URLs: repo variables PROD_WEB_URL and PROD_GATEWAY_URL, defaulting to the Railway domains.
+name: Smoke
+on:
+  deployment_status:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: smoke-${{ github.event.deployment.sha || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       github.event.deployment.environment == 'threadline / production')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      WEB_URL: ${{ vars.PROD_WEB_URL || 'https://web-production-e42e5.up.railway.app' }}
+      GATEWAY_URL: ${{ vars.PROD_GATEWAY_URL || 'https://node-gateway-production-6426.up.railway.app' }}
+      SHA: ${{ github.event.deployment.sha || github.sha }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Production serves this commit
+        id: version
+        run: |
+          want="${SHA:0:12}"
+          # Railway reports success per service, so web may still be swapping in: wait up to 5 minutes.
+          for _ in $(seq 1 30); do
+            got="$(curl -fsS --max-time 10 "$WEB_URL/api/version" | jq -r '.buildId // empty' || true)"
+            if [ "$got" = "$want" ]; then echo "web serves $got"; exit 0; fi
+            # A newer commit already replaced this one: nothing left to check for it.
+            head="$(gh api "repos/$GH_REPO/commits/main" -q .sha)"
+            if [ "${head:0:12}" != "$want" ] && [ "$got" = "${head:0:12}" ]; then
+              echo "superseded=true" >> "$GITHUB_OUTPUT"
+              echo "::notice::$want was superseded by $got before the check ran"; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::web serves '${got:-nothing}', expected $want"; exit 1
+
+      - name: Pages and health endpoints answer
+        if: steps.version.outputs.superseded != 'true'
+        run: |
+          fail=0
+          for url in "$WEB_URL/login" "$GATEWAY_URL/healthz"; do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$url" || echo 000)"
+            echo "$url → $code"
+            [ "$code" = 200 ] || { echo "::error::$url answered $code"; fail=1; }
+          done
+          exit $fail
+
+      - name: Open or update the prod-smoke issue
+        if: failure()
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh label create prod-smoke --color B60205 --description "Production smoke check failed" 2>/dev/null || true
+          body="Production smoke check failed for \`${SHA:0:12}\`: $RUN_URL
+          Roll back from the Railway dashboard (redeploy the previous SUCCESS deployment) or fix forward. See docs/RELEASING.md."
+          open="$(gh issue list --label prod-smoke --state open --json number -q '.[0].number')"
+          if [ -n "$open" ]; then gh issue comment "$open" --body "$body"
+          else gh issue create --title "Production smoke check failed" --label prod-smoke --body "$body"; fi
+
+      - name: Close the prod-smoke issue
+        if: success() && steps.version.outputs.superseded != 'true'
+        run: |
+          for n in $(gh issue list --label prod-smoke --state open --json number -q '.[].number'); do
+            gh issue close "$n" --comment "Smoke check passed for \`${SHA:0:12}\`."
+          done

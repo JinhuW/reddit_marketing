@@ -59,6 +59,7 @@ Every push to `main` goes to production on its own once its checks pass. Nobody 
 | `web`, `worker`, `node-gateway` (Railway) | Each service's source is the GitHub repo, branch `main`, built from the repo `Dockerfile` | Railway "Wait for CI" (`checkSuites`): it deploys only when every GitHub check on the commit has passed |
 | Database migrations | Pre-deploy command `pnpm --filter @threadline/db migrate:deploy` on all three services; Prisma's advisory lock serializes them, so no service starts on an old schema | Same as above |
 | Browser nodes `browser-1`, `browser-2` (homelab) | `.github/workflows/deploy-node.yml` on the self-hosted runner `homelab-browser-node` (label `browser-node`), after CI succeeds on `main`. It runs `deploy/node/install.sh` for each install dir in the repo variable `NODE_PREFIXES` | CI green, and the commits since the last node deploy touch `apps/node-agent/`, `apps/browser-profile/`, `packages/shared/`, `deploy/node/` or the lockfile |
+| Production smoke check | `smoke.yml` on Railway's GitHub deployment `success`: web serves the commit (`/api/version`), `/login` and the gateway's `/healthz` answer 200. A failure opens a `prod-smoke` issue (which notifies you); the next pass closes it | Runs after the deploy; rollback stays manual |
 | Browser-node images in GHCR | `images.yml`, started by the release tag (or dispatched by `release.yml` without `RELEASE_TOKEN`). browser-profile is skipped with a warning while `CLOAKBROWSER_LICENSE_KEY` is not set | Release tag |
 
 If a check fails, the commit is not deployed: fix forward with a new commit. To roll back Railway, redeploy the
@@ -81,9 +82,14 @@ hotfix branch back into `main`.
 ## Database migrations
 
 - Every schema change ships its migration in the same PR; CI fails on drift (`migrate:check`).
+- Migrations run unattended on every deploy, so CI's **migration guard** fails a new migration that can lose data
+  (drops a table, column, type or view; renames; changes a column type; `TRUNCATE`; `DELETE FROM`). Take a backup,
+  then add a line `-- allow-destructive: <reason>` to the file. `DROP INDEX`, `DROP CONSTRAINT`, `DROP DEFAULT` and
+  `DROP NOT NULL` pass. Script and tests: `.github/scripts/check-migrations.mjs`.
 - A migration that needs downtime, a backfill or a manual step is a breaking change: use `!` and describe the
   step in the PR's "Release notes" section so it lands in the changelog.
-- Never edit a migration that has been released; add a new one.
+- Never edit a migration that is on `main`; it has run in production. Add a new one. The migration guard fails an
+  edit, rename or deletion.
 
 ## One-time repository settings
 

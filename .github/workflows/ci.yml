@@ -53,6 +53,23 @@ jobs:
       - if: failure()
         run: tail -200 web.log || true
 
+  # Every commit to main deploys and runs migrate:deploy unattended. A new migration that can lose data needs a
+  # line `-- allow-destructive: <reason>` (back up first); a migration already on main is never edited.
+  migrations:
+    name: migration guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node --test .github/scripts/check-migrations.test.mjs
+      - name: No unannounced destructive or edited migrations
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node .github/scripts/check-migrations.mjs "$BASE"
+
   # Browser-node packages on their own, with no Postgres, Redis or DATABASE_URL: the node agent must run
   # without them (ADR-0001: a node holds no database URL, Redis URL or app secret). `check` above still runs
   # them as part of the whole monorepo. A package that has not landed yet is skipped with a notice.

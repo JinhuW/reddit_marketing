@@ -242,3 +242,13 @@ existing Browsers editor and the owner's reference (an anti-detect-browser "edit
   Railway held the first bot-merged release commit (v0.6.1) as NEEDS_APPROVAL, and a `GITHUB_TOKEN` push starts no
   workflows. Without the secret the workflow still releases, by dispatching CI and images.yml itself; images.yml is dispatched, not called, because the called job's GHCR push was refused.
   `AUTO_RELEASE=false` (repo variable) pauses at the release PR for a human review.
+
+## 2026-11-09 · Guardrails for deploy-on-every-commit
+
+- **Migration guard** (CI job, so it gates Railway's "Wait for CI"). A new migration that can lose data fails unless
+  it carries `-- allow-destructive: <reason>`, and editing a migration already on `main` always fails. It works from
+  a pattern list, not a SQL parser: it can over-flag (any `RENAME`), and the marker is the way through.
+- **Smoke check** after Railway reports a deployment success. It checks the served build id, `/login` and the
+  gateway `/healthz`. It alerts through a `prod-smoke` issue, because nobody is notified about a failed run that
+  Railway's bot started. It does not roll back on its own: that would need a Railway token in GitHub, which ADR-0001
+  avoids.
