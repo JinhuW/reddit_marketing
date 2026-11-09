@@ -58,7 +58,8 @@ test('saving a proxy port persists and never echoes credentials', async ({ page 
 test('session page shows the viewer area and the session log', async ({ page }) => {
   const id = await profileId('Jane · Chrome');
   await page.goto(`/browsers/${id}/session`);
-  await expect(page.getByTestId('vnc-viewer')).toContainText('Connecting to the profile’s display');
+  await expect(page.getByTestId('vnc-viewer')).toContainText('Live view is off');
+  await expect(page.getByTestId('vnc-viewer')).toHaveAttribute('data-vnc-state', 'idle');
   await expect(page.getByRole('button', { name: 'Full screen' })).toBeVisible();
   await expect(page.getByTestId('session-log').locator('li')).not.toHaveCount(0);
   await expect(page.getByTestId('session-log')).toContainText('verification');

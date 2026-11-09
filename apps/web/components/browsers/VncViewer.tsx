@@ -260,7 +260,13 @@ export function VncViewer({
         ? { dot: 'bg-[#9A9DA4] animate-pulse', text: `Connecting · ${screen}` }
         : view.kind === 'closed' || view.kind === 'unavailable'
           ? { dot: 'bg-warn', text: `Disconnected · ${screen}` }
-          : { dot: 'bg-[#9A9DA4]', text: `Waiting for display · ${screen}` };
+          : { dot: 'bg-[#9A9DA4]', text: `Live view off · ${screen}` };
+  const failed = view.kind === 'unavailable' || view.kind === 'closed';
+  const heading = failed
+    ? 'The live view is not connected'
+    : view.kind === 'connecting'
+      ? 'Connecting to the profile’s display…'
+      : 'Live view is off';
 
   return (
     <section
@@ -312,11 +318,11 @@ export function VncViewer({
           <div className="absolute inset-0 flex items-center justify-center p-[18px]">
             <div className="flex max-w-[460px] flex-col items-center gap-2 text-center">
               <div
-                className={`h-8 w-8 rounded-full border-2 border-[#3F4248] ${view.kind === 'connecting' || view.kind === 'idle' ? 'animate-pulse' : ''}`}
+                className={`h-8 w-8 rounded-full border-2 border-[#3F4248] ${view.kind === 'connecting' ? 'animate-pulse' : ''}`}
                 aria-hidden="true"
               />
-              <div className="text-sm font-semibold">Connecting to the profile’s display…</div>
-              {view.kind === 'unavailable' || view.kind === 'closed' ? (
+              <div className="text-sm font-semibold">{heading}</div>
+              {failed ? (
                 <>
                   <p className="m-0 text-[12.5px] leading-relaxed text-[#E6E6E2]" data-testid="vnc-message">
                     {view.message}
@@ -329,13 +335,15 @@ export function VncViewer({
                     Try again
                   </button>
                 </>
-              ) : (
+              ) : view.kind === 'connecting' ? (
                 <p className="m-0 text-[12.5px] leading-relaxed text-[#9A9DA4]">
                   The worker starts this profile’s browser container (Chromium with its own proxy and saved
-                  login for {account}). The live view appears here once the container is running.{' '}
-                  {hasControl
-                    ? 'You have control; the agent stays paused until you hand back.'
-                    : 'Take over to open the live view.'}
+                  login for {account}). The live view appears here once the container is running. You have
+                  control; the agent stays paused until you hand back.
+                </p>
+              ) : (
+                <p className="m-0 text-[12.5px] leading-relaxed text-[#9A9DA4]" data-testid="vnc-message">
+                  Opening the live view takes the browser over, so it stays closed until you take control.
                 </p>
               )}
             </div>
