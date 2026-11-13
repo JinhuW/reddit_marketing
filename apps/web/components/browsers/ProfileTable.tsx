@@ -6,6 +6,7 @@ import { ColumnChooser } from './ColumnChooser';
 import { NotesCell } from './NotesCell';
 import { ProfileRow } from './ProfileRow';
 import { RowPower } from './RowPower';
+import { TablePanel } from './TablePanel';
 import { type ListParams, type Sort, listHref, sortHref, tagChip } from './list-params';
 import type { ProfileView } from './view';
 
@@ -95,7 +96,7 @@ export function ProfileTable({
 }) {
   const open = (id: string) => listHref(params, { id });
   return (
-    <section className="panel min-w-0" aria-labelledby="profiles-h">
+    <TablePanel closeHref={selectedId ? listHref(params, { id: '' }) : null}>
       <div className="sect-h">
         <h2 id="profiles-h">{params.trash ? 'Trash' : 'Browser profiles'}</h2>
         <span className="muted text-xs">
@@ -326,6 +327,6 @@ export function ProfileTable({
           </span>
         </div>
       )}
-    </section>
+    </TablePanel>
   );
 }
