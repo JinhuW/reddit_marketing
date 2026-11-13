@@ -1,7 +1,7 @@
 // Plan 0004 phase 1: the profile list of the Browsers screen. Search, groups, tags, notes, clone and trash.
 // Re-exported from ./browsers, so callers use `browsers.searchProfiles(...)`.
 import type { Prisma } from '@prisma/client';
-import { BrowserTagColor, CloakGpu, CloakPersona } from '@threadline/shared';
+import { BrowserTagColor, CloakGpu } from '@threadline/shared';
 import { prisma } from '../client';
 import { writeAudit } from './audit';
 import { type Fingerprint, PROFILE_INCLUDE, createBrowserTx, ensureCloakFingerprintTx } from './browsers';
@@ -347,7 +347,7 @@ export function updateProfileMeta(
 // ── clone ──
 
 /**
- * A new browser with the same settings: device (OS persona, GPU, screen, time zone, language), proxy, start
+ * A new browser with the same settings: device (GPU vendor, screen, time zone, language), proxy, start
  * tab, group, tags and notes. It gets its own fingerprint seed and an empty volume; the account, cookies and
  * sign-in are never copied. Audit `profile.cloned` (plus what createBrowser writes).
  */
@@ -370,14 +370,10 @@ export function cloneProfile(workspaceId: string, sourceId: string, actorMemberI
       notes: src.notes,
       tagIds: src.tags.map((t) => t.id),
     });
-    // Same kind of device as the source; the seed (what makes it a different device) stays its own.
-    const persona = CloakPersona.find((v) => v === src.cloakPersona);
+    // Same GPU vendor as the source; the seed (what makes it a different device) stays its own. The persona is
+    // not copied: a new browser always gets the one createBrowser assigns (DECISIONS 2026-11-09, `windows`).
     const gpu = CloakGpu.find((v) => v === src.cloakGpu);
-    if (persona || gpu)
-      await tx.browserProfile.update({
-        where: { id: created.profileId },
-        data: { ...(persona ? { cloakPersona: persona } : {}), ...(gpu ? { cloakGpu: gpu } : {}) },
-      });
+    if (gpu) await tx.browserProfile.update({ where: { id: created.profileId }, data: { cloakGpu: gpu } });
     await writeAudit(
       {
         workspaceId,
@@ -506,8 +502,8 @@ export function purgeProfile(workspaceId: string, profileId: string, actorMember
 
 /**
  * After the node deleted a live browser's volume (`profile.remove`, then `reset`): the browser is a new device.
- * It gets a new fingerprint seed (same OS persona and GPU), and the cookie-import mark is cleared, since the
- * imported cookies went with the volume. Whoever was signed in is signed out. Audit `profile.data_reset`.
+ * It gets a new fingerprint seed and the persona every new browser gets (same GPU vendor), and the cookie-import
+ * mark is cleared, since the imported cookies went with the volume. Whoever was signed in is signed out. Audit `profile.data_reset`.
  */
 export function resetProfileData(
   workspaceId: string,
@@ -531,7 +527,6 @@ export function resetProfileData(
       workspaceId,
       profileId: p.id,
       actorMemberId,
-      persona: CloakPersona.find((v) => v === p.cloakPersona),
       gpu: CloakGpu.find((v) => v === p.cloakGpu),
     });
     await writeAudit(

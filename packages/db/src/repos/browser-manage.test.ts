@@ -148,7 +148,11 @@ describe('browsers.cloneProfile', () => {
         tagIds: [tag.id],
         notes: 'n',
       });
-      await prisma.browserProfile.update({ where: { id: src.profileId }, data: { cloakGpu: 'nvidia' } });
+      // An older browser with the macOS persona: its clone is a new browser and gets today's persona.
+      await prisma.browserProfile.update({
+        where: { id: src.profileId },
+        data: { cloakGpu: 'nvidia', cloakPersona: 'macos' },
+      });
 
       const made = await browsers.cloneProfile(ws.id, src.profileId, me.id);
       const [s, c] = await Promise.all([
@@ -162,7 +166,7 @@ describe('browsers.cloneProfile', () => {
         startUrl: s.startUrl,
         groupId: g.id,
         notes: 'n',
-        cloakPersona: 'macos',
+        cloakPersona: 'windows',
         cloakGpu: 'nvidia',
         accountId: null,
         cookiesEnc: null,
@@ -304,7 +308,7 @@ describe('browsers trash: trashProfile / restoreProfile / purgeProfile', () => {
 });
 
 describe('browsers.resetProfileData', () => {
-  it('gives the browser a new seed with the same persona and GPU', async () => {
+  it('gives the browser a new seed with the same GPU and the persona of a new browser', async () => {
     const ws = await testWorkspace();
     try {
       const me = await ws.member();
@@ -315,14 +319,14 @@ describe('browsers.resetProfileData', () => {
       });
       await prisma.browserProfile.update({
         where: { id: profileId },
-        data: { cloakGpu: 'amd', cookiesImportedAt: new Date() },
+        data: { cloakGpu: 'amd', cloakPersona: 'macos', cookiesImportedAt: new Date() },
       });
       const before = await prisma.browserProfile.findUniqueOrThrow({ where: { id: profileId } });
       expect(await browsers.resetProfileData(ws.id, profileId, me.id)).toEqual({ reset: true });
       const after = await prisma.browserProfile.findUniqueOrThrow({ where: { id: profileId } });
       expect(after.cloakSeed).not.toBeNull();
       expect(after.cloakSeed).not.toBe(before.cloakSeed);
-      expect(after).toMatchObject({ cloakPersona: 'macos', cloakGpu: 'amd', cookiesImportedAt: null });
+      expect(after).toMatchObject({ cloakPersona: 'windows', cloakGpu: 'amd', cookiesImportedAt: null });
       expect(await audits(ws.id, 'profile.data_reset')).toHaveLength(1);
     } finally {
       await ws.cleanup();

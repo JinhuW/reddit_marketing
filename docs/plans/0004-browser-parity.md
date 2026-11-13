@@ -25,7 +25,8 @@ AdsPower's core is six things. Threadline had the third and a thin slice of the 
 | Trash | Soft delete, 30 days, account stays bound, dispatch refuses a trashed profile. Purge removes the container and volume on the node. | Restore brings everything back; nothing can post from a deleted browser. |
 | Purged browser | The row stays as a tombstone (`purgedAt`), stripped of account, proxy, node, cookies, notes and tags. | Audit rows point at its sessions and `AuditEvent` is append-only, so the row cannot be deleted. |
 | Browser count | No plan limit on browsers (the plan limits accounts); one bulk action or clone run touches at most 100. | A browser without an account posts nothing. |
-| Seed / persona / GPU after first launch | Changeable only together with "reset browser data". | The volume locks them (`checkFingerprintLock`): a device that changes hardware under the same cookies is a tell. |
+| Seed / GPU after first launch | Changeable only together with "reset browser data". | The volume locks them (`checkFingerprintLock`): a device that changes hardware under the same cookies is a tell. |
+| OS persona | Not a choice: every new, cloned or reset browser is `windows` (DECISIONS 2026-11-09). | The image ships Windows-metric fonts and `CloakGpu` has no Apple value, so a macOS or Linux persona contradicts itself. |
 | WebRTC "real" | Never offered while a proxy is set. | It would show the node's home IP. |
 | Proxy change-IP URL, pool checks | Called from the node agent, never from the web app. | The URL is user input: no server-side request from Railway. |
 
@@ -54,7 +55,7 @@ BrowserSession transition writes an AuditEvent; secrets never in logs, job paylo
 
 ### Phase 2 · Editable fingerprint
 - [ ] Spike: which fingerprint flags the pinned CloakBrowser build accepts.
-- [ ] Typed `Fingerprint` schema; form section (persona, GPU, screen, time zone, language, location, WebRTC);
+- [ ] Typed `Fingerprint` schema; form section (GPU vendor, screen, time zone, language, location, WebRTC);
       "match proxy IP" from the last connection test; "New fingerprint" with the data-reset rule.
 - [ ] `profile.start` carries `webrtc` and `geo`; image and agent apply them.
 
