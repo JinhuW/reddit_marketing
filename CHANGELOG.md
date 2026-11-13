@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/JinhuW/reddit_marketing/compare/v0.11.1...v0.11.2) (2026-11-13)
+
+
+### Bug Fixes
+
+* **ci:** retry the web build when the font download fails ([7e8d05a](https://github.com/JinhuW/reddit_marketing/commit/7e8d05ad8bbcd94742111222e2c70d8ec6eefcbc))
+
 ## [0.11.1](https://github.com/JinhuW/reddit_marketing/compare/v0.11.0...v0.11.1) (2026-11-13)
 
 
