@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.0](https://github.com/JinhuW/reddit_marketing/compare/v0.6.3...v0.7.0) (2026-11-13)
+
+
+### Features
+
+* **browsers:** groups, tags, notes, clone and trash in the data layer ([f77d1cd](https://github.com/JinhuW/reddit_marketing/commit/f77d1cd9f76e544da7a71e4f296bd8fcff841a64))
+* **browsers:** live profile status and a working connection test ([65cfff7](https://github.com/JinhuW/reddit_marketing/commit/65cfff7f556469c79f0b7d954136ae19cd41b3ba))
+* **browsers:** searchable profile list with groups, tags, bulk actions and trash ([fd2357d](https://github.com/JinhuW/reddit_marketing/commit/fd2357da89c809a0175564d1a48219fc46a47676))
+
+
+### Bug Fixes
+
+* **browsers:** a cloned or reset browser gets the persona of a new browser ([9cebd8b](https://github.com/JinhuW/reddit_marketing/commit/9cebd8b7d7590d6f13f3f763c722dfebf5c51e96))
+
 ## [0.6.3](https://github.com/JinhuW/reddit_marketing/compare/v0.6.2...v0.6.3) (2026-11-09)
 
 
