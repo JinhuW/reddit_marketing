@@ -1,5 +1,5 @@
 /**
- * `profile.start` / `profile.stop`: one CloakBrowser container per profile through the local Docker socket
+ * `profile.start` / `profile.stop` / `profile.remove`: one CloakBrowser container per profile through the local Docker socket
  * (see `../docker.ts`). On agent start the module adopts running profile containers and plugs the real
  * running/seats/imageDigest/docker readers into the status store, so `hello`, `heartbeat` and `health.check`
  * report what Docker actually runs.
@@ -54,6 +54,7 @@ export function createProfileModule(opts: ProfileModuleOptions = {}): AgentModul
     handlers: {
       'profile.start': (cmd, ctx) => need().start(cmd, ctx.signal),
       'profile.stop': (cmd) => need().stop(cmd.profileId),
+      'profile.remove': (cmd) => need().remove(cmd.profileId),
     },
     async start(ctx) {
       const env = ProfileEnv.parse(opts.env ?? process.env);

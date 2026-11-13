@@ -10,6 +10,7 @@ import { redisConnection } from '../connection';
 import { log } from '../log';
 import { attributionRollup } from '../queues/attribution-rollup';
 import { HEALTH_EVERY_MS, closeSharedBrowserQueues } from '../queues/browser-health';
+import { PURGE_EVERY_MS, browserPurge } from '../queues/browser-purge';
 import { draftGenerate } from '../queues/draft-generate';
 import { opportunityScore } from '../queues/opportunity-score';
 import { postPublish } from '../queues/post-publish';
@@ -47,6 +48,7 @@ export function coreProcessors(q: QueueFor): Record<CoreQueueName, { fn: Process
     [QUEUES.leadSync]: { fn: notYet('M7'), concurrency: 2 },
     [QUEUES.contextEmbed]: { fn: notYet('M2'), concurrency: 2 },
     [QUEUES.sessionIdle]: { fn: sessionIdle, concurrency: 1 },
+    [QUEUES.browserPurge]: { fn: browserPurge, concurrency: 1 },
     [QUEUES.reportWeekly]: { fn: notYet('M5'), concurrency: 1 },
   };
 }
@@ -75,6 +77,11 @@ async function schedule(q: QueueFor) {
     { name: 'rollup', data: {} },
   );
   await q(QUEUES.sessionIdle).upsertJobScheduler('idle', { every: 60_000 }, { name: 'idle', data: {} });
+  await q(QUEUES.browserPurge).upsertJobScheduler(
+    'purge',
+    { every: PURGE_EVERY_MS },
+    { name: 'purge', data: {}, opts: { attempts: 1, removeOnComplete: 50, removeOnFail: 50 } },
+  );
   // Scheduled here, processed by the gateway role (queues/browser-health.ts browserHealthPlugin). Retries 0.
   await q(QUEUES.browserHealth).upsertJobScheduler(
     'health',

@@ -85,6 +85,25 @@ describe('profile module', () => {
     expect(agent.status.running().map((r) => r.profileId)).toEqual(['old']);
   });
 
+  it('profile.remove stops the container and deletes the volume; a second remove is still ok', async () => {
+    const docker = new FakeDocker();
+    const { results, send, agent } = await setup(docker);
+    send('bj-profile.start-p9', startCmd('p9'));
+    await until(() => results().find((r) => r.cmdId === 'bj-profile.start-p9'));
+    expect(docker.volumes.has('tl-profile-p9')).toBe(true);
+
+    send('bj-profile.remove-p9', { kind: 'profile.remove', profileId: 'p9' });
+    const removed = await until(() => results().find((r) => r.cmdId === 'bj-profile.remove-p9'));
+    expect(removed).toMatchObject({ outcome: 'ok', data: { profileId: 'p9', removed: true } });
+    expect(docker.containers.has('tl-profile-p9')).toBe(false);
+    expect(docker.volumes.has('tl-profile-p9')).toBe(false);
+    expect(agent.status.running()).toEqual([]);
+
+    send('bj-profile.remove-p9-again', { kind: 'profile.remove', profileId: 'p9' });
+    const again = await until(() => results().find((r) => r.cmdId === 'bj-profile.remove-p9-again'));
+    expect(again).toMatchObject({ outcome: 'ok' });
+  });
+
   it('sends container.exited when a profile container dies', async () => {
     const docker = new FakeDocker();
     const { conn, results, send } = await setup(docker);

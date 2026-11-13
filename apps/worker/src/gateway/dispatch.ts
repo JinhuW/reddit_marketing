@@ -78,6 +78,7 @@ import {
 export const BROWSER_DEADLINE_MS: Record<BrowserJobKind, number> = {
   'profile.start': 90_000,
   'profile.stop': 30_000,
+  'profile.remove': 60_000,
   'action.submitComment': 120_000,
   'action.sendDm': 120_000,
   'profile.testProxy': 45_000,
@@ -141,7 +142,7 @@ export interface DispatchDeps {
 }
 
 const defaultDeps: DispatchDeps = {
-  getProfile: (ws, id) => browsers.getProfileForDispatch(ws, id),
+  getProfile: (ws, id, opts) => browsers.getProfileForDispatch(ws, id, opts),
   getSignIn: (ws, id) => browsers.getSignInForDispatch(ws, id),
   listProfiles: (ws) => browsers.listProfiles(ws),
   getDraft: (ws, id) => drafts.get(ws, id),
@@ -466,7 +467,10 @@ export class Dispatcher {
     cmdId: string,
     lastAttempt = false,
   ): Promise<DispatchResult> {
-    const profile = await this.deps.getProfile(job.workspaceId, job.profileId);
+    // A trashed browser can only be stopped or removed; every other kind reads it as missing.
+    const profile = await this.deps.getProfile(job.workspaceId, job.profileId, {
+      includeTrashed: job.kind === 'profile.stop' || job.kind === 'profile.remove',
+    });
     if (!profile) throw new DispatchRefused('browser profile not found');
     if (profile.node?.id !== node.nodeId)
       throw new DispatchRefused(`profile is not assigned to node ${node.name}`);
@@ -529,6 +533,20 @@ export class Dispatcher {
         const { cmd, cookiesEnc } = await this.signInCmd(job.workspaceId, profile);
         const result = await this.send(node.name, cmd, cmdId, job.kind);
         return this.apply({ ...ctx, sentCookiesEnc: cookiesEnc }, result);
+      }
+      case 'profile.remove': {
+        // The volume is the browser's whole identity. Purge only what is in the trash; reset only what is not.
+        if (job.then === 'purge' && !profile.trashed)
+          throw new DispatchRefused('browser is not in the trash; not removed');
+        if (job.then === 'reset' && profile.trashed) throw new DispatchRefused('browser is in the trash');
+        const result = await this.send(
+          node.name,
+          { kind: 'profile.remove', profileId: profile.id },
+          cmdId,
+          job.kind,
+        );
+        if (result.outcome === 'ok') this.started.get(node.name)?.delete(profile.id);
+        return this.apply(ctx, result);
       }
       default: {
         const never: never = job;

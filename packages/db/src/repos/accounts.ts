@@ -5,7 +5,7 @@ import type { AccountAuthMode, AccountRoleLabel } from '@threadline/shared';
 import { prisma } from '../client';
 import { PlanLimitError } from './agents';
 import { writeAudit } from './audit';
-import { assignAccountTx, attachProxyTx, ensureCloakFingerprintTx } from './browsers';
+import { assignAccountTx, attachProxyTx, ensureCloakFingerprintTx, nextSerial } from './browsers';
 import { pickForProfile } from './nodes';
 import { PLAN_LIMITS } from './shell';
 
@@ -179,6 +179,7 @@ export async function connect(input: ConnectInput) {
         workspaceId: input.workspaceId,
         accountId: account.id,
         createdByMemberId: input.ownerMemberId,
+        serial: await nextSerial(tx, input.workspaceId),
         name: profileName(
           owner.user.name ?? input.username,
           await ownedBefore(tx, input.ownerMemberId, account.id),
@@ -326,6 +327,7 @@ export async function startBrowserConnect(
         workspaceId: input.workspaceId,
         accountId: account.id,
         createdByMemberId: actor,
+        serial: await nextSerial(tx, input.workspaceId),
         name: profileName(
           owner.user.name ?? owner.user.email.split('@')[0] ?? 'Owner',
           await ownedBefore(tx, input.ownerMemberId, account.id),

@@ -91,6 +91,8 @@ export interface DockerBackend {
   stop(name: string, timeoutSec: number): Promise<void>;
   /** Remove the container (never its volume); a missing container is not an error. */
   remove(name: string): Promise<void>;
+  /** Delete a volume and everything in it; a missing volume is not an error. */
+  removeVolume(name: string): Promise<void>;
   /** When the agent runs in a container, attach it to `network`. Returns false when it is not in a container. */
   attachSelf(network: string): Promise<boolean>;
 }
@@ -291,6 +293,13 @@ export function dockerodeBackend(docker: Docker = new Docker()): DockerBackend {
         if (code !== 404 && code !== 409) throw err;
       }
     },
+    async removeVolume(name) {
+      try {
+        await docker.getVolume(name).remove();
+      } catch (err) {
+        if (statusCode(err) !== 404) throw err;
+      }
+    },
     async attachSelf(network) {
       let self: Docker.ContainerInspectInfo;
       try {
@@ -472,6 +481,13 @@ export class DockerManager {
     if (!SAFE_ID.test(profileId))
       return Promise.resolve(fail('bad_profile_id', 'profile id is not a valid container name'));
     return this.exclusive(profileId, () => this.doStop(profileId));
+  }
+
+  /** Stops the profile and deletes its volume. Irreversible: the gateway sends it only for a purge or a reset. */
+  remove(profileId: string): Promise<HandlerResult> {
+    if (!SAFE_ID.test(profileId))
+      return Promise.resolve(fail('bad_profile_id', 'profile id is not a valid container name'));
+    return this.exclusive(profileId, () => this.doRemove(profileId));
   }
 
   /**
@@ -666,6 +682,21 @@ export class DockerManager {
     this.o.onDown?.(profileId);
     this.o.log.info({ profileId, was }, 'profile container stopped');
     return { outcome: 'ok', data: { profileId, stopped: was } };
+  }
+
+  /** `profile.remove`: stop, then delete the volume (the profile's cookies, cache and fingerprint lock). */
+  private async doRemove(profileId: string): Promise<HandlerResult> {
+    const stopped = await this.doStop(profileId);
+    if (stopped.outcome !== 'ok') return stopped;
+    try {
+      await this.o.backend.removeVolume(profileResourceName(profileId));
+    } catch (err) {
+      this.o.log.error({ err, profileId }, 'could not remove profile volume');
+      return fail('docker_error', 'docker refused to remove the profile volume');
+    }
+    this.crashedAt.delete(profileId);
+    this.o.log.info({ profileId }, 'profile volume removed');
+    return { outcome: 'ok', data: { profileId, removed: true } };
   }
 
   private async doReconcile(): Promise<void> {

@@ -69,6 +69,7 @@ const profile = (account: Account | null): browsers.DispatchProfile => ({
   locale: 'en-US',
   screen: '1920x1080',
   proxy: null,
+  trashed: false,
 });
 
 const cookie = {
@@ -135,6 +136,8 @@ function setup(opts: {
     markCookiesImported: vi.fn(async () => undefined),
     setStatus: vi.fn(async () => undefined),
     recordProxyTest: vi.fn(async () => undefined),
+    purgeProfile: vi.fn(async () => undefined),
+    resetProfileData: vi.fn(async () => undefined),
     now: () => new Date('2026-11-12T00:00:00Z'),
   } satisfies OutcomeDeps;
   const deps: Partial<DispatchDeps> = {
@@ -368,5 +371,60 @@ describe('proxy credentials after an agent restart', () => {
     const t = setup({ account: null, deps: { getProfile } });
     await resync(t.d, ['bad', 'p2']);
     expect(t.hub.sent.map((s) => s.cmd)).toEqual([expect.objectContaining({ profileId: 'p2' })]);
+  });
+});
+
+describe('profile.remove dispatch (plan 0004)', () => {
+  const purge: BrowserJob = { kind: 'profile.remove', workspaceId: 'w1', profileId: 'p1', then: 'purge' };
+  const reset: BrowserJob = { kind: 'profile.remove', workspaceId: 'w1', profileId: 'p1', then: 'reset' };
+  const withProfile = (trashed: boolean) => ({
+    getProfile: vi.fn(async () => ({ ...profile(null), trashed })),
+  });
+
+  it('purges a trashed browser only after the node removed its volume', async () => {
+    const t = setup({ account: null, deps: withProfile(true) });
+    t.hub.replies['profile.remove'] = { outcome: 'ok', data: { removed: true } } as Result;
+    const out = await t.run(purge);
+    expect(t.deps.getProfile).toHaveBeenCalledWith('w1', 'p1', { includeTrashed: true });
+    expect(t.hub.sent.map((s) => s.cmd)).toEqual([{ kind: 'profile.remove', profileId: 'p1' }]);
+    expect(t.outcomeDeps.purgeProfile).toHaveBeenCalledWith('w1', 'p1');
+    expect(out).toEqual({ outcome: 'ok', kind: 'profile.remove', data: { then: 'purge' } });
+  });
+
+  it('never purges a live browser, and never resets a trashed one', async () => {
+    const live = setup({ account: null, deps: withProfile(false) });
+    await expect(live.run(purge)).rejects.toThrow(/not in the trash/);
+    const trashed = setup({ account: null, deps: withProfile(true) });
+    await expect(trashed.run(reset)).rejects.toThrow(/in the trash/);
+    for (const t of [live, trashed]) {
+      expect(t.hub.sent).toEqual([]);
+      expect(t.outcomeDeps.purgeProfile).not.toHaveBeenCalled();
+      expect(t.outcomeDeps.resetProfileData).not.toHaveBeenCalled();
+    }
+  });
+
+  it('a node that could not remove the volume leaves the database alone', async () => {
+    const t = setup({ account: null, deps: withProfile(true) });
+    t.hub.replies['profile.remove'] = {
+      outcome: 'error',
+      error: { code: 'docker_error', message: 'x' },
+    } as Result;
+    await expect(t.run(purge)).rejects.toThrow(/docker_error/);
+    expect(t.outcomeDeps.purgeProfile).not.toHaveBeenCalled();
+  });
+
+  it('reset gives a live browser a new fingerprint once its volume is gone', async () => {
+    const t = setup({ account: null, deps: withProfile(false) });
+    t.hub.replies['profile.remove'] = { outcome: 'ok' } as Result;
+    await t.run(reset);
+    expect(t.outcomeDeps.resetProfileData).toHaveBeenCalledWith('w1', 'p1');
+  });
+
+  it('other kinds read a trashed browser as missing', async () => {
+    const t = setup({ account: null, deps: { getProfile: vi.fn(async () => null) } });
+    await expect(
+      t.run({ kind: 'profile.start', workspaceId: 'w1', profileId: 'p1', reason: 'takeover' }),
+    ).rejects.toThrow(/not found/);
+    expect(t.deps.getProfile).toHaveBeenCalledWith('w1', 'p1', { includeTrashed: false });
   });
 });

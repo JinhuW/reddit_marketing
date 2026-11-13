@@ -65,6 +65,9 @@ export interface OutcomeDeps {
   ) => Promise<unknown>;
   /** browsers.recordProxyTest: the "Last connection test" box. */
   recordProxyTest: (workspaceId: string, profileId: string, test: browsers.ProxyTest) => Promise<unknown>;
+  /** browsers.purgeProfile / resetProfileData: what follows a `profile.remove` the node carried out. */
+  purgeProfile: (workspaceId: string, profileId: string) => Promise<unknown>;
+  resetProfileData: (workspaceId: string, profileId: string) => Promise<unknown>;
   now: () => Date;
   notifyNeedsHuman: (input: {
     workspaceId: string;
@@ -87,6 +90,8 @@ export const defaultOutcomeDeps: OutcomeDeps = {
   markCookiesImported: (ws, profileId, cookiesEnc) => browsers.markCookiesImported(ws, profileId, cookiesEnc),
   setStatus: (ws, profileId, status) => browsers.setStatus(ws, profileId, status),
   recordProxyTest: (ws, profileId, test) => browsers.recordProxyTest(ws, profileId, test),
+  purgeProfile: (ws, profileId) => browsers.purgeProfile(ws, profileId, null),
+  resetProfileData: (ws, profileId) => browsers.resetProfileData(ws, profileId, null),
   now: () => new Date(),
   notifyNeedsHuman: (n) =>
     prisma.notification.create({
@@ -192,6 +197,13 @@ export async function applyOutcome(
           ctx.profile.id,
           job.kind === 'profile.start' ? 'running' : 'idle',
         );
+      }
+      if (job.kind === 'profile.remove' && ctx.profile) {
+        // The volume is gone on the node; only now does the database follow.
+        if (job.then === 'purge') await deps.purgeProfile(job.workspaceId, ctx.profile.id);
+        else await deps.resetProfileData(job.workspaceId, ctx.profile.id);
+        l.info({ profileId: ctx.profile.id, then: job.then }, 'profile volume removed');
+        return { outcome: 'ok', kind: job.kind, data: { then: job.then } };
       }
       if (job.kind === 'profile.testProxy' && ctx.profile) {
         const t = TestProxyData.safeParse(result.data);
