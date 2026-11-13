@@ -96,6 +96,19 @@ export const ProfileStartCmd = z.object({
   noise: z.boolean().optional(),
   /** WebRTC behind the proxy; `ip` = the proxy's exit IP for `replace` (absent: the engine looks it up) */
   webrtc: z.object({ mode: z.enum(WebRtcMode), ip: z.string().ip().optional() }).optional(),
+  /** phase 8. `block` denies the location permission; `override` makes every tab answer with these coordinates */
+  geo: z
+    .discriminatedUnion('mode', [
+      z.object({ mode: z.literal('block') }),
+      z.object({
+        mode: z.literal('override'),
+        lat: z.number().min(-90).max(90),
+        lon: z.number().min(-180).max(180),
+        /** metres */
+        accuracy: z.number().min(1).max(100_000),
+      }),
+    ])
+    .optional(),
 });
 export const ProfileStopCmd = z.object({ kind: z.literal('profile.stop'), profileId: id });
 /**

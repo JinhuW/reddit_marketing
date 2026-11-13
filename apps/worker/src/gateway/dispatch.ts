@@ -364,7 +364,8 @@ export class Dispatcher {
       if (!this.running) return;
       try {
         const p = await this.deps.getProfile(info.workspaceId, profileId);
-        if (!p || p.node?.id !== info.nodeId || !p.proxy?.username || !p.cloak) continue;
+        // Also for a location setting: the agent applies it from memory, like the proxy login.
+        if (!p || p.node?.id !== info.nodeId || !(p.proxy?.username || p.device.geo) || !p.cloak) continue;
         const cmdId = `resync-${profileId}-${this.now().getTime().toString(36)}`;
         const r = await this.send(info.name, startCmd(p), cmdId, 'profile.start');
         if (r.outcome === 'ok') this.log.info({ node: info.name, profileId }, 'proxy credentials re-sent');

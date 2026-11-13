@@ -557,3 +557,65 @@ describe('group access (plan 0004 phase 5)', () => {
     }
   });
 });
+
+describe('location setting (plan 0004 phase 8)', () => {
+  const base = {
+    screen: '1920x1080',
+    tzMode: 'custom' as const,
+    tz: 'America/New_York',
+    localeMode: 'custom' as const,
+    locale: 'en-US',
+    cpu: null,
+    memoryGb: null,
+    webrtc: 'disable_udp' as const,
+    noise: true,
+  };
+
+  it('sends nothing by default, the proxy place when a test found one, and blocks while none has', async () => {
+    const ws = await testWorkspace();
+    try {
+      const me = await ws.member();
+      const { profileId } = await browsers.createBrowser({ workspaceId: ws.id, actorMemberId: me.id });
+      const geo = async () => (await browsers.getProfileForDispatch(ws.id, profileId))?.device.geo;
+      expect(await geo()).toBeUndefined();
+
+      await browsers.updateFingerprint(ws.id, profileId, me.id, { ...base, geoMode: 'block' });
+      expect(await geo()).toEqual({ mode: 'block' });
+
+      await browsers.updateFingerprint(ws.id, profileId, me.id, {
+        ...base,
+        geoMode: 'custom',
+        geoLat: 42.36,
+        geoLon: -71.06,
+      });
+      expect(await geo()).toEqual({ mode: 'override', lat: 42.36, lon: -71.06, accuracy: 50 });
+
+      // Match proxy IP with no proxy test yet: blocked rather than the node's real place.
+      await browsers.updateFingerprint(ws.id, profileId, me.id, { ...base, geoMode: 'proxy' });
+      expect(await geo()).toEqual({ mode: 'block' });
+      const px = await prisma.proxy.create({
+        data: {
+          workspaceId: ws.id,
+          provider: 'Own',
+          protocol: 'http',
+          host: 'h.test',
+          port: 1,
+          lastTest: { ok: true, ip: '203.0.113.9', lat: 38.72, lon: -9.14 },
+        },
+      });
+      await browsers.attachProxy(ws.id, profileId, px.id, me.id);
+      expect(await geo()).toEqual({ mode: 'override', lat: 38.72, lon: -9.14, accuracy: 5000 });
+      // A failed test is not a place to follow.
+      await browsers.recordProxyCheck(ws.id, px.id, { ok: false, error: 'proxy_unreachable' });
+      expect(await geo()).toEqual({ mode: 'block' });
+
+      await browsers.updateFingerprint(ws.id, profileId, me.id, { ...base, geoMode: 'ask' });
+      expect(await geo()).toBeUndefined();
+      const stored = (await prisma.browserProfile.findUniqueOrThrow({ where: { id: profileId } }))
+        .fingerprint as browsers.Fingerprint;
+      expect(stored.geoLat).toBeUndefined(); // custom coordinates do not linger under another mode
+    } finally {
+      await ws.cleanup();
+    }
+  });
+});

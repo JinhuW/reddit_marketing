@@ -12,6 +12,7 @@
 import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { profileProxies, proxyAuthWatchers } from '../actions';
+import { geoWatchers } from '../actions/geo-watch';
 import { type DockerBackend, DockerManager, type DockerManagerOptions, dockerodeBackend } from '../docker';
 import type { AgentModule } from '../registry';
 
@@ -74,12 +75,15 @@ export function createProfileModule(opts: ProfileModuleOptions = {}): AgentModul
         securityOpt,
         // Proxy credentials stay in agent memory; the watcher answers the browser's 407 from launch on, so
         // neither actions nor the owner over VNC ever see Chromium's proxy sign-in dialog.
-        onUp: (profileId, proxy) => {
+        onUp: (profileId, proxy, geo) => {
+          // Plan 0004 phase 8: the browser's location setting, applied to every tab while it runs.
+          geoWatchers.set(profileId, geo ?? null);
           profileProxies.set(profileId, proxy, ctx.secrets);
           if (proxy?.username) proxyAuthWatchers.watch(profileId);
           else proxyAuthWatchers.unwatch(profileId);
         },
         onDown: (profileId) => {
+          geoWatchers.set(profileId, null);
           proxyAuthWatchers.unwatch(profileId);
           profileProxies.delete(profileId);
         },
@@ -87,6 +91,7 @@ export function createProfileModule(opts: ProfileModuleOptions = {}): AgentModul
       });
       current = manager;
       proxyAuthWatchers.useLogger(ctx.log);
+      geoWatchers.useLogger(ctx.log);
       const m = manager;
       ctx.status.setProvider({
         running: () => m.running(),

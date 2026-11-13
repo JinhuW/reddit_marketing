@@ -2,7 +2,7 @@
 // audio, fonts, client rects, GPU model) comes from the CloakBrowser seed and is not editable on purpose: the
 // seed draws those values together as one coherent device.
 import { z } from 'zod';
-import { WebRtcMode } from './enums';
+import { GeoMode, WebRtcMode } from './enums';
 
 export const SCREEN_PRESETS = [
   '1920x1080',
@@ -31,25 +31,38 @@ export function isTimeZone(tz: string): boolean {
 const BCP47 = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 
 /** What the fingerprint form submits. `proxy` modes follow the proxy's last connection test at every start. */
-export const FingerprintSettings = z.object({
-  screen: z.string().regex(/^\d{3,4}x\d{3,4}$/, 'Screen must look like 1920x1080'),
-  tzMode: z.enum(['proxy', 'custom']),
-  tz: z.string().min(1).max(64).refine(isTimeZone, 'Unknown time zone'),
-  localeMode: z.enum(['proxy', 'custom']),
-  locale: z.string().regex(BCP47, 'Language must look like en-US'),
-  cpu: z
-    .number()
-    .int()
-    .refine((n) => (CPU_OPTIONS as readonly number[]).includes(n))
-    .nullable(),
-  memoryGb: z
-    .number()
-    .int()
-    .refine((n) => (MEMORY_OPTIONS as readonly number[]).includes(n))
-    .nullable(),
-  webrtc: z.enum(WebRtcMode),
-  noise: z.boolean(),
-});
+export const FingerprintSettings = z
+  .object({
+    screen: z.string().regex(/^\d{3,4}x\d{3,4}$/, 'Screen must look like 1920x1080'),
+    tzMode: z.enum(['proxy', 'custom']),
+    tz: z.string().min(1).max(64).refine(isTimeZone, 'Unknown time zone'),
+    localeMode: z.enum(['proxy', 'custom']),
+    locale: z.string().regex(BCP47, 'Language must look like en-US'),
+    cpu: z
+      .number()
+      .int()
+      .refine((n) => (CPU_OPTIONS as readonly number[]).includes(n))
+      .nullable(),
+    memoryGb: z
+      .number()
+      .int()
+      .refine((n) => (MEMORY_OPTIONS as readonly number[]).includes(n))
+      .nullable(),
+    webrtc: z.enum(WebRtcMode),
+    noise: z.boolean(),
+    /**
+     * Location a site gets when it asks (phase 8). `ask`: the browser's default. `block`: always refused. `proxy`:
+     * where the proxy's last connection test put its exit IP. `custom`: `geoLat` / `geoLon`.
+     */
+    geoMode: z.enum(GeoMode).default('ask'),
+    geoLat: z.number().min(-90).max(90).nullable().default(null),
+    geoLon: z.number().min(-180).max(180).nullable().default(null),
+  })
+  .refine((s) => s.geoMode !== 'custom' || (s.geoLat !== null && s.geoLon !== null), {
+    message: 'A custom location needs a latitude and a longitude.',
+  });
+/** What the form submits; the location fields may be left out (`ask`). */
+export type FingerprintSettingsInput = z.input<typeof FingerprintSettings>;
 export type FingerprintSettings = z.infer<typeof FingerprintSettings>;
 
 /** Main language of a country (ISO 3166-1 alpha-2), for "match proxy IP". Unknown countries keep the custom value. */

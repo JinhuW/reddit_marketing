@@ -177,6 +177,13 @@ export function profileView(p: Row, now = new Date(), node: NodeInfo | null = nu
       memoryGb: fp.memoryGb ?? null,
       webrtc: fp.webrtc ?? 'disable_udp',
       noise: fp.noise !== false,
+      geoMode: fp.geoMode ?? 'ask',
+      geoLat: fp.geoLat ?? null,
+      geoLon: fp.geoLon ?? null,
+      /** the proxy's last good test placed its exit IP on the map ("match proxy IP" has something to follow) */
+      proxyHasPlace: Boolean(
+        test && test.ok !== false && typeof test.lat === 'number' && typeof test.lon === 'number',
+      ),
       gpu: fp.nextGpu ?? p.cloakGpu ?? 'intel',
       persona: p.cloakPersona ?? 'windows',
       /** a proxy other than "none" is set: real WebRTC is not offered */

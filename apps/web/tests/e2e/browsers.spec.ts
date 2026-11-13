@@ -742,3 +742,50 @@ test('management API: a key lists and creates browsers, cannot do more, and stop
     await prisma.apiKey.deleteMany({ where: { name: keyName } });
   }
 });
+
+test('fingerprint location: block, custom coordinates, and a custom location needs both (plan 0004)', async ({
+  page,
+}) => {
+  const s = Date.now().toString(36);
+  const jane = await prisma.workspaceMember.findFirstOrThrow({ where: { user: { email: 'jane@acme.so' } } });
+  const { browsers } = await import('@threadline/db');
+  const { profileId } = await browsers.createBrowser({
+    workspaceId: jane.workspaceId,
+    actorMemberId: jane.id,
+    name: `e2e geo ${s}`,
+    fingerprint: { os: 'Windows 11', screen: '1920x1080', tz: 'America/New_York', locale: 'en-US' },
+  });
+  try {
+    await page.goto(`/browsers?id=${profileId}`);
+    await page.waitForLoadState('networkidle');
+    const fp = page.getByTestId('fingerprint');
+    await expect(fp).toContainText('gets where the node is');
+    await fp.getByLabel('Location').selectOption('custom');
+    await fp.getByLabel('Latitude').fill('42.36');
+    await fp.getByRole('button', { name: 'Save fingerprint' }).click();
+    await expect(fp.getByRole('status')).toContainText('needs a latitude and a longitude');
+    await expect(fp.getByLabel('Latitude')).toHaveValue('42.36'); // kept after the refusal
+    await fp.getByLabel('Longitude').fill('-71.06');
+    await fp.getByRole('button', { name: 'Save fingerprint' }).click();
+    await expect(fp.getByRole('status')).toContainText('Saved');
+    expect((await browsers.getProfileForDispatch(jane.workspaceId, profileId))?.device.geo).toEqual({
+      mode: 'override',
+      lat: 42.36,
+      lon: -71.06,
+      accuracy: 50,
+    });
+    await fp.getByLabel('Location').selectOption('block');
+    await fp.getByRole('button', { name: 'Save fingerprint' }).click();
+    await expect(async () => {
+      expect((await browsers.getProfileForDispatch(jane.workspaceId, profileId))?.device.geo).toEqual({
+        mode: 'block',
+      });
+    }).toPass();
+  } finally {
+    const scratch = await prisma.workspace.create({ data: { name: 'Test', slug: `t00-ws-e2e-geo-${s}` } });
+    await prisma.browserProfile.update({
+      where: { id: profileId },
+      data: { workspaceId: scratch.id, createdByMemberId: null, nodeId: null },
+    });
+  }
+});

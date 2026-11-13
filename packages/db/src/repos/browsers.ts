@@ -8,6 +8,7 @@ import {
   type BrowserCookie,
   CloakGpu,
   CloakPersona,
+  type GeoMode,
   type PauseReason,
   type ProxySpec,
   type WebRtcMode,
@@ -39,6 +40,10 @@ export interface Fingerprint {
   webrtc?: WebRtcMode;
   /** false = canvas / WebGL / audio noise off */
   noise?: boolean;
+  /** phase 8: location a site gets when it asks; absent = `ask` */
+  geoMode?: GeoMode;
+  geoLat?: number;
+  geoLon?: number;
   /** GPU vendor the next "new fingerprint" applies (the volume locks the current one until its data is reset) */
   nextGpu?: CloakGpu;
 }
@@ -655,6 +660,7 @@ export interface DispatchProfile {
     memoryGb?: number;
     noise?: boolean;
     webrtc?: { mode: WebRtcMode; ip?: string };
+    geo?: { mode: 'block' } | { mode: 'override'; lat: number; lon: number; accuracy: number };
   };
 }
 
@@ -709,6 +715,23 @@ export async function getProfileForDispatch(
   // `real` WebRTC behind a proxy would show the node's own address: it is never sent.
   const webrtcMode = fp.webrtc === 'real' && proxy ? 'disable_udp' : fp.webrtc;
   const exitIp = test?.ok !== false && test?.ip && isIP(test.ip) ? test.ip : undefined;
+  // `proxy` follows the last good connection test; with none yet the browser's default (ask, real place) is
+  // worse than refusing, so the location is blocked until a test has run.
+  const proxyPlace =
+    test?.ok !== false && typeof test?.lat === 'number' && typeof test?.lon === 'number'
+      ? { lat: test.lat, lon: test.lon }
+      : null;
+  const geo: DispatchProfile['device']['geo'] =
+    fp.geoMode === 'block'
+      ? { mode: 'block' }
+      : fp.geoMode === 'custom' && typeof fp.geoLat === 'number' && typeof fp.geoLon === 'number'
+        ? { mode: 'override', lat: fp.geoLat, lon: fp.geoLon, accuracy: 50 }
+        : fp.geoMode === 'proxy'
+          ? proxyPlace
+            ? // An IP lookup places a city, not a street: a wide accuracy says so.
+              { mode: 'override', ...proxyPlace, accuracy: 5000 }
+            : { mode: 'block' }
+          : undefined;
   return {
     id: p.id,
     workspaceId: p.workspaceId,
@@ -736,6 +759,7 @@ export async function getProfileForDispatch(
       ...(webrtcMode
         ? { webrtc: { mode: webrtcMode, ...(webrtcMode === 'replace' && exitIp ? { ip: exitIp } : {}) } }
         : {}),
+      ...(geo ? { geo } : {}),
     },
   };
 }

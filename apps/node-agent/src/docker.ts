@@ -371,7 +371,8 @@ export interface DockerManagerOptions {
    * The profile's browser answers CDP (fresh start or adopted by `profile.start`). `proxy` is the one it was
    * started with. The profile module uses it to begin answering proxy challenges before anyone browses.
    */
-  onUp?: (profileId: string, proxy: ProxySpec | null) => void;
+  /** `geo`: the location setting of the `profile.start` that brought it up (undefined = none) */
+  onUp?: (profileId: string, proxy: ProxySpec | null, geo?: CmdOf<'profile.start'>['geo']) => void;
   /** The agent forgot the profile (stopped, exited, removed, or start failed). */
   onDown?: (profileId: string) => void;
 }
@@ -407,6 +408,8 @@ const fail = (code: string, message: string): HandlerResult => ({
 export class DockerManager {
   private readonly tracked = new Map<string, Tracked>();
   private readonly proxies = new Map<string, ProxySpec>();
+  /** location setting of each profile's last `profile.start` (plan 0004 phase 8) */
+  private readonly geos = new Map<string, CmdOf<'profile.start'>['geo']>();
   private readonly crashedAt = new Map<string, number>();
   /** Profiles with a start/stop in progress: the reconcile loop leaves them alone. */
   private readonly busy = new Set<string>();
@@ -561,6 +564,7 @@ export class DockerManager {
       const startedAt = this.tracked.get(profileId)?.startedAt ?? (existing.startedAt || this.now());
       this.tracked.set(profileId, { startedAt });
       if (cmd.proxy) this.proxies.set(profileId, cmd.proxy);
+      this.geos.set(profileId, cmd.geo);
       const ready = await this.waitReady(profileId, signal, log);
       if (ready.outcome !== 'ok') return ready;
       return this.started(profileId, startedAt, true);
@@ -620,6 +624,7 @@ export class DockerManager {
     const startedAt = this.now();
     this.tracked.set(profileId, { startedAt });
     if (cmd.proxy) this.proxies.set(profileId, cmd.proxy);
+    this.geos.set(profileId, cmd.geo);
     log.info({ image: this.o.image }, 'profile container started; waiting for CDP');
     const ready = await this.waitReady(profileId, signal, log);
     if (ready.outcome !== 'ok') return ready;
@@ -628,7 +633,7 @@ export class DockerManager {
 
   private started(profileId: string, startedAt: number, adopted: boolean): HandlerResult {
     this.crashedAt.delete(profileId);
-    this.o.onUp?.(profileId, this.proxies.get(profileId) ?? null);
+    this.o.onUp?.(profileId, this.proxies.get(profileId) ?? null, this.geos.get(profileId));
     const data: StartData = { profileId, startedAt, adopted, imageDigest: this.digest };
     return { outcome: 'ok', data };
   }
@@ -670,6 +675,7 @@ export class DockerManager {
   private async drop(profileId: string, crashed: boolean): Promise<void> {
     this.tracked.delete(profileId);
     this.proxies.delete(profileId);
+    this.geos.delete(profileId);
     this.o.onDown?.(profileId);
     if (crashed) this.crashedAt.set(profileId, this.now());
     await this.o.backend.remove(profileResourceName(profileId)).catch(() => undefined);
@@ -687,6 +693,7 @@ export class DockerManager {
     }
     this.tracked.delete(profileId);
     this.proxies.delete(profileId);
+    this.geos.delete(profileId);
     this.o.onDown?.(profileId);
     this.o.log.info({ profileId, was }, 'profile container stopped');
     return { outcome: 'ok', data: { profileId, stopped: was } };
@@ -739,6 +746,8 @@ export class DockerManager {
       if (!wasTracked) return;
       this.tracked.delete(profileId);
       this.proxies.delete(profileId);
+      this.geos.delete(profileId);
+      this.geos.delete(profileId);
       this.o.onDown?.(profileId);
       this.o.log.warn({ profileId }, 'profile container disappeared');
       this.exited(profileId, { exitCode: null, reason: 'removed' });

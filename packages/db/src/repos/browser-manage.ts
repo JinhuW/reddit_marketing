@@ -1,7 +1,13 @@
 // Plan 0004 phase 1: the profile list of the Browsers screen. Search, groups, tags, notes, clone and trash.
 // Re-exported from ./browsers, so callers use `browsers.searchProfiles(...)`.
 import type { Prisma } from '@prisma/client';
-import { BrowserTagColor, CloakGpu, FingerprintSettings, GPU_OPTIONS } from '@threadline/shared';
+import {
+  BrowserTagColor,
+  CloakGpu,
+  FingerprintSettings,
+  type FingerprintSettingsInput,
+  GPU_OPTIONS,
+} from '@threadline/shared';
 import { prisma } from '../client';
 import { writeAudit } from './audit';
 import { type Fingerprint, PROFILE_INCLUDE, createBrowserTx, ensureCloakFingerprintTx } from './browsers';
@@ -612,7 +618,7 @@ export function updateFingerprint(
   workspaceId: string,
   profileId: string,
   actorMemberId: string,
-  input: FingerprintSettings,
+  input: FingerprintSettingsInput,
 ): Promise<{ changed: string[] }> {
   const s = FingerprintSettings.parse(input);
   return prisma.$transaction(async (tx) => {
@@ -636,10 +642,13 @@ export function updateFingerprint(
       memoryGb: fp.memoryGb ?? null,
       webrtc: fp.webrtc ?? 'disable_udp',
       noise: fp.noise !== false,
+      geoMode: fp.geoMode ?? 'ask',
+      geoLat: fp.geoLat ?? null,
+      geoLon: fp.geoLon ?? null,
     };
     const changed = (Object.keys(s) as (keyof FingerprintSettings)[]).filter((k) => s[k] !== before[k]);
     if (changed.length === 0) return { changed };
-    const { cpu: _c, memoryGb: _m, ...rest } = fp;
+    const { cpu: _c, memoryGb: _m, geoLat: _la, geoLon: _lo, ...rest } = fp;
     const next: Fingerprint = {
       ...rest,
       screen: s.screen,
@@ -651,6 +660,10 @@ export function updateFingerprint(
       ...(s.memoryGb ? { memoryGb: s.memoryGb } : {}),
       webrtc: s.webrtc,
       noise: s.noise,
+      geoMode: s.geoMode,
+      ...(s.geoMode === 'custom' && s.geoLat !== null && s.geoLon !== null
+        ? { geoLat: s.geoLat, geoLon: s.geoLon }
+        : {}),
     };
     await tx.browserProfile.update({
       where: { id: p.id },

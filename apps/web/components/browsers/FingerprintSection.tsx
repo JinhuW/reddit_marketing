@@ -46,6 +46,7 @@ export function FingerprintSection({
   const f = p.fp;
   const [tzMode, setTzMode] = useState(f.tzMode);
   const [localeMode, setLocaleMode] = useState(f.localeMode);
+  const [geoMode, setGeoMode] = useState(f.geoMode);
   // Controlled: React clears uncontrolled fields after an action, and a refused submit must keep the choice.
   const [gpu, setGpu] = useState(f.gpu);
   const [confirmed, setConfirmed] = useState(false);
@@ -209,6 +210,51 @@ export function FingerprintSection({
               </option>
             </select>
           </Row>
+          <Row id={id('geo')} label="Location">
+            <select
+              id={id('geo')}
+              name="geoMode"
+              className="field !h-7"
+              value={geoMode}
+              onChange={(e) => setGeoMode(e.target.value as typeof geoMode)}
+            >
+              <option value="ask">Ask (browser default)</option>
+              <option value="block">Block</option>
+              <option value="proxy">Match proxy IP</option>
+              <option value="custom">Custom</option>
+            </select>
+          </Row>
+          {geoMode === 'custom' ? (
+            <div className="flex gap-1.5 pl-[120px]">
+              <input
+                name="geoLat"
+                className="field num !h-7"
+                inputMode="decimal"
+                placeholder="Latitude"
+                aria-label="Latitude"
+                defaultValue={f.geoLat ?? ''}
+              />
+              <input
+                name="geoLon"
+                className="field num !h-7"
+                inputMode="decimal"
+                placeholder="Longitude"
+                aria-label="Longitude"
+                defaultValue={f.geoLon ?? ''}
+              />
+            </div>
+          ) : null}
+          {geoMode === 'proxy' ? (
+            <p className="muted m-0 pl-[120px] text-[11.5px]">
+              {f.proxyHasPlace
+                ? 'A site that is allowed to ask gets the place of the proxy’s exit IP.'
+                : 'No proxy test has placed the exit IP yet: location is blocked until one has.'}
+            </p>
+          ) : geoMode === 'ask' ? (
+            <p className="muted m-0 pl-[120px] text-[11.5px]">
+              If someone allows a site to ask, it gets where the node is, not where the proxy is.
+            </p>
+          ) : null}
           <label className="flex items-center gap-2 pl-[120px]">
             <input
               type="checkbox"

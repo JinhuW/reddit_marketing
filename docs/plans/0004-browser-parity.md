@@ -68,8 +68,7 @@ BrowserSession transition writes an AuditEvent; secrets never in logs, job paylo
       (`profile.remove`, `after: reset`); needs a ticked confirmation.
 - [x] `profile.start` carries optional `cpu`, `memoryGb`, `noise`, `webrtc`; the agent passes them as `FP_*` env
       and the image turns them into flags. An untouched browser starts exactly as before.
-- [ ] Not built: a geolocation setting. A per-page CDP override does not cover tabs a person opens over VNC,
-      and a browser-wide one needs a check on an x86 node. Chrome's default (ask) stays.
+- [x] Geolocation came in phase 8.
 
 ### Phase 3 · Proxy pool
 - [x] `/browsers/proxies` (the artboard's "Proxy pool" button): list with the last check, search, add one, bulk
@@ -117,6 +116,13 @@ BrowserSession transition writes an AuditEvent; secrets never in logs, job paylo
 - [x] By design there is no endpoint that posts, drives a page, returns a debugging address, or returns cookies,
       proxy logins or account passwords. This is the part of an anti-detect browser's "Local API" that fits the
       approval gate; Selenium / Puppeteer attachment and an MCP server are not offered.
+
+### Phase 8 · Location
+- [x] Fingerprint setting "Location": ask (browser default), block, match proxy IP (the place of the last good
+      connection test; blocked until one exists), or custom coordinates.
+- [x] Applied by the agent for as long as the browser runs (`geo-watch.ts`): `block` denies the permission
+      browser-wide; an override reaches every tab, including ones a person opens over VNC. It is a separate CDP
+      connection that never pauses a tab, so it cannot hold up page loads or the proxy sign-in.
 
 ## Rollout
 

@@ -133,6 +133,10 @@ export type CloakGpu = (typeof CloakGpu)[number];
 export const WebRtcMode = ['disable_udp', 'replace', 'real'] as const;
 export type WebRtcMode = (typeof WebRtcMode)[number];
 
+/** Where a browser says it is when a site asks for its location (plan 0004 phase 8). */
+export const GeoMode = ['ask', 'block', 'proxy', 'custom'] as const;
+export type GeoMode = (typeof GeoMode)[number];
+
 /** Tag colors on the Browsers screen (plan 0004); each maps to a chip style in the web app. */
 export const BrowserTagColor = ['gray', 'green', 'amber', 'red', 'accent'] as const;
 export type BrowserTagColor = (typeof BrowserTagColor)[number];

@@ -278,6 +278,8 @@ export async function deleteTagAction(_prev: ActionState | null, form: FormData)
 
 // ── fingerprint (phase 2) ──
 
+/** A typed coordinate, or null for an empty or unreadable one (the schema then says what is missing). */
+const coord = (raw: string) => (raw && Number.isFinite(Number(raw)) ? Number(raw) : null);
 const pick = (raw: string, options: readonly number[]) => {
   const n = Number(raw);
   return raw && options.includes(n) ? n : null;
@@ -297,6 +299,9 @@ export async function saveFingerprintAction(_prev: ActionState | null, form: For
       memoryGb: pick(str(form, 'memoryGb'), MEMORY_OPTIONS),
       webrtc: str(form, 'webrtc'),
       noise: form.get('noise') === 'on',
+      geoMode: str(form, 'geoMode') || 'ask',
+      geoLat: coord(str(form, 'geoLat')),
+      geoLon: coord(str(form, 'geoLon')),
     });
     if (!parsed.success)
       return { ok: false, message: parsed.error.issues[0]?.message ?? 'Check the fingerprint fields.' };

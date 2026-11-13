@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { FingerprintSettings, isTimeZone, localeForCountry, resolveZoneAndLocale } from './fingerprint';
+import {
+  FingerprintSettings,
+  type FingerprintSettingsInput,
+  isTimeZone,
+  localeForCountry,
+  resolveZoneAndLocale,
+} from './fingerprint';
 
-const base: FingerprintSettings = {
+const base: FingerprintSettingsInput = {
   screen: '1920x1080',
   tzMode: 'custom',
   tz: 'America/New_York',
@@ -64,5 +70,19 @@ describe('helpers', () => {
     expect(localeForCountry(' us ')).toBe('en-US');
     expect(localeForCountry('ZZ')).toBeNull();
     expect(localeForCountry(undefined)).toBeNull();
+  });
+});
+
+describe('location setting (phase 8)', () => {
+  it('defaults to ask, and a custom location needs both coordinates', () => {
+    expect(FingerprintSettings.parse(base)).toMatchObject({ geoMode: 'ask', geoLat: null, geoLon: null });
+    expect(FingerprintSettings.safeParse({ ...base, geoMode: 'custom', geoLat: 42.36 }).success).toBe(false);
+    expect(
+      FingerprintSettings.safeParse({ ...base, geoMode: 'custom', geoLat: 42.36, geoLon: -71.06 }).success,
+    ).toBe(true);
+    expect(FingerprintSettings.safeParse({ ...base, geoMode: 'custom', geoLat: 95, geoLon: 0 }).success).toBe(
+      false,
+    );
+    expect(FingerprintSettings.safeParse({ ...base, geoMode: 'everywhere' }).success).toBe(false);
   });
 });
