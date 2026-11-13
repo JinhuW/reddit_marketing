@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/JinhuW/reddit_marketing/compare/v0.10.1...v0.11.0) (2026-11-13)
+
+
+### Features
+
+* **browsers:** give members access to a group of browsers ([15418ef](https://github.com/JinhuW/reddit_marketing/commit/15418ef2829ae8a077c2a4eaba89366bdfccb494))
+
 ## [0.10.1](https://github.com/JinhuW/reddit_marketing/compare/v0.10.0...v0.10.1) (2026-11-13)
 
 
