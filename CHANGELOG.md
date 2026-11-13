@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/JinhuW/reddit_marketing/compare/v0.13.0...v0.14.0) (2026-11-13)
+
+
+### Features
+
+* **browsers:** show start tab and cookies inside the Account section ([454171b](https://github.com/JinhuW/reddit_marketing/commit/454171b9d31f924bfe2904ae7a9e4378611b7a7e))
+
 ## [0.13.0](https://github.com/JinhuW/reddit_marketing/compare/v0.12.0...v0.13.0) (2026-11-13)
 
 
