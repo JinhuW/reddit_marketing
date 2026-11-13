@@ -36,7 +36,12 @@ FROM deps AS build
 COPY . .
 # Railway sets this build arg; next.config.ts turns it into the build id the update banner compares.
 ARG RAILWAY_GIT_COMMIT_SHA
-RUN pnpm --filter @threadline/db generate && pnpm --filter @threadline/web build
+# `next build` downloads Inter from Google Fonts (next/font). That download sometimes fails in CI with
+# "An error occurred in `next/font`", which made a commit's CI red and Railway skip its deploy: retry twice.
+RUN pnpm --filter @threadline/db generate && \
+    (pnpm --filter @threadline/web build || \
+     (echo "web build failed; retrying in 10 s" >&2 && sleep 10 && pnpm --filter @threadline/web build) || \
+     (echo "web build failed again; last retry in 30 s" >&2 && sleep 30 && pnpm --filter @threadline/web build))
 
 FROM build AS runtime
 ENV NODE_ENV=production
