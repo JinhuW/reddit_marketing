@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/JinhuW/reddit_marketing/compare/v0.11.2...v0.12.0) (2026-11-13)
+
+
+### Features
+
+* **browsers:** management API with keys ([cd912d9](https://github.com/JinhuW/reddit_marketing/commit/cd912d97dac26d065cccb03fe016433c91e167cc))
+
 ## [0.11.2](https://github.com/JinhuW/reddit_marketing/compare/v0.11.1...v0.11.2) (2026-11-13)
 
 
