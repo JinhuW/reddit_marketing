@@ -200,10 +200,10 @@ export async function applyOutcome(
       }
       if (job.kind === 'profile.remove' && ctx.profile) {
         // The volume is gone on the node; only now does the database follow.
-        if (job.then === 'purge') await deps.purgeProfile(job.workspaceId, ctx.profile.id);
+        if (job.after === 'purge') await deps.purgeProfile(job.workspaceId, ctx.profile.id);
         else await deps.resetProfileData(job.workspaceId, ctx.profile.id);
-        l.info({ profileId: ctx.profile.id, then: job.then }, 'profile volume removed');
-        return { outcome: 'ok', kind: job.kind, data: { then: job.then } };
+        l.info({ profileId: ctx.profile.id, after: job.after }, 'profile volume removed');
+        return { outcome: 'ok', kind: job.kind, data: { after: job.after } };
       }
       if (job.kind === 'profile.testProxy' && ctx.profile) {
         const t = TestProxyData.safeParse(result.data);

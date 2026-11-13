@@ -127,7 +127,7 @@ export type CloakGpu = (typeof CloakGpu)[number];
 
 /** `Event.kind` in the gateway ↔ agent protocol. */
 /** Tag colors on the Browsers screen (plan 0004); each maps to a chip style in the web app. */
-export const BrowserTagColor = ['gray', 'blue', 'green', 'amber', 'red', 'accent'] as const;
+export const BrowserTagColor = ['gray', 'green', 'amber', 'red', 'accent'] as const;
 export type BrowserTagColor = (typeof BrowserTagColor)[number];
 
 export const NodeEventKind = ['container.exited', 'session.activity', 'needs_human'] as const;

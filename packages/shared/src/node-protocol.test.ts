@@ -84,6 +84,7 @@ const cmds: Cmd[] = [
     proxy: null,
   },
   { kind: 'profile.stop', profileId: 'prof_1' },
+  { kind: 'profile.remove', profileId: 'prof_1' },
   {
     kind: 'action.submitComment',
     profileId: 'prof_1',

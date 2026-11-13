@@ -264,3 +264,116 @@ test('a new browser with cookies, an added account with password + 2FA, then una
 test.afterAll(async () => {
   await prisma.$disconnect();
 });
+
+test('list: search, group and bulk move, quick notes, trash and restore (plan 0004)', async ({ page }) => {
+  const s = Date.now().toString(36);
+  const names = [`e2e list alpha ${s}`, `e2e list bravo ${s}`];
+  const groupName = `e2e group ${s}`;
+  const jane = await prisma.workspaceMember.findFirstOrThrow({ where: { user: { email: 'jane@acme.so' } } });
+  const top = await prisma.browserProfile.aggregate({
+    where: { workspaceId: jane.workspaceId },
+    _max: { serial: true },
+  });
+  const ids: string[] = [];
+  for (const [i, name] of names.entries()) {
+    const p = await prisma.browserProfile.create({
+      data: {
+        workspaceId: jane.workspaceId,
+        createdByMemberId: jane.id,
+        name,
+        serial: (top._max.serial ?? 0) + 1 + i,
+      },
+    });
+    ids.push(p.id);
+  }
+  const alpha = page.locator(`tr[data-profile="${names[0]}"]`);
+  const bravo = page.locator(`tr[data-profile="${names[1]}"]`);
+  try {
+    // Search narrows the list and the view stays in the URL.
+    await page.goto('/browsers');
+    await page.getByLabel('Search browsers').fill(`list alpha ${s}`);
+    await page.getByRole('button', { name: 'Search' }).click();
+    await expect(page).toHaveURL(/[?&]q=/);
+    await expect(alpha).toBeVisible();
+    await expect(bravo).toHaveCount(0);
+    await expect(page.getByTestId('list-total')).toHaveText('1 browser');
+
+    // A new group, then both browsers moved into it with the bulk bar.
+    await page.goto(`/browsers?q=${s}&manage=1`);
+    const panel = page.getByTestId('groups-tags');
+    await panel.getByLabel('New group name').fill(groupName);
+    await panel.getByRole('button', { name: 'Add group' }).click();
+    await expect(panel.getByRole('status')).toContainText('created');
+    const bar = page.getByTestId('bulk-bar');
+    await expect(bar.getByRole('button', { name: 'Move' })).toBeDisabled(); // nothing ticked yet
+    await page.getByLabel('Select every browser on this page').check();
+    await expect(bar.getByTestId('bulk-count')).toHaveText('2 selected');
+    await bar.getByLabel('Group to move to').selectOption({ label: groupName });
+    await bar.getByRole('button', { name: 'Move' }).click();
+    await expect(bar.getByRole('status')).toContainText('Moved 2 browsers.');
+    await expect(alpha).toContainText(groupName);
+    await expect(bar.getByTestId('bulk-count')).toHaveText('0 selected');
+    await page
+      .getByTestId('list-toolbar')
+      .getByLabel('Group', { exact: true })
+      .selectOption({ label: `${groupName} (2)` });
+    await expect(page).toHaveURL(/[?&]group=/);
+    await expect(page.getByTestId('profile-table').locator('tbody tr')).toHaveCount(2);
+
+    // Notes, edited in the row.
+    const notes = alpha.getByLabel('Notes', { exact: true });
+    await expect(async () => {
+      // the filter just navigated: click again if the row was not interactive yet
+      if (!(await notes.isVisible())) await alpha.getByRole('button', { name: 'Edit notes' }).click();
+      await expect(notes).toBeVisible({ timeout: 1000 });
+    }).toPass();
+    await notes.fill('warmed up in March');
+    await alpha.getByRole('button', { name: 'Save' }).click();
+    await expect(alpha).toContainText('warmed up in March');
+    expect((await prisma.browserProfile.findUniqueOrThrow({ where: { id: ids[0] } })).notes).toBe(
+      'warmed up in March',
+    );
+
+    // Delete goes to the trash; the trash restores it.
+    await alpha.getByLabel(`Select ${names[0]}`).check();
+    await bar.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(bar.getByRole('status')).toContainText('Moved 1 browser to the trash');
+    await expect(alpha).toHaveCount(0);
+    expect(
+      (await prisma.browserProfile.findUniqueOrThrow({ where: { id: ids[0] } })).deletedAt,
+    ).not.toBeNull();
+    await page.getByTestId('trash-link').click();
+    await expect(page.getByRole('heading', { name: 'Trash' })).toBeVisible();
+    await expect(alpha).toContainText('30 days left');
+    await alpha.getByLabel(`Select ${names[0]}`).check();
+    await page.getByTestId('bulk-bar').getByRole('button', { name: 'Restore' }).click();
+    await expect(page.getByTestId('bulk-bar').getByRole('status')).toContainText('Restored 1 browser.');
+    const restored = await prisma.browserProfile.findUniqueOrThrow({
+      where: { id: ids[0] },
+      include: { group: true },
+    });
+    expect(restored.deletedAt).toBeNull();
+    expect(restored.group?.name).toBe(groupName); // back as it was
+  } finally {
+    // AuditEvent is append-only, so the rows cannot be deleted: move them out of the seeded workspace.
+    const scratch = await prisma.workspace.create({
+      data: { name: 'Test', slug: `t00-ws-e2e-list-${s}` },
+    });
+    for (const id of ids)
+      await prisma.browserProfile.update({
+        where: { id },
+        data: { workspaceId: scratch.id, createdByMemberId: null, groupId: null, tags: { set: [] } },
+      });
+    await prisma.browserGroup.deleteMany({ where: { name: groupName } });
+  }
+});
+
+test('a viewer can search the list but has no checkboxes to tick and no bulk bar', async ({ browser }) => {
+  const ctx = await browser.newContext({ storageState: RHEA });
+  const page = await ctx.newPage();
+  await page.goto('/browsers');
+  await expect(page.getByTestId('list-toolbar')).toBeVisible();
+  await expect(page.getByTestId('bulk-bar')).toHaveCount(0);
+  await expect(page.getByTestId('profile-table').locator('tbody input[name="ids"]:enabled')).toHaveCount(0);
+  await ctx.close();
+});

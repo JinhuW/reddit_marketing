@@ -375,8 +375,8 @@ describe('proxy credentials after an agent restart', () => {
 });
 
 describe('profile.remove dispatch (plan 0004)', () => {
-  const purge: BrowserJob = { kind: 'profile.remove', workspaceId: 'w1', profileId: 'p1', then: 'purge' };
-  const reset: BrowserJob = { kind: 'profile.remove', workspaceId: 'w1', profileId: 'p1', then: 'reset' };
+  const purge: BrowserJob = { kind: 'profile.remove', workspaceId: 'w1', profileId: 'p1', after: 'purge' };
+  const reset: BrowserJob = { kind: 'profile.remove', workspaceId: 'w1', profileId: 'p1', after: 'reset' };
   const withProfile = (trashed: boolean) => ({
     getProfile: vi.fn(async () => ({ ...profile(null), trashed })),
   });
@@ -388,7 +388,7 @@ describe('profile.remove dispatch (plan 0004)', () => {
     expect(t.deps.getProfile).toHaveBeenCalledWith('w1', 'p1', { includeTrashed: true });
     expect(t.hub.sent.map((s) => s.cmd)).toEqual([{ kind: 'profile.remove', profileId: 'p1' }]);
     expect(t.outcomeDeps.purgeProfile).toHaveBeenCalledWith('w1', 'p1');
-    expect(out).toEqual({ outcome: 'ok', kind: 'profile.remove', data: { then: 'purge' } });
+    expect(out).toEqual({ outcome: 'ok', kind: 'profile.remove', data: { after: 'purge' } });
   });
 
   it('never purges a live browser, and never resets a trashed one', async () => {

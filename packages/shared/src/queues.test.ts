@@ -4,6 +4,7 @@ import { type BrowserJob, BrowserJobSchema, browserJobId, browserQueue } from '.
 const jobs: BrowserJob[] = [
   { kind: 'profile.start', workspaceId: 'ws', profileId: 'prof', reason: 'takeover' },
   { kind: 'profile.stop', workspaceId: 'ws', profileId: 'prof', reason: 'idle' },
+  { kind: 'profile.remove', workspaceId: 'ws', profileId: 'prof', after: 'purge' },
   { kind: 'action.submitComment', workspaceId: 'ws', profileId: 'prof', draftId: 'draft' },
   { kind: 'action.sendDm', workspaceId: 'ws', profileId: 'prof', draftId: 'draft' },
   { kind: 'profile.testProxy', workspaceId: 'ws', profileId: 'prof' },

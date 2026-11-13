@@ -1,6 +1,10 @@
 import { AutoRefresh } from '@/components/browsers/AutoRefresh';
+import { BulkBar } from '@/components/browsers/BulkBar';
+import { GroupsTagsPanel } from '@/components/browsers/GroupsTagsPanel';
+import { ListToolbar } from '@/components/browsers/ListToolbar';
 import { ProfileEditor } from '@/components/browsers/ProfileEditor';
 import { Dot, ProfileTable } from '@/components/browsers/ProfileTable';
+import { listHref, parseListParams } from '@/components/browsers/list-params';
 import { type NodeInfo, nodeOptions, profileView, savedProxyLabel } from '@/components/browsers/view';
 import { PageHeader } from '@/components/ui/page-header';
 import { requireMember } from '@/lib/session';
@@ -21,23 +25,46 @@ function Kpi({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-export default async function BrowsersPage({ searchParams }: { searchParams: Promise<{ id?: string }> }) {
+export default async function BrowsersPage({
+  searchParams,
+}: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const me = await requireMember();
   const sp = await searchParams;
-  const [rows, online, proxies] = await Promise.all([
+  const params = parseListParams(sp);
+  // `all` feeds the KPI tiles (every live browser); `found` is the filtered, sorted page the table shows.
+  const [all, found, online, proxies, groups, tags, trash] = await Promise.all([
     browsers.listProfiles(me.workspaceId),
+    browsers.searchProfiles(me.workspaceId, {
+      q: params.q,
+      groupId: params.group,
+      tagId: params.tag,
+      status: params.status,
+      sort: params.sort,
+      dir: params.dir,
+      page: params.page,
+      trashed: params.trash,
+    }),
     nodes.listOnline(me.workspaceId),
     browsers.listProxies(me.workspaceId),
+    browsers.listGroups(me.workspaceId),
+    browsers.listTags(me.workspaceId),
+    browsers.searchProfiles(me.workspaceId, { trashed: true, pageSize: 1 }),
   ]);
-  const nodeIds = [...new Set(rows.map((r) => r.nodeId).filter((v): v is string => Boolean(v)))];
+  const nodeIds = [
+    ...new Set([...all, ...found.rows].map((r) => r.nodeId).filter((v): v is string => Boolean(v))),
+  ];
   const nodeById = new Map<string, NodeInfo>();
   for (const n of await Promise.all(nodeIds.map((id) => nodes.getById(id))))
     if (n && n.workspaceId === me.workspaceId) nodeById.set(n.id, n);
   const now = new Date();
-  const profiles = rows.map((r) => profileView(r, now, r.nodeId ? (nodeById.get(r.nodeId) ?? null) : null));
-  // The editor drawer opens only when a browser is picked (?id=); otherwise the table takes the full width.
-  const sel = profiles.find((p) => p.id === sp.id) ?? null;
-  const selRow = rows.find((r) => r.id === sel?.id);
+  const view = (r: (typeof all)[number]) =>
+    profileView(r, now, r.nodeId ? (nodeById.get(r.nodeId) ?? null) : null);
+  const profiles = all.map(view);
+  const shown = found.rows.map(view);
+  const controllable = new Set(found.rows.filter((r) => browsers.canControlProfile(me, r)).map((r) => r.id));
+  // The editor drawer opens only when a live browser is picked (?id=); otherwise the table takes the full width.
+  const selRow = params.trash ? undefined : all.find((r) => r.id === params.id);
+  const sel = selRow ? view(selRow) : null;
   const isAdmin = me.role === 'admin';
   const savedProxies = proxies.map((x) => ({ id: x.id, label: savedProxyLabel(x) }));
   const running = profiles.filter((p) => p.status.key === 'running');
@@ -61,6 +88,38 @@ export default async function BrowsersPage({ searchParams }: { searchParams: Pro
               : `u/${a.username} · ${a.owner.user.name ?? a.owner.user.email}`,
           }))
       : [];
+  const table = (
+    <ProfileTable
+      profiles={shown}
+      selectedId={sel?.id ?? null}
+      params={params}
+      paging={found}
+      controllable={controllable}
+      toolbar={
+        <ListToolbar
+          params={params}
+          groups={groups}
+          tags={tags}
+          total={found.total}
+          trashCount={trash.total}
+        />
+      }
+      bulk={
+        // Kept while the list is empty too, so the result of the last action ("Restored 1 browser") stays up.
+        controllable.size || canCreate ? (
+          <BulkBar
+            // The live list and the trash are different bars: never carry a result message across.
+            key={params.trash ? 'trash' : 'live'}
+            trash={params.trash}
+            canClone={canCreate}
+            groups={groups.map((g) => ({ id: g.id, label: g.name }))}
+            tags={tags.map((t) => ({ id: t.id, label: t.name }))}
+            proxies={savedProxies}
+          />
+        ) : null
+      }
+    />
+  );
 
   return (
     <>
@@ -112,13 +171,25 @@ export default async function BrowsersPage({ searchParams }: { searchParams: Pro
         </Kpi>
       </div>
       <AutoRefresh />
-      {profiles.length === 0 ? (
+      {one(sp.trashed) === '1' ? (
+        <output className="m-0 block rounded-[9px] bg-ok-soft px-3 py-2 text-[12.5px] text-ok">
+          Browser moved to the trash. <Link href="/browsers?view=trash">Open the trash</Link> to restore it.
+        </output>
+      ) : null}
+      {params.manage ? <GroupsTagsPanel groups={groups} tags={tags} canEdit={canCreate} /> : null}
+      {profiles.length === 0 && !params.trash ? (
         <div className="panel muted p-6 text-[13px]">
           No browser profiles yet. Create one with New browser, or connect a Reddit account.
+          {trash.total ? (
+            <>
+              {' '}
+              <Link href="/browsers?view=trash">Trash ({trash.total})</Link>
+            </>
+          ) : null}
         </div>
       ) : sel && selRow ? (
         <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.55fr)_420px]">
-          <ProfileTable profiles={profiles} selectedId={sel.id} />
+          {table}
           <ProfileEditor
             key={sel.id}
             p={sel}
@@ -128,11 +199,16 @@ export default async function BrowsersPage({ searchParams }: { searchParams: Pro
             savedProxies={savedProxies}
             currentProxyId={selRow.proxyId}
             assignable={assignable}
+            groups={groups}
+            tags={tags}
+            closeHref={listHref(params, { id: '' })}
           />
         </div>
       ) : (
-        <ProfileTable profiles={profiles} selectedId={null} />
+        table
       )}
     </>
   );
 }
+
+const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);

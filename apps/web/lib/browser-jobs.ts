@@ -131,6 +131,40 @@ export async function enqueueProfileJob(
   return { queued: true, jobId, node: node.name };
 }
 
+/**
+ * Queues `profile.remove` (plan 0004): the node deletes the browser's container and volume, and the gateway then
+ * purges a trashed browser (`purge`) or gives a live one a new fingerprint (`reset`). Returns
+ * `{ queued: false, node: false }` when the browser has no node, i.e. there is no volume to delete and the
+ * caller can finish in the database itself. Callers check permissions first.
+ */
+export async function enqueueRemoveJob(
+  workspaceId: string,
+  profileId: string,
+  after: 'purge' | 'reset',
+  deps: Pick<BrowserJobDeps, 'queue' | 'now'> = defaultDeps,
+): Promise<EnqueueResult | { queued: false; node: false; reason: string }> {
+  const p =
+    after === 'purge'
+      ? await browsers.trashedProfileNode(workspaceId, profileId)
+      : await browsers
+          .getProfile(workspaceId, profileId)
+          .then(async (r) => (r ? { node: r.nodeId ? await nodes.getById(r.nodeId) : null } : null));
+  if (!p) return { queued: false, reason: 'Browser not found.' };
+  if (!p.node) return { queued: false, node: false, reason: 'No node holds data for this browser.' };
+  const problem = nodeProblem(p.node);
+  if (problem) return { queued: false, reason: problem };
+  const job: BrowserJob = { kind: 'profile.remove', workspaceId, profileId, after };
+  const jobId = browserJobId(job, deps.now().toString(36));
+  try {
+    await withTimeout(
+      deps.queue(p.node.name).add(p.node.name, job, { ...BROWSER_JOB_OPTIONS, attempts: 3, jobId }),
+    );
+  } catch {
+    return { queued: false, reason: 'Could not reach the job queue. Try again in a minute.' };
+  }
+  return { queued: true, jobId, node: p.node.name };
+}
+
 /** BullMQ waits forever for a missing Redis (`maxRetriesPerRequest: null`); a page action must not. */
 export const QUEUE_TIMEOUT_MS = 5_000;
 function withTimeout<T>(p: Promise<T>, ms = QUEUE_TIMEOUT_MS): Promise<T> {

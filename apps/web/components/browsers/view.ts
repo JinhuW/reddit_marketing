@@ -4,6 +4,8 @@ import { type PauseReason, ago } from '@threadline/shared';
 import type { WhoamiStatus } from '../../lib/browser-jobs';
 
 type Row = browsers.ProfileRow;
+/** Same as browsers.TRASH_DAYS; repeated so this client-safe module imports no database code. */
+export const TRASH_DAYS = 30;
 
 export const STATUS = {
   running: { label: 'Running', chip: 'chip-ok', dot: 'var(--ok)' },
@@ -147,6 +149,21 @@ export function profileView(p: Row, now = new Date(), node: NodeInfo | null = nu
   return {
     id: p.id,
     name: p.name,
+    /** list number, shown as "#12" */
+    serial: p.serial ?? 0,
+    group: p.group ? { id: p.group.id, name: p.group.name } : null,
+    tags: (p.tags ?? []).map((t) => ({ id: t.id, name: t.name, color: t.color })),
+    notes: p.notes ?? '',
+    /** set for a browser in the trash: when it went there and how long it can still be restored */
+    trash: p.deletedAt
+      ? {
+          ago: `${ago(p.deletedAt, now)} ago`,
+          daysLeft: Math.max(
+            0,
+            Math.ceil((p.deletedAt.getTime() + TRASH_DAYS * 86_400_000 - now.getTime()) / 86_400_000),
+          ),
+        }
+      : null,
     node: nodeView(node),
     paused,
     /** false for a browser-mode account nobody has signed in to yet */

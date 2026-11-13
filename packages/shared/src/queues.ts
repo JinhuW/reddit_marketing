@@ -66,7 +66,7 @@ export type BrowserJob =
    * Plan 0004: deletes the profile's container and volume on its node. `purge` then deletes the BrowserProfile
    * row (a trashed browser removed for good); `reset` keeps the row and gives it a new fingerprint seed.
    */
-  | { kind: 'profile.remove'; workspaceId: string; profileId: string; then: 'purge' | 'reset' }
+  | { kind: 'profile.remove'; workspaceId: string; profileId: string; after: 'purge' | 'reset' }
   | { kind: 'health.check'; workspaceId: string };
 export type BrowserJobKind = BrowserJob['kind'];
 
@@ -105,7 +105,7 @@ export const BrowserJobSchema: z.ZodType<BrowserJob> = z.union([
       kind: z.literal('profile.remove'),
       workspaceId: id,
       profileId: id,
-      then: z.enum(['purge', 'reset']),
+      after: z.enum(['purge', 'reset']),
     })
     .strict(),
   z.object({ kind: z.literal('health.check'), workspaceId: id }).strict(),

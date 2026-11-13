@@ -23,6 +23,8 @@ AdsPower's core is six things. Threadline had the third and a thin slice of the 
 | Status column | Follows the node: heartbeats list the running profiles; start/stop results update it at once. | It was only ever written by the seed. |
 | Connection test | Runs in the profile's own browser (`profile.testProxy`); the agent also times the request, looks up where the exit IP is and checks reddit.com through the proxy. | "Test now" was a stub. The place feeds "match proxy IP" in phase 2. |
 | Trash | Soft delete, 30 days, account stays bound, dispatch refuses a trashed profile. Purge removes the container and volume on the node. | Restore brings everything back; nothing can post from a deleted browser. |
+| Purged browser | The row stays as a tombstone (`purgedAt`), stripped of account, proxy, node, cookies, notes and tags. | Audit rows point at its sessions and `AuditEvent` is append-only, so the row cannot be deleted. |
+| Browser count | No plan limit on browsers (the plan limits accounts); one bulk action or clone run touches at most 100. | A browser without an account posts nothing. |
 | Seed / persona / GPU after first launch | Changeable only together with "reset browser data". | The volume locks them (`checkFingerprintLock`): a device that changes hardware under the same cookies is a tell. |
 | WebRTC "real" | Never offered while a proxy is set. | It would show the node's home IP. |
 | Proxy change-IP URL, pool checks | Called from the node agent, never from the web app. | The URL is user input: no server-side request from Railway. |
@@ -40,13 +42,15 @@ BrowserSession transition writes an AuditEvent; secrets never in logs, job paylo
 - [x] `session.log` is a declared `AuditAction`.
 
 ### Phase 1 · Profile list
-- [ ] Schema: `BrowserGroup`, `BrowserTag`, and on `BrowserProfile` `groupId`, `notes`, `serial`, `startUrls`,
-      `deletedAt`, `deletedByMemberId`.
-- [ ] Repo: filtered / sorted / paged `listProfiles`; groups and tags; `updateProfileMeta`; `cloneProfile`;
-      `trashProfiles` / `restoreProfiles` / `purgeProfile`; bulk variants with a per-row permission check.
-- [ ] Node command `profile.remove`; daily purge job.
-- [ ] UI: search, group / tag / status filters, sortable headers, paging, column chooser, checkboxes and a bulk
-      bar (start, stop, move, tag, set proxy, clone, delete), Trash view, quick edit, Delete in the drawer.
+- [x] Schema: `BrowserGroup`, `BrowserTag`, and on `BrowserProfile` `groupId`, `notes`, `serial`, `deletedAt`,
+      `deletedByMemberId`, `purgedAt`.
+- [x] Repo (`packages/db/src/repos/browser-manage.ts`): `searchProfiles` (filter, sort, page); groups and tags;
+      `updateProfileMeta`; `cloneProfile`; `trashProfile` / `restoreProfile` / `purgeProfile`;
+      `resetProfileData`. The bulk action checks permission per browser (`lib/actions/browser-list.ts`).
+- [x] Node command `profile.remove` (job field `after`: `purge` or `reset`); `trash.purge` job every 6 hours.
+- [x] UI: search, group / tag / status filters, sortable headers, paging, column chooser, checkboxes and a bulk
+      bar (start, stop, move, tag, set proxy, clone, delete), Trash view with restore and delete for good,
+      notes edited in the row, per-row Start / Stop, group / tags / notes and Delete in the drawer.
 
 ### Phase 2 · Editable fingerprint
 - [ ] Spike: which fingerprint flags the pinned CloakBrowser build accepts.
@@ -62,7 +66,7 @@ BrowserSession transition writes an AuditEvent; secrets never in logs, job paylo
 - [ ] Cookie export (`profile.exportCookies`), Netscape and `name=value` import.
 - [ ] `profile.clearData`; "Clear session" in the drawer and the bulk bar.
 - [ ] Up to 10 start tabs.
-- [ ] Quick create N; CSV import / export of profiles (no secrets in an export).
+- [ ] Quick create N; CSV import / export of profiles (no secrets in an export); at most 100 per run.
 
 ## Rollout
 

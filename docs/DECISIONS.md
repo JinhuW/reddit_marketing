@@ -278,3 +278,11 @@ Color Emoji), because the image ships Windows-metric fonts and `CloakGpu` has no
   worker image stays free of a database to refresh. A lookup that fails only leaves the place out.
 - A test where the page and the agent leave through different addresses is stored as failed (`ip_mismatch`).
 - "Reddit reachable" no longer shows a status code (the artboard's "Yes · 200"): the check is "answered below 500".
+- Browsers list additions the artboard does not show (plan 0004 phase 1): the toolbar (search, group / tag /
+  status filters, Groups and tags, Trash), the bulk bar, the checkbox, #, Group, Tags and Notes columns, sortable
+  headers, the Columns menu, per-row Start / Stop, paging, and "Group, tags and notes" in the drawer. "Delete
+  profile" in the drawer footer is the artboard's; it moves the browser to the trash instead of deleting it.
+- The list keeps its state in the URL (`q`, `group`, `tag`, `status`, `sort`, `dir`, `page`, `view=trash`), so the
+  10 s refresh and a shared link show the same view. Hidden columns are a per-browser preference (localStorage).
+- A purge never deletes the `BrowserProfile` row: `AuditEvent` is append-only and references the profile's
+  sessions. The row becomes a tombstone (`purgedAt`) no query returns.

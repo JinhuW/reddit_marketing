@@ -7,6 +7,7 @@ import { useActionState, useState } from 'react';
 import { AccountSection, type AssignableAccount } from './AccountSection';
 import { BrowserControls } from './BrowserControls';
 import { BrowserSettings } from './BrowserSettings';
+import { DeleteProfile, ProfileDetails } from './ProfileDetails';
 import type { ActionState } from './action-state';
 import type { ProfileView } from './view';
 
@@ -49,6 +50,9 @@ export function ProfileEditor({
   savedProxies = [],
   currentProxyId = null,
   assignable = [],
+  groups = [],
+  tags = [],
+  closeHref = '/browsers',
 }: {
   p: ProfileView;
   canEdit: boolean;
@@ -59,6 +63,11 @@ export function ProfileEditor({
   currentProxyId?: string | null;
   /** accounts this member may put into this browser (only used when it has none) */
   assignable?: AssignableAccount[];
+  /** plan 0004: the workspace's groups and tags, for the details section */
+  groups?: { id: string; name: string }[];
+  tags?: { id: string; name: string; color: string }[];
+  /** the list as it was before the drawer opened (filters, sort, page) */
+  closeHref?: string;
 }) {
   const [save, saveAction, saving] = useActionState<ActionState | null, FormData>(saveProxyAction, null);
   const [test, testAction, testing] = useActionState<ActionState | null, FormData>(runProxyTestAction, null);
@@ -99,13 +108,14 @@ export function ProfileEditor({
             {saving ? 'Saving…' : 'Save'}
           </button>
         ) : null}
-        <Link href="/browsers" className="btn btn-ghost !h-7 !px-2" aria-label="Close" title="Close">
+        <Link href={closeHref} className="btn btn-ghost !h-7 !px-2" aria-label="Close" title="Close">
           <Icon name="x" size={14} />
         </Link>
       </div>
       <BrowserControls p={p} canEdit={canEdit} isAdmin={isAdmin} nodeOptions={nodeOptions} />
       <AccountSection p={p} canEdit={canEdit} assignable={assignable} />
       <BrowserSettings p={p} canEdit={canEdit} />
+      <ProfileDetails p={p} canEdit={canEdit} groups={groups} tags={tags} />
       <form id={useFormId} action={attachAction} className="hidden">
         <input type="hidden" name="profileId" value={p.id} />
       </form>
@@ -415,11 +425,15 @@ export function ProfileEditor({
           </div>
         </div>
 
-        <div className="flex gap-2 border-t border-line-soft pt-3.5">
+        <div className="flex items-start gap-2 border-t border-line-soft pt-3.5">
           {canEdit ? (
-            <Link href={`/browsers/${p.id}/session`} className="btn">
-              Take over browser
-            </Link>
+            <>
+              <Link href={`/browsers/${p.id}/session`} className="btn">
+                Take over browser
+              </Link>
+              <div className="flex-1" />
+              <DeleteProfile p={p} />
+            </>
           ) : (
             <span className="muted text-xs">
               Only an admin or {p.accountInfo ? 'the account owner' : 'the browser’s creator'} can take over.

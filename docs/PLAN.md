@@ -243,6 +243,7 @@ serious issues, and a full restore from backup takes under 15 minutes.
 | lead.sync | on lead create/stage change | 2 | lead:&lt;id&gt;:&lt;rev&gt; | 5 |
 | context.embed | on ContextItem create/update | 2 | item:&lt;id&gt;:&lt;hash&gt; | 2 |
 | browser.health | every 2 min | 1 | profile:&lt;id&gt;:&lt;window&gt; | 0 |
+| trash.purge | every 6 h | 1 | bj-profile.remove-&lt;profileId&gt;-&lt;day&gt; | 0 |
 | session.idle | every minute | 1 | session:&lt;id&gt; | 0 |
 | report.weekly | Monday 08:00 workspace time | 1 | ws:&lt;id&gt;:&lt;week&gt; | 2 |
 

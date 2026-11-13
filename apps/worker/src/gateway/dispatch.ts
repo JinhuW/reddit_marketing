@@ -536,9 +536,9 @@ export class Dispatcher {
       }
       case 'profile.remove': {
         // The volume is the browser's whole identity. Purge only what is in the trash; reset only what is not.
-        if (job.then === 'purge' && !profile.trashed)
+        if (job.after === 'purge' && !profile.trashed)
           throw new DispatchRefused('browser is not in the trash; not removed');
-        if (job.then === 'reset' && profile.trashed) throw new DispatchRefused('browser is in the trash');
+        if (job.after === 'reset' && profile.trashed) throw new DispatchRefused('browser is in the trash');
         const result = await this.send(
           node.name,
           { kind: 'profile.remove', profileId: profile.id },

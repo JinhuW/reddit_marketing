@@ -40,7 +40,7 @@ export async function browserPurge(_job?: Job, deps: BrowserPurgeDeps = {}) {
       kind: 'profile.remove',
       workspaceId: p.workspaceId,
       profileId: p.id,
-      then: 'purge',
+      after: 'purge',
     };
     // One try per day: a node that keeps refusing is retried tomorrow under a new id.
     if (await browser.add(p.node.name, job, browserJobId(job, day), { attempts: 3, keepSec: 2 * 24 * 3600 }))

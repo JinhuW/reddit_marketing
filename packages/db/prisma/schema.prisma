@@ -448,7 +448,7 @@ model BrowserTag {
   id          String   @id @default(cuid())
   workspaceId String
   name        String
-  /// token name from packages/ui-tokens chips: "gray" | "blue" | "green" | "amber" | "red" | "violet"
+  /// BrowserTagColor (packages/shared/src/enums.ts): "gray" | "green" | "amber" | "red" | "accent"
   color       String   @default("gray")
   createdAt   DateTime @default(now())
 

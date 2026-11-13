@@ -74,7 +74,7 @@ describe('trash.purge', () => {
       expect(await purgedAt(fresh)).toBeNull();
       const jobsOn = (node: string) => [...q.jobs.values()].filter((e) => e.node === node).map((e) => e.job);
       expect(jobsOn(online.name)).toEqual([
-        { kind: 'profile.remove', workspaceId: ws.id, profileId: onNode, then: 'purge' },
+        { kind: 'profile.remove', workspaceId: ws.id, profileId: onNode, after: 'purge' },
       ]);
       expect(jobsOn(offline.name)).toEqual([]);
 
