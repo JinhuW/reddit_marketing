@@ -21,7 +21,8 @@ case "${1:-}" in
   image)
     [ "$2" == inspect ] || exit 0
     has_image "$(last "$@")" || exit 1
-    echo '[{}]'
+    # `--format` is only used to read the supervisor label the last build of this image set.
+    if [ "$3" == --format ]; then cat "$state/label" 2>/dev/null || true; else echo '[{}]'; fi
     ;;
   pull) add_image "$(last "$@")" ;;
   tag) add_image "$3" ;;
@@ -29,6 +30,7 @@ case "${1:-}" in
     shift
     while [ "$#" -gt 0 ]; do
       [ "$1" == -t ] && add_image "$2"
+      if [ "$1" == --label ]; then printf '%s\n' "${2#*=}" >"$state/label"; fi
       shift
     done
     if [ -n "${CLOAKBROWSER_LICENSE_KEY:-}" ]; then echo build-secret-env >>"$state/calls"; fi

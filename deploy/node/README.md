@@ -92,8 +92,9 @@ enable it on one node only.
 ## Update
 
 From the checkout: `git pull && deploy/node/install.sh` (no sudo needed once `--owner` was used and the user is in
-the `docker` group), or run the **Deploy node** workflow. The browser image is rebuilt only when `CLOAK_VERSION`
-changes or with `--rebuild-browser`: a new CloakBrowser build changes every profile's user agent, so roll it like a
+the `docker` group), or run the **Deploy node** workflow. The browser image is rebuilt when `CLOAK_VERSION`
+changes, when the supervisor sources in `apps/browser-profile` changed (their hash is a label on the image), or
+with `--rebuild-browser`: a new CloakBrowser build changes every profile's user agent, so roll it like a
 release, one profile first (ADR-0001). Registry images instead of local builds: `--agent-image` / `--browser-image`
 (or `AGENT_IMAGE` / `BROWSER_IMAGE` in node.env), pinned by the digest `images.yml` prints, after `docker login ghcr.io`.
 

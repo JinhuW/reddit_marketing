@@ -186,6 +186,12 @@ else
   docker tag "$agent_image" "$TL_LOCAL_REGISTRY/node-agent:local"
 fi
 
+SUPERVISOR_LABEL='dev.threadline.supervisor'
+# sha256 of stdin, with whichever tool the host has.
+hash256() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1; else shasum -a 256 | cut -d' ' -f1; fi
+}
+
 browser_image="$(pick "$opt_browser_image" BROWSER_IMAGE)"
 if [ -n "$browser_image" ] && [ "$engine" == cloak ]; then
   ensure_registry_image "$browser_image"
@@ -196,10 +202,26 @@ else
     valid_cloak_version "$cloak_version" || die "CLOAK_VERSION may only contain letters, digits, dot, dash and underscore"
   fi
   browser_image="$(browser_image_tag "$engine" "$cloak_version")"
+  # The image also holds the supervisor (how the browser is launched). Its sources are hashed into a label, so a
+  # change to them rebuilds the image even though the CloakBrowser build, and so the tag, stayed the same. The
+  # browser binary layer comes from the build cache; running profiles keep their image until they restart.
+  supervisor_hash="$(
+    cd "$repo/apps/browser-profile" &&
+      find Dockerfile supervisor.mjs lib -type f -print0 | LC_ALL=C sort -z | xargs -0 cat | hash256
+  )"
+  built_hash=''
+  if docker image inspect "$browser_image" >/dev/null 2>&1; then
+    built_hash="$(docker image inspect --format "{{ index .Config.Labels \"$SUPERVISOR_LABEL\" }}" "$browser_image" 2>/dev/null || true)"
+    if [ "$built_hash" != "$supervisor_hash" ] && [ "$rebuild_browser" -eq 0 ]; then
+      log "browser image $browser_image was built from other supervisor sources; rebuilding"
+      rebuild_browser=1
+    fi
+  fi
   if docker image inspect "$browser_image" >/dev/null 2>&1 && [ "$rebuild_browser" -eq 0 ]; then
     log "browser image $browser_image exists (pass --rebuild-browser to rebuild)"
   else
     build_args=(--platform linux/amd64 --build-arg "ENGINE=$engine" -t "$browser_image")
+    build_args+=(--label "$SUPERVISOR_LABEL=$supervisor_hash")
     if [ "$engine" == cloak ]; then
       archive="$(pick "$opt_cloak_archive" CLOAK_ARCHIVE)"
       vendored="$repo/apps/browser-profile/vendor/cloakbrowser-$cloak_version-linux-x64.tar.gz"

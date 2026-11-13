@@ -400,6 +400,16 @@ describe('install.sh with a fake docker', { skip: noBash }, () => {
     assert.doesNotMatch(calls(), /^network create/m);
     assert.doesNotMatch(calls(), /^build /m);
     assert.match(r2.stdout, /exists \(pass --rebuild-browser to rebuild\)/);
+
+    // Third run: the image was built from other supervisor sources (how the browser is launched changed), so it
+    // is rebuilt although the CloakBrowser version, and so the tag, is the same.
+    writeFileSync(join(state, 'label'), 'an-older-hash\n');
+    writeFileSync(join(state, 'calls'), '');
+    const r3 = install();
+    assert.equal(r3.status, 0, r3.stderr);
+    assert.match(r3.stdout, /built from other supervisor sources; rebuilding/);
+    assert.match(calls(), /^build .*--label dev\.threadline\.supervisor=[0-9a-f]{64}/m);
+    assert.notEqual(readFileSync(join(state, 'label'), 'utf8').trim(), 'an-older-hash');
   });
 
   test('--instance namespaces the agent so a second node can share the host', async () => {
