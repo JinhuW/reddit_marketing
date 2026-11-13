@@ -523,6 +523,7 @@ test('quick create, more start tabs, cookies.txt import, CSV export and import (
   try {
     // Three numbered browsers from one form.
     await page.goto('/browsers/new');
+    await page.waitForLoadState('networkidle'); // the forms are controlled: type only once interactive
     const form = page.getByTestId('new-browser-form');
     await form.getByLabel('How many').fill('3');
     await form.getByRole('button', { name: 'Create 3 browsers' }).click();
@@ -553,7 +554,14 @@ test('quick create, more start tabs, cookies.txt import, CSV export and import (
     await expect(settings.getByLabel('More start tabs')).toHaveValue(
       'https://mail.example.com/\nhttps://www.reddit.com/message/inbox',
     );
-    await settings.getByLabel('More start tabs').fill('https://shop.example.com/');
+    // The field is controlled: typing before the page is interactive gets the saved text put back around it.
+    await expect(async () => {
+      await settings.getByLabel('More start tabs').fill('https://shop.example.com/');
+      await page.waitForTimeout(300);
+      await expect(settings.getByLabel('More start tabs')).toHaveValue('https://shop.example.com/', {
+        timeout: 500,
+      });
+    }).toPass();
     await settings
       .getByLabel('Cookie', { exact: true })
       .fill(
@@ -585,6 +593,7 @@ test('quick create, more start tabs, cookies.txt import, CSV export and import (
 
     // Import two rows; the missing group and tag are created.
     await page.goto('/browsers/new');
+    await page.waitForLoadState('networkidle'); // the forms are controlled: type only once interactive
     const imp = page.getByTestId('import-browsers');
     await imp.getByLabel('CSV text').fill(`name,group,tags\n${base} imported\n,${groupName},x`);
     await imp.getByRole('button', { name: 'Import browsers' }).click();
