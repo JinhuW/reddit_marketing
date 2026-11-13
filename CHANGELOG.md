@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/JinhuW/reddit_marketing/compare/v0.7.0...v0.8.0) (2026-11-13)
+
+
+### Features
+
+* **browsers:** editable fingerprint settings and a new-fingerprint action ([e106d7a](https://github.com/JinhuW/reddit_marketing/commit/e106d7ae56b36e2a1b312fadee41bd058364ae8b))
+
 ## [0.7.0](https://github.com/JinhuW/reddit_marketing/compare/v0.6.3...v0.7.0) (2026-11-13)
 
 
