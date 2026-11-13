@@ -153,7 +153,10 @@ describe.skipIf(!available)('profile.testProxy through a credentialed proxy', { 
 
       const from = http.hits.length;
       const ok = await make(PASS)['profile.testProxy']!(cmd, ctx());
-      expect(ok).toEqual({ outcome: 'ok', data: { pageIp: '198.51.100.99', agentIp: '198.51.100.99' } });
+      expect(ok).toEqual({
+        outcome: 'ok',
+        data: { pageIp: '198.51.100.99', agentIp: '198.51.100.99', latencyMs: expect.any(Number) },
+      });
       const hits = http.hits.slice(from);
       // Chromium first hits the proxy without credentials (407), then retries with the ones CDP supplied.
       expect(hits.some((h) => !h.authorized && /Chrome/.test(h.userAgent ?? ''))).toBe(true);

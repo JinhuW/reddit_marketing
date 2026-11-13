@@ -38,9 +38,14 @@ function deps(
     notifyNeedsHuman: unused,
     completeIdentity: vi.fn(complete),
     markCookiesImported: vi.fn(async () => undefined),
+    setStatus: vi.fn(async () => undefined),
+    recordProxyTest: vi.fn(async () => undefined),
+    now: () => new Date('2026-11-12T10:00:00Z'),
   } as unknown as OutcomeDeps & {
     completeIdentity: ReturnType<typeof vi.fn>;
     markCookiesImported: ReturnType<typeof vi.fn>;
+    setStatus: ReturnType<typeof vi.fn>;
+    recordProxyTest: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -251,5 +256,74 @@ describe('profile.signIn outcome (plan 0003)', () => {
       l,
     ).catch((e) => e);
     expect((err as Error).name).toBe('RetryableOutcomeError');
+  });
+});
+
+describe('profile status and connection test outcomes (plan 0004, phase 0)', () => {
+  const jobCtx = (job: OutcomeContext['job']): OutcomeContext => ({ ...ctx(), job, cmdId: 'c1' });
+
+  it('profile.start ok marks the profile running; profile.stop ok marks it idle', async () => {
+    const d = deps();
+    d.writeAudit = vi.fn(async () => undefined);
+    const start = jobCtx({ kind: 'profile.start', workspaceId: 'w1', profileId: 'p1', reason: 'takeover' });
+    await applyOutcome(start, { outcome: 'ok' } as never, d, capture().l);
+    expect(d.setStatus).toHaveBeenLastCalledWith('w1', 'p1', 'running');
+    const stop = jobCtx({ kind: 'profile.stop', workspaceId: 'w1', profileId: 'p1', reason: 'manual' });
+    await applyOutcome(stop, { outcome: 'ok' } as never, d, capture().l);
+    expect(d.setStatus).toHaveBeenLastCalledWith('w1', 'p1', 'idle');
+  });
+
+  const test = jobCtx({ kind: 'profile.testProxy', workspaceId: 'w1', profileId: 'p1' });
+
+  it('stores exit IP, latency, place and Reddit reachability', async () => {
+    const d = deps();
+    const data = {
+      pageIp: '203.0.113.9',
+      agentIp: '203.0.113.9',
+      latencyMs: 142,
+      redditOk: true,
+      geo: { city: 'Boston', country: 'US', timeZone: 'America/New_York', lat: 42.36, lon: -71.06 },
+    };
+    const out = await applyOutcome(test, { outcome: 'ok', data } as never, d, capture().l);
+    expect(out).toEqual({ outcome: 'ok', kind: 'profile.testProxy', data: { ok: true } });
+    expect(d.recordProxyTest).toHaveBeenCalledWith('w1', 'p1', {
+      ok: true,
+      ip: '203.0.113.9',
+      latencyMs: 142,
+      redditOk: true,
+      city: 'Boston, US',
+      country: 'US',
+      timeZone: 'America/New_York',
+      lat: 42.36,
+      lon: -71.06,
+      testedAt: '2026-11-12T10:00:00.000Z',
+    });
+  });
+
+  it('a page that leaves through another address than the proxy is a failed test', async () => {
+    const d = deps();
+    const data = { pageIp: '198.51.100.1', agentIp: '203.0.113.9' };
+    await applyOutcome(test, { outcome: 'ok', data } as never, d, capture().l);
+    expect(d.recordProxyTest.mock.calls[0]?.[2]).toMatchObject({ ok: false, error: 'ip_mismatch' });
+  });
+
+  it('proxy_failed records the failure before the pause handling', async () => {
+    const d = deps();
+    d.pauseAccount = vi.fn(async () => ({ changed: true, reason: 'proxy_failed' as const })) as never;
+    const r = { outcome: 'proxy_failed', error: { code: 'proxy_auth_failed', message: 'secret text' } };
+    await applyOutcome(test, r as never, d, capture().l);
+    expect(d.recordProxyTest).toHaveBeenCalledWith('w1', 'p1', {
+      ok: false,
+      error: 'proxy_auth_failed',
+      testedAt: '2026-11-12T10:00:00.000Z',
+    });
+  });
+
+  it('an unreadable result is final and stores nothing', async () => {
+    const d = deps();
+    await expect(
+      applyOutcome(test, { outcome: 'ok', data: { pageIp: '' } } as never, d, capture().l),
+    ).rejects.toBeInstanceOf(FinalOutcomeError);
+    expect(d.recordProxyTest).not.toHaveBeenCalled();
   });
 });

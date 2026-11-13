@@ -7,7 +7,7 @@ type Tx = Prisma.TransactionClient | PrismaClient;
 export interface AuditInput {
   workspaceId: string;
   actorMemberId: string | null;
-  action: AuditAction | 'session.log';
+  action: AuditAction;
   targetType: string;
   targetId: string;
   accountId?: string | null;

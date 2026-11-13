@@ -168,6 +168,7 @@ export const AuditAction = [
   'profile.account_unassigned',
   'profile.settings_updated',
   'account.credentials_updated',
+  'session.log',
 ] as const;
 export type AuditAction = (typeof AuditAction)[number];
 

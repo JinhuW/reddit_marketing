@@ -317,7 +317,13 @@ export function ProfileEditor({
               {test.message}
             </p>
           ) : null}
-          {p.test ? (
+          {p.test?.failed ? (
+            <p role="alert" className="m-0 rounded-[9px] bg-warn-soft px-3 py-2 text-xs text-warn">
+              The last test failed ({p.test.error ?? 'unknown error'}). Check the proxy host, port and
+              sign-in.
+            </p>
+          ) : null}
+          {p.test && p.test.ip !== '—' ? (
             <Kv
               rows={[
                 [
@@ -343,13 +349,16 @@ export function ProfileEditor({
                 ],
                 [
                   'Reddit reachable',
-                  <span key="r" className={`chip ${p.test.redditOk ? 'chip-ok' : 'chip-bad'}`}>
-                    {p.test.redditOk ? 'Yes · 200' : 'No'}
+                  <span
+                    key="r"
+                    className={`chip ${p.test.redditOk == null ? '' : p.test.redditOk ? 'chip-ok' : 'chip-bad'}`}
+                  >
+                    {p.test.redditOk == null ? 'Not checked' : p.test.redditOk ? 'Yes' : 'No'}
                   </span>,
                 ],
               ]}
             />
-          ) : (
+          ) : p.test ? null : (
             <p className="muted m-0 text-xs">No test has run for this proxy yet.</p>
           )}
           {p.region.mismatch ? (

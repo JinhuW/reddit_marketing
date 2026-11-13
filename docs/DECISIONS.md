@@ -252,3 +252,15 @@ existing Browsers editor and the owner's reference (an anti-detect-browser "edit
   gateway `/healthz`. It alerts through a `prod-smoke` issue, because nobody is notified about a failed run that
   Railway's bot started. It does not roll back on its own: that would need a Railway token in GitHub, which ADR-0001
   avoids.
+
+## 2026-11-12 · Browsers page grows toward an anti-detect browser manager (plan 0004)
+
+- Scope and what is deliberately left out (RPA, Local API, synchronizer): `docs/plans/0004-browser-parity.md`.
+  The line is the approval gate: nothing that could drive a browser to post outside an approved Draft.
+- `BrowserProfile.status` now follows the node (heartbeat list, start/stop results). An offline node's profiles
+  read `idle`; `check` / `error` on a stopped profile stay until it runs again.
+- The connection test's place comes from a geo lookup the agent makes through the proxy (default
+  `https://ipinfo.io/json`), not from a GeoLite2 file on the worker: the agent is already on the proxy path and the
+  worker image stays free of a database to refresh. A lookup that fails only leaves the place out.
+- A test where the page and the agent leave through different addresses is stored as failed (`ip_mismatch`).
+- "Reddit reachable" no longer shows a status code (the artboard's "Yes · 200"): the check is "answered below 500".

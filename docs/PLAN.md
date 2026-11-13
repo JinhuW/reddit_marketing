@@ -203,7 +203,7 @@ lead to customer with revenue, and the thread shows the revenue in Analytics.
 
 ### M6 · Browser profiles, proxies and VNC
 - [ ] apps/browser-profile image; browser/manager.ts (dockerode) with per-profile volume and proxy env; health checks
-- [ ] Browsers screen: profile table, proxy editor, connection test, region-mismatch warning, fingerprint, permissions — screen done; connection test runs in the worker (M6)
+- [ ] Browsers screen: profile table, proxy editor, connection test, region-mismatch warning, fingerprint, permissions — screen done; connection test runs on the node (plan 0004 phase 0); list, fingerprint, proxy pool and data features: docs/plans/0004-browser-parity.md
 - [ ] Playwright actions openThread, submitComment, sendDm; NeedsHuman detection; post.publish browser fallback
 - [ ] Remote session screen: noVNC viewer behind the authenticated websocket proxy, take-over, session log, Hand back, idle timeout
 

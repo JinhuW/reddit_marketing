@@ -386,7 +386,10 @@ describe.skipIf(!available)('actions over CDP', { timeout: 60_000 }, () => {
   it('reads the exit IP from the page and from the agent (no proxy)', async () => {
     target.setPageIp('198.51.100.23');
     const r = await handlers['profile.testProxy']!({ kind: 'profile.testProxy', profileId: PROFILE }, ctx());
-    expect(r).toEqual({ outcome: 'ok', data: { pageIp: '198.51.100.23', agentIp: '198.51.100.23' } });
+    expect(r).toEqual({
+      outcome: 'ok',
+      data: { pageIp: '198.51.100.23', agentIp: '198.51.100.23', latencyMs: expect.any(Number) },
+    });
     target.setPageIp('203.0.113.10');
   });
 

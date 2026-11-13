@@ -131,6 +131,13 @@ export interface DispatchDeps {
   markFailed: (draftId: string, error: string) => Promise<unknown>;
   pauseAccount: typeof browsers.pauseAccount;
   resumeAccount: typeof browsers.resumeAccount;
+  /** browsers.syncNodeRunning: profile status follows what the node reports. */
+  syncRunning: (nodeId: string, runningProfileIds: string[]) => Promise<unknown>;
+  setStatus: (
+    workspaceId: string,
+    profileId: string,
+    status: 'idle' | 'running' | 'error',
+  ) => Promise<unknown>;
 }
 
 const defaultDeps: DispatchDeps = {
@@ -143,6 +150,8 @@ const defaultDeps: DispatchDeps = {
   markFailed: (id, error) => drafts.markFailed(id, error),
   pauseAccount: (i) => browsers.pauseAccount(i),
   resumeAccount: (i) => browsers.resumeAccount(i),
+  syncRunning: (nodeId, ids) => browsers.syncNodeRunning(nodeId, ids),
+  setStatus: (ws, id, status) => browsers.setStatus(ws, id, status),
 };
 
 export interface DispatcherOptions {
@@ -187,9 +196,26 @@ export class Dispatcher {
 
   private readonly onOnline = (info: NodeInfo) => this.serial(info.name, () => this.nodeOnline(info));
   private readonly onOffline = (info: OfflineInfo) => this.serial(info.name, () => this.nodeOffline(info));
-  private readonly onEvent = (e: { node: string; event: NodeEvent }) => {
-    if (e.event.kind === 'container.exited') this.started.get(e.node)?.delete(e.event.profileId);
+  private readonly onEvent = (e: { node: string; nodeId: string; event: NodeEvent }) => {
+    if (e.event.kind !== 'container.exited') return;
+    this.started.get(e.node)?.delete(e.event.profileId);
+    const live = this.hub.nodes().find((n) => n.name === e.node);
+    if (live)
+      this.syncStatus({ ...live, running: live.running.filter((r) => r.profileId !== e.event.profileId) });
   };
+  private readonly onHeartbeat = (info: NodeInfo) => this.syncStatus(info);
+
+  /**
+   * Profile status follows the node: what it reports running (plus what this gateway just started and the next
+   * heartbeat has not reported yet) is `running`; the node's other `running` profiles go back to `idle`.
+   */
+  private syncStatus(info: Pick<NodeInfo, 'name' | 'nodeId' | 'running'>): void {
+    if (!this.running) return;
+    const ids = new Set([...info.running.map((r) => r.profileId), ...(this.started.get(info.name) ?? [])]);
+    void this.deps
+      .syncRunning(info.nodeId, [...ids])
+      .catch((e) => this.log.warn({ node: info.name, err: (e as Error).message }, 'status sync failed'));
+  }
 
   constructor(opts: DispatcherOptions) {
     this.hub = opts.hub;
@@ -208,6 +234,7 @@ export class Dispatcher {
     this.hub.on('online', this.onOnline);
     this.hub.on('offline', this.onOffline);
     this.hub.on('event', this.onEvent);
+    this.hub.on('heartbeat', this.onHeartbeat);
     for (const info of this.hub.nodes()) this.onOnline(info);
     await this.idle();
   }
@@ -219,6 +246,7 @@ export class Dispatcher {
     this.hub.off('online', this.onOnline);
     this.hub.off('offline', this.onOffline);
     this.hub.off('event', this.onEvent);
+    this.hub.off('heartbeat', this.onHeartbeat);
     await this.idle();
     await Promise.all([...this.slots.values()].map((s) => s.worker.close()));
     this.slots.clear();
@@ -311,6 +339,7 @@ export class Dispatcher {
       this.log.warn({ node: info.name, jobId: job?.id, err: err.message }, 'browser job failed'),
     );
     this.slots.set(info.name, { worker, info });
+    this.syncStatus(info);
     this.log.info({ node: info.name, concurrency: info.maxProfiles }, 'dispatching browser jobs');
     // Not awaited: a slow start must not hold up this node's online/offline chain.
     void this.resyncRunning(info);
@@ -349,6 +378,11 @@ export class Dispatcher {
     const slot = this.slots.get(info.name);
     this.slots.delete(info.name);
     this.started.delete(info.name);
+    // An offline node reports nothing: its profiles read as stopped until it is back and says otherwise.
+    if (this.running && info.reason !== 'gateway_shutdown')
+      await this.deps
+        .syncRunning(info.nodeId, [])
+        .catch((e) => this.log.warn({ node: info.name, err: (e as Error).message }, 'status sync failed'));
     // In-flight sends were already rejected by the hub, so active jobs settle (and go back for retry) quickly.
     if (slot) await slot.worker.close();
     if (!this.running || info.reason === 'gateway_shutdown') return;
@@ -412,6 +446,11 @@ export class Dispatcher {
     } catch (e) {
       if (e instanceof DispatchRefused || e instanceof FinalOutcomeError) {
         this.log.warn({ node: nodeName, cmdId, kind: data.kind, why: e.message }, 'browser job refused');
+        // A start the node refused for good: show it on the Browsers screen until the profile runs again.
+        if (data.kind === 'profile.start' && e instanceof FinalOutcomeError)
+          await this.deps
+            .setStatus(data.workspaceId, data.profileId, 'error')
+            .catch((err) => this.log.warn({ err: (err as Error).message }, 'status not recorded'));
         // The prefix tells post.publish that nothing reached the node, so the draft may be queued again.
         throw new UnrecoverableError(
           e instanceof DispatchRefused ? `${DISPATCH_REFUSED_PREFIX}${e.message}` : e.message,
