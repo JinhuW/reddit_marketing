@@ -7,6 +7,7 @@ import { useActionState, useState } from 'react';
 import { AccountSection, type AssignableAccount } from './AccountSection';
 import { BrowserControls } from './BrowserControls';
 import { BrowserSettings } from './BrowserSettings';
+import { CookieTools } from './CookieTools';
 import { FingerprintSection } from './FingerprintSection';
 import { DeleteProfile, ProfileDetails } from './ProfileDetails';
 import type { ActionState } from './action-state';
@@ -116,6 +117,7 @@ export function ProfileEditor({
       <BrowserControls p={p} canEdit={canEdit} isAdmin={isAdmin} nodeOptions={nodeOptions} />
       <AccountSection p={p} canEdit={canEdit} assignable={assignable} />
       <BrowserSettings p={p} canEdit={canEdit} />
+      <CookieTools p={p} canEdit={canEdit} />
       <ProfileDetails p={p} canEdit={canEdit} groups={groups} tags={tags} />
       <form id={useFormId} action={attachAction} className="hidden">
         <input type="hidden" name="profileId" value={p.id} />

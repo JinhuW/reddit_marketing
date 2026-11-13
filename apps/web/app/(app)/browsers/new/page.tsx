@@ -1,3 +1,4 @@
+import { ImportBrowsers } from '@/components/browsers/ImportBrowsers';
 import { NewBrowserForm } from '@/components/browsers/NewBrowserForm';
 import { savedProxyLabel } from '@/components/browsers/view';
 import { PageHeader } from '@/components/ui/page-header';
@@ -12,7 +13,13 @@ export const metadata: Metadata = { title: 'New browser' };
 export default async function NewBrowserPage() {
   const me = await requireMember();
   const canCreate = members.roleAtLeast(me.role, 'editor');
-  const proxies = canCreate ? await browsers.listProxies(me.workspaceId) : [];
+  const [proxies, groups, tags] = canCreate
+    ? await Promise.all([
+        browsers.listProxies(me.workspaceId),
+        browsers.listGroups(me.workspaceId),
+        browsers.listTags(me.workspaceId),
+      ])
+    : [[], [], []];
   return (
     <>
       <PageHeader
@@ -26,7 +33,14 @@ export default async function NewBrowserPage() {
       />
       <div className="max-w-[560px]">
         {canCreate ? (
-          <NewBrowserForm proxies={proxies.map((x) => ({ id: x.id, label: savedProxyLabel(x) }))} />
+          <div className="flex flex-col gap-5">
+            <NewBrowserForm
+              proxies={proxies.map((x) => ({ id: x.id, label: savedProxyLabel(x) }))}
+              groups={groups}
+              tags={tags}
+            />
+            <ImportBrowsers />
+          </div>
         ) : (
           <div className="panel muted p-6 text-[13px]">Viewers can’t create browsers.</div>
         )}

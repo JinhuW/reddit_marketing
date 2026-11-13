@@ -3,10 +3,10 @@
 // Plan 0004 phase 1: actions behind the profile list of the Browsers screen (bulk bar, groups, tags, notes, trash).
 import type { ActionState } from '@/components/browsers/action-state';
 import { BULK_OPS, type BulkOp } from '@/components/browsers/list-params';
-import { enqueueProfileJob, enqueueRemoveJob } from '@/lib/browser-jobs';
+import { cookieExportStatus, enqueueDataJob, enqueueProfileJob, enqueueRemoveJob } from '@/lib/browser-jobs';
 import { ForbiddenError, requireMember, requireRole } from '@/lib/session';
 import { browsers } from '@threadline/db';
-import { CPU_OPTIONS, FingerprintSettings, MEMORY_OPTIONS } from '@threadline/shared';
+import { CPU_OPTIONS, FingerprintSettings, MEMORY_OPTIONS, parseCsv } from '@threadline/shared';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
@@ -318,5 +318,162 @@ export async function newFingerprintAction(_prev: ActionState | null, form: Form
       return { ok: true, message: 'New fingerprint assigned.' };
     }
     return { ok: false, message: r.reason };
+  });
+}
+
+// ── cookies and data (phase 4) ──
+
+export type CookieExportState =
+  | { state: 'idle' }
+  | { state: 'pending'; jobId: string }
+  | { state: 'failed'; message: string }
+  /** ready to download from /api/browsers/<id>/cookies */
+  | { state: 'ready'; jobId: string; count: number; truncated: boolean };
+
+/** "Export cookies": asks the browser's node for its cookies. The page then polls {@link cookieExportAction}. */
+export async function startCookieExportAction(profileId: string): Promise<CookieExportState> {
+  try {
+    const { me, profile } = await controllable(profileId);
+    const r = await enqueueDataJob(me.workspaceId, profile.id, { kind: 'profile.exportCookies' });
+    return r.queued ? { state: 'pending', jobId: r.jobId } : { state: 'failed', message: r.reason };
+  } catch (e) {
+    const m = say(e);
+    if (m) return { state: 'failed', message: m };
+    throw e;
+  }
+}
+
+/** Poll for an export. Never returns the cookies: only whether the download is ready. */
+export async function cookieExportAction(profileId: string, jobId: string): Promise<CookieExportState> {
+  try {
+    const { me, profile } = await controllable(profileId);
+    const r = await cookieExportStatus(me.workspaceId, profile.id, jobId);
+    if (r.state === 'pending') return { state: 'pending', jobId };
+    if (r.state === 'done') return { state: 'ready', jobId, count: r.count, truncated: r.truncated };
+    return {
+      state: 'failed',
+      message: r.state === 'gone' ? 'That export is no longer available. Export again.' : r.reason,
+    };
+  } catch (e) {
+    const m = say(e);
+    if (m) return { state: 'failed', message: m };
+    throw e;
+  }
+}
+
+/** "Clear cookies" / "Clear cache" in the drawer. Clearing cookies signs the browser out of every site. */
+export async function clearDataAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  return guarded(async () => {
+    const { me, profile } = await controllable(str(form, 'profileId'));
+    const cookies = form.get('what') === 'cookies';
+    const cache = form.get('what') === 'cache';
+    if (!cookies && !cache) return { ok: false, message: 'Pick what to clear.' };
+    if (cookies && form.get('confirm') !== 'on')
+      return {
+        ok: false,
+        message: 'Tick the box first: clearing cookies signs this browser out everywhere.',
+      };
+    if (profile.sessions.some((s) => s.driver === 'human'))
+      return { ok: false, message: 'Someone is controlling this browser. Hand it back first.' };
+    const r = await enqueueDataJob(me.workspaceId, profile.id, { kind: 'profile.clearData', cookies, cache });
+    if (!r.queued) return { ok: false, message: r.reason };
+    return {
+      ok: true,
+      message: cookies
+        ? 'Clearing the cookies. The browser will be signed out in a few seconds.'
+        : 'Clearing the cache.',
+    };
+  });
+}
+
+// ── CSV import (phase 4) ──
+
+const IMPORT_MAX = 100;
+const IMPORT_COLUMNS = ['name', 'group', 'tags', 'notes', 'start_url', 'proxy'] as const;
+
+/**
+ * "Import from CSV" on New browser: one browser per row. Columns (any order, `name` required): name, group, tags
+ * (separated by `;`), notes, start_url, proxy (`host:port` of a pool proxy). Groups and tags that do not exist are
+ * created. The whole file is checked first; a bad row stops the import before anything is created.
+ */
+export async function importBrowsersAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  return guarded(async () => {
+    const me = await requireRole('editor');
+    const rows = parseCsv(String(form.get('csv') ?? ''));
+    const head = (rows.shift() ?? []).map((h) => h.trim().toLowerCase().replace(/\s+/g, '_'));
+    const col = (k: (typeof IMPORT_COLUMNS)[number]) => head.indexOf(k);
+    if (col('name') < 0)
+      return { ok: false, message: `The first line must name the columns: ${IMPORT_COLUMNS.join(', ')}.` };
+    if (rows.length === 0) return { ok: false, message: 'The file has a header but no browsers.' };
+    if (rows.length > IMPORT_MAX)
+      return { ok: false, message: `Import at most ${IMPORT_MAX} browsers at a time.` };
+
+    const [groups, tags, pool] = await Promise.all([
+      browsers.listGroups(me.workspaceId),
+      browsers.listTags(me.workspaceId),
+      browsers.listProxies(me.workspaceId),
+    ]);
+    const cell = (r: string[], k: (typeof IMPORT_COLUMNS)[number]) =>
+      col(k) < 0 ? '' : (r[col(k)] ?? '').trim();
+    const plan: {
+      name: string;
+      group: string;
+      tags: string[];
+      notes: string;
+      startUrl: string | null;
+      proxyId: string | null;
+    }[] = [];
+    for (const [i, r] of rows.entries()) {
+      const line = i + 2;
+      const name = cell(r, 'name');
+      if (!name) return { ok: false, message: `Line ${line}: a browser needs a name.` };
+      let startUrl: string | null;
+      try {
+        startUrl = browsers.normalizeStartUrl(cell(r, 'start_url'));
+      } catch {
+        return { ok: false, message: `Line ${line}: start_url must be an http(s) address.` };
+      }
+      const proxy = cell(r, 'proxy').toLowerCase();
+      const px = proxy ? pool.find((x) => `${x.host}:${x.port}`.toLowerCase() === proxy) : null;
+      if (proxy && !px)
+        return {
+          ok: false,
+          message: `Line ${line}: no pool proxy at that host:port. Add it to the proxy pool first.`,
+        };
+      plan.push({
+        name,
+        group: cell(r, 'group'),
+        tags: cell(r, 'tags')
+          .split(/[;|]/)
+          .map((t) => t.trim())
+          .filter(Boolean),
+        notes: cell(r, 'notes'),
+        startUrl,
+        proxyId: px?.id ?? null,
+      });
+    }
+
+    const groupId = new Map(groups.map((g) => [g.name.toLowerCase(), g.id]));
+    const tagId = new Map(tags.map((t) => [t.name.toLowerCase(), t.id]));
+    for (const p of plan) {
+      if (p.group && !groupId.has(p.group.toLowerCase()))
+        groupId.set(p.group.toLowerCase(), (await browsers.createGroup(me.workspaceId, me.id, p.group)).id);
+      for (const t of p.tags)
+        if (!tagId.has(t.toLowerCase()))
+          tagId.set(t.toLowerCase(), (await browsers.createTag(me.workspaceId, me.id, t)).id);
+    }
+    for (const p of plan)
+      await browsers.createBrowser({
+        workspaceId: me.workspaceId,
+        actorMemberId: me.id,
+        name: p.name,
+        startUrl: p.startUrl,
+        proxyId: p.proxyId,
+        notes: p.notes || null,
+        groupId: p.group ? (groupId.get(p.group.toLowerCase()) ?? null) : null,
+        tagIds: p.tags.flatMap((t) => tagId.get(t.toLowerCase()) ?? []),
+      });
+    revalidatePath('/browsers');
+    return { ok: true, message: `Imported ${count(plan.length)}. They are on the Browsers page.` };
   });
 }

@@ -67,6 +67,9 @@ export type BrowserJob =
    * row (a trashed browser removed for good); `reset` keeps the row and gives it a new fingerprint seed.
    */
   | { kind: 'profile.remove'; workspaceId: string; profileId: string; after: 'purge' | 'reset' }
+  /** Plan 0004 phase 4. The gateway returns the cookies encrypted; the job is kept for minutes, not a week. */
+  | { kind: 'profile.exportCookies'; workspaceId: string; profileId: string }
+  | { kind: 'profile.clearData'; workspaceId: string; profileId: string; cookies: boolean; cache: boolean }
   /** Plan 0004 phase 3: pool proxy jobs. They need no browser; any online node of the workspace runs them. */
   | { kind: 'proxy.check' | 'proxy.rotate'; workspaceId: string; proxyId: string }
   | { kind: 'health.check'; workspaceId: string };
@@ -108,6 +111,16 @@ export const BrowserJobSchema: z.ZodType<BrowserJob> = z.union([
       workspaceId: id,
       profileId: id,
       after: z.enum(['purge', 'reset']),
+    })
+    .strict(),
+  z.object({ kind: z.literal('profile.exportCookies'), workspaceId: id, profileId: id }).strict(),
+  z
+    .object({
+      kind: z.literal('profile.clearData'),
+      workspaceId: id,
+      profileId: id,
+      cookies: z.boolean(),
+      cache: z.boolean(),
     })
     .strict(),
   z.object({ kind: z.enum(['proxy.check', 'proxy.rotate']), workspaceId: id, proxyId: id }).strict(),

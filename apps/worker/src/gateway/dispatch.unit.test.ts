@@ -87,6 +87,7 @@ const cookie = {
 const signIn = (account: Account | null, withCookies = true): browsers.SignInDispatch => ({
   profileId: 'p1',
   startUrl: 'https://www.reddit.com/r/startups/',
+  extraStartUrls: [],
   cookiesEnc: withCookies ? COOKIES_ENC : null,
   cookies: withCookies ? [cookie] : null,
   account: account
@@ -138,6 +139,7 @@ function setup(opts: {
     setStatus: vi.fn(async () => undefined),
     recordProxyTest: vi.fn(async () => undefined),
     purgeProfile: vi.fn(async () => undefined),
+    encrypt: vi.fn((plain: string) => `enc(${plain.length})`),
     recordProxyCheck: vi.fn(async () => undefined),
     recordProxyRotated: vi.fn(async () => undefined),
     resetProfileData: vi.fn(async () => undefined),
@@ -518,5 +520,73 @@ describe('pool proxy jobs (plan 0004 phase 3)', () => {
     const err = await priv.run(rotate).catch((e: Error) => e);
     expect(err).toBeInstanceOf(Error);
     expect((err as Error).name).toBe('UnrecoverableError'); // final: BullMQ will not call the link again
+  });
+});
+
+describe('cookie export and clear data (plan 0004 phase 4)', () => {
+  const exportJob: BrowserJob = { kind: 'profile.exportCookies', workspaceId: 'w1', profileId: 'p1' };
+  const exported = [{ ...cookie, value: 'exported-cookie-value-1' }];
+
+  it('returns the cookies only encrypted, and logs no value', async () => {
+    const t = setup({ account: null });
+    t.hub.replies['profile.exportCookies'] = { outcome: 'ok', data: { cookies: exported } } as Result;
+    const out = await t.run(exportJob);
+    expect(t.hub.sent.at(-1)?.cmd).toEqual({ kind: 'profile.exportCookies', profileId: 'p1' });
+    expect(t.outcomeDeps.encrypt).toHaveBeenCalledWith(JSON.stringify(exported));
+    expect(out).toEqual({
+      outcome: 'ok',
+      kind: 'profile.exportCookies',
+      data: { enc: expect.stringMatching(/^enc\(/), count: 1, truncated: false },
+    });
+    expect(t.lines.join('\n') + JSON.stringify(out)).not.toContain('exported-cookie-value-1');
+  });
+
+  it('an unreadable export is final and returns nothing', async () => {
+    const t = setup({ account: null });
+    t.hub.replies['profile.exportCookies'] = { outcome: 'ok', data: { cookies: [{ name: 1 }] } } as Result;
+    await expect(t.run(exportJob)).rejects.toThrow(/unreadable cookie export/);
+    expect(t.outcomeDeps.encrypt).not.toHaveBeenCalled();
+  });
+
+  it('clear data sends what to clear and writes the audit row', async () => {
+    const t = setup({ account: null });
+    t.hub.replies['profile.clearData'] = { outcome: 'ok' } as Result;
+    await t.run({
+      kind: 'profile.clearData',
+      workspaceId: 'w1',
+      profileId: 'p1',
+      cookies: true,
+      cache: false,
+    });
+    expect(t.hub.sent.at(-1)?.cmd).toEqual({
+      kind: 'profile.clearData',
+      profileId: 'p1',
+      cookies: true,
+      cache: false,
+    });
+    expect(t.outcomeDeps.writeAudit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'profile.data_cleared', targetId: 'p1' }),
+    );
+  });
+
+  it('sign-in carries the extra start tabs only when there are some', async () => {
+    const withTabs = setup({
+      account: browserAccount(),
+      deps: {
+        getSignIn: vi.fn(async () => ({
+          ...signIn(browserAccount()),
+          extraStartUrls: ['https://mail.example/inbox'],
+        })),
+      },
+    });
+    withTabs.hub.replies['profile.signIn'] = { outcome: 'ok', data: { loggedIn: false } } as Result;
+    await withTabs.run(signInJob);
+    expect(withTabs.hub.sent.find((s) => s.cmd.kind === 'profile.signIn')?.cmd).toMatchObject({
+      extraUrls: ['https://mail.example/inbox'],
+    });
+    const none = setup({ account: browserAccount() });
+    none.hub.replies['profile.signIn'] = { outcome: 'ok', data: { loggedIn: false } } as Result;
+    await none.run(signInJob);
+    expect(none.hub.sent.find((s) => s.cmd.kind === 'profile.signIn')?.cmd).not.toHaveProperty('extraUrls');
   });
 });

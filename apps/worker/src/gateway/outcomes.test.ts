@@ -41,6 +41,7 @@ function deps(
     setStatus: vi.fn(async () => undefined),
     recordProxyTest: vi.fn(async () => undefined),
     purgeProfile: vi.fn(async () => undefined),
+    encrypt: vi.fn((plain: string) => `enc(${plain.length})`),
     recordProxyCheck: vi.fn(async () => undefined),
     recordProxyRotated: vi.fn(async () => undefined),
     resetProfileData: vi.fn(async () => undefined),

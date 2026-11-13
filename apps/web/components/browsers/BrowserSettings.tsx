@@ -36,11 +36,14 @@ export function BrowserSettings({ p, canEdit }: { p: ProfileView; canEdit: boole
   const [name, setName] = useState(p.name);
   const [startUrl, setStartUrl] = useState(p.startUrl ?? '');
   const [cookies, setCookies] = useState('');
-  const [seeded, setSeeded] = useState({ name: p.name, startUrl: p.startUrl });
-  if (seeded.name !== p.name || seeded.startUrl !== p.startUrl) {
-    setSeeded({ name: p.name, startUrl: p.startUrl });
+  const extraSaved = p.extraStartUrls.join('\n');
+  const [extra, setExtra] = useState(extraSaved);
+  const [seeded, setSeeded] = useState({ name: p.name, startUrl: p.startUrl, extra: extraSaved });
+  if (seeded.name !== p.name || seeded.startUrl !== p.startUrl || seeded.extra !== extraSaved) {
+    setSeeded({ name: p.name, startUrl: p.startUrl, extra: extraSaved });
     setName(p.name);
     setStartUrl(p.startUrl ?? '');
+    setExtra(extraSaved);
   }
 
   return (
@@ -84,6 +87,23 @@ export function BrowserSettings({ p, canEdit }: { p: ProfileView; canEdit: boole
             <span className="muted text-[11.5px]">Opens on every sign-in. Empty = reddit.com.</span>
           </div>
           <div className="flex flex-col gap-[5px]">
+            <label htmlFor={`extra-${p.id}`} className="text-xs font-semibold">
+              More start tabs
+            </label>
+            <textarea
+              id={`extra-${p.id}`}
+              name="extraStartUrls"
+              className="field min-h-[52px] resize-y py-2 leading-snug"
+              spellCheck={false}
+              placeholder={'https://mail.example.com/\nhttps://www.reddit.com/message/inbox'}
+              value={extra}
+              onChange={(e) => setExtra(e.target.value)}
+            />
+            <span className="muted text-[11.5px]">
+              One address per line, up to 9. Each opens in its own tab.
+            </span>
+          </div>
+          <div className="flex flex-col gap-[5px]">
             <div className="flex items-center gap-2">
               <label htmlFor={`cookies-${p.id}`} className="text-xs font-semibold">
                 Cookie
@@ -106,8 +126,9 @@ export function BrowserSettings({ p, canEdit }: { p: ProfileView; canEdit: boole
               onChange={(e) => setCookies(e.target.value)}
             />
             <span className="muted text-[11.5px]">
-              Paste the JSON export of a cookie extension (Cookie-Editor, EditThisCookie) or another browser
-              tool. Stored encrypted until the next sign-in imports it; never shown again. Leave empty to keep
+              Paste a cookie export: JSON (Cookie-Editor, EditThisCookie, another browser tool), a cookies.txt
+              file, or name=value pairs. Stored encrypted until the next sign-in imports it; never shown
+              again. Leave empty to keep
               {p.cookies.pending ? ' the pending cookies.' : ' the browser’s cookies as they are.'}
             </span>
             {p.cookies.pending ? (

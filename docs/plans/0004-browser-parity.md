@@ -1,6 +1,6 @@
 # Plan 0004 · Browsers page: the core of an anti-detect browser manager
 
-Status: in progress (2026-11-12). Owner request: the Browsers page should offer the same core features as AdsPower.
+Status: phases 0 to 4 shipped (2026-11-13). Owner request: the Browsers page should offer the same core features as AdsPower.
 Its site, help center and Local API docs were surveyed on 2026-11-12 and compared with what Threadline had.
 
 AdsPower's core is six things. Threadline had the third and a thin slice of the others:
@@ -81,10 +81,19 @@ BrowserSession transition writes an AuditEvent; secrets never in logs, job paylo
       the CDP proxy sign-in, and a check on a node; HTTP and SOCKS5 cover what the pool holds today.
 
 ### Phase 4 · Cookies, data, bulk create
-- [ ] Cookie export (`profile.exportCookies`), Netscape and `name=value` import.
-- [ ] `profile.clearData`; "Clear session" in the drawer and the bulk bar.
-- [ ] Up to 10 start tabs.
-- [ ] Quick create N; CSV import / export of profiles (no secrets in an export); at most 100 per run.
+- [x] Cookie import also reads a Netscape `cookies.txt` file and `name=value` pairs (`parseCookieText`).
+- [x] Cookie export: `profile.exportCookies` reads the browser's cookies on its node; the gateway encrypts them
+      before they become the job's return value; the job lives 10 minutes; the download route
+      (`/api/browsers/[id]/cookies`, JSON or cookies.txt) checks the same right as a take-over, is never cached
+      and writes `profile.cookies_exported`.
+- [x] `profile.clearData`: clear cookies (needs a ticked confirmation: it signs the browser out) or the HTTP
+      cache; audit `profile.data_cleared`. Everything else on the volume goes with "New fingerprint".
+- [x] Up to 9 more start tabs (`extraStartUrls`), opened after the start tab on a sign-in run, each once.
+- [x] "How many" on New browser (1 to 50, numbered names, one unused pool proxy each when asked);
+      "Import from CSV" (name, group, tags, notes, start_url, proxy; checked as a whole before anything is
+      created); "Export CSV" of the filtered list with no secrets.
+- [ ] Not built: clearing local storage, IndexedDB or history on their own (no reliable all-sites call over CDP),
+      and a button that deletes cookies in bulk across browsers (too easy to sign a fleet out by accident).
 
 ## Rollout
 

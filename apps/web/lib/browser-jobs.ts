@@ -165,6 +165,90 @@ export async function enqueueRemoveJob(
   return { queued: true, jobId, node: p.node.name };
 }
 
+/** How long a finished cookie export stays downloadable. */
+export const COOKIE_EXPORT_KEEP_SEC = 600;
+
+/**
+ * Queues `profile.exportCookies` or `profile.clearData` (plan 0004 phase 4) on the browser's node. An export's
+ * return value holds the cookies (encrypted by the gateway), so that job is removed after ten minutes instead
+ * of the usual week. Callers check permissions first.
+ */
+export async function enqueueDataJob(
+  workspaceId: string,
+  profileId: string,
+  what: { kind: 'profile.exportCookies' } | { kind: 'profile.clearData'; cookies: boolean; cache: boolean },
+  deps: BrowserJobDeps = defaultDeps,
+): Promise<EnqueueResult> {
+  const { found, node } = await deps.profileNode(workspaceId, profileId);
+  if (!found) return { queued: false, reason: 'Browser not found.' };
+  const problem = nodeProblem(node);
+  if (problem || !node) return { queued: false, reason: problem ?? 'No node.' };
+  const job: BrowserJob = { ...what, workspaceId, profileId };
+  const jobId = browserJobId(job, deps.now().toString(36));
+  const opts: JobsOptions =
+    what.kind === 'profile.exportCookies'
+      ? {
+          ...BROWSER_JOB_OPTIONS,
+          attempts: 2,
+          removeOnComplete: { age: COOKIE_EXPORT_KEEP_SEC },
+          removeOnFail: { age: 3600 },
+        }
+      : { ...BROWSER_JOB_OPTIONS, attempts: 2 };
+  try {
+    await withTimeout(deps.queue(node.name).add(node.name, job, { ...opts, jobId }));
+  } catch {
+    return { queued: false, reason: 'Could not reach the job queue. Try again in a minute.' };
+  }
+  return { queued: true, jobId, node: node.name };
+}
+
+export type CookieExport =
+  | { state: 'pending' }
+  | { state: 'gone' }
+  | { state: 'failed'; reason: string }
+  /** `enc`: the cookies as the gateway encrypted them; decrypt only to hand them to the person who asked */
+  | { state: 'done'; enc: string; count: number; truncated: boolean };
+
+/** Reads back a cookie export this browser queued. A job id of another browser or kind reads as `gone`. */
+export async function cookieExportStatus(
+  workspaceId: string,
+  profileId: string,
+  jobId: string,
+  deps: Pick<BrowserJobDeps, 'queue' | 'profileNode'> = defaultDeps,
+): Promise<CookieExport> {
+  if (!jobId.startsWith(`bj-profile.exportCookies-${profileId}-`)) return { state: 'gone' };
+  const { node } = await deps.profileNode(workspaceId, profileId);
+  if (!node) return { state: 'gone' };
+  let job: Awaited<ReturnType<JobQueue['getJob']>>;
+  let state: string;
+  try {
+    job = await withTimeout(deps.queue(node.name).getJob(jobId));
+    if (!job) return { state: 'gone' };
+    state = await withTimeout(job.getState());
+  } catch {
+    return { state: 'pending' };
+  }
+  if (state === 'failed') return { state: 'failed', reason: 'The browser could not read its cookies.' };
+  if (state !== 'completed') return { state: 'pending' };
+  const v = (job.returnvalue ?? {}) as {
+    outcome?: string;
+    reason?: string;
+    data?: { enc?: unknown; count?: unknown; truncated?: unknown };
+  };
+  if (v.outcome === 'ok' && typeof v.data?.enc === 'string')
+    return {
+      state: 'done',
+      enc: v.data.enc,
+      count: typeof v.data.count === 'number' ? v.data.count : 0,
+      truncated: v.data.truncated === true,
+    };
+  if (v.outcome === 'license_denied')
+    return { state: 'failed', reason: 'The node has no free browser seat right now.' };
+  if (v.outcome === 'proxy_failed')
+    return { state: 'failed', reason: 'The proxy failed, so the browser could not start.' };
+  return { state: 'failed', reason: v.reason ?? 'The browser could not read its cookies.' };
+}
+
 /**
  * Queues a pool proxy job (plan 0004 phase 3): `proxy.check` or `proxy.rotate`. These need no browser, so any
  * online node of the workspace runs them; with no node online nothing is queued. Callers check permissions first.

@@ -27,6 +27,7 @@
 import { accounts, audit, browsers, drafts, prisma } from '@threadline/db';
 import {
   type BrowserJob,
+  ExportCookiesData,
   type PauseReason,
   PostedData,
   ProxyCheckData,
@@ -35,6 +36,7 @@ import {
   TestProxyData,
   WhoamiData,
 } from '@threadline/shared';
+import { encrypt } from '@threadline/shared/crypto';
 import { log as rootLog } from '../log';
 import { NodeError } from './hub';
 
@@ -67,6 +69,11 @@ export interface OutcomeDeps {
   ) => Promise<unknown>;
   /** browsers.recordProxyTest: the "Last connection test" box. */
   recordProxyTest: (workspaceId: string, profileId: string, test: browsers.ProxyTest) => Promise<unknown>;
+  /**
+   * Encrypts an export before it becomes the job's return value (APP_ENCRYPTION_KEY): the queue keeps return
+   * values, and cookies must never sit there in the clear.
+   */
+  encrypt: (plain: string) => string;
   /** browsers.recordProxyCheck / recordProxyRotated: pool jobs (`proxy.check`, `proxy.rotate`). */
   recordProxyCheck: (workspaceId: string, proxyId: string, test: browsers.ProxyTest) => Promise<unknown>;
   recordProxyRotated: (workspaceId: string, proxyId: string, status: number) => Promise<unknown>;
@@ -95,6 +102,7 @@ export const defaultOutcomeDeps: OutcomeDeps = {
   markCookiesImported: (ws, profileId, cookiesEnc) => browsers.markCookiesImported(ws, profileId, cookiesEnc),
   setStatus: (ws, profileId, status) => browsers.setStatus(ws, profileId, status),
   recordProxyTest: (ws, profileId, test) => browsers.recordProxyTest(ws, profileId, test),
+  encrypt: (plain) => encrypt(plain),
   recordProxyCheck: (ws, proxyId, test) => browsers.recordProxyCheck(ws, proxyId, test),
   recordProxyRotated: (ws, proxyId, status) => browsers.recordProxyRotated(ws, proxyId, status),
   purgeProfile: (ws, profileId) => browsers.purgeProfile(ws, profileId, null),
@@ -210,6 +218,40 @@ export async function applyOutcome(
           ctx.profile.id,
           job.kind === 'profile.start' ? 'running' : 'idle',
         );
+      }
+      if (job.kind === 'profile.exportCookies' && ctx.profile) {
+        const e = ExportCookiesData.safeParse(result.data);
+        if (!e.success) {
+          l.error({ code: 'bad_export_data' }, 'exportCookies result does not match the protocol');
+          throw new FinalOutcomeError('bad_export_data', 'the node returned an unreadable cookie export');
+        }
+        l.info({ profileId: ctx.profile.id, count: e.data.cookies.length }, 'cookies exported');
+        // Only the encrypted blob and a count leave this function.
+        return {
+          outcome: 'ok',
+          kind: job.kind,
+          data: {
+            enc: deps.encrypt(JSON.stringify(e.data.cookies)),
+            count: e.data.cookies.length,
+            truncated: e.data.truncated === true,
+          },
+        };
+      }
+      if (job.kind === 'profile.clearData' && ctx.profile) {
+        await deps.writeAudit({
+          workspaceId: job.workspaceId,
+          actorMemberId: null,
+          action: 'profile.data_cleared',
+          targetType: 'BrowserProfile',
+          targetId: ctx.profile.id,
+          accountId: ctx.profile.accountId,
+          meta: {
+            item: `Browser ${ctx.profile.name}: ${[job.cookies ? 'cookies' : '', job.cache ? 'cache' : ''].filter(Boolean).join(' and ')} cleared`,
+            cookies: job.cookies,
+            cache: job.cache,
+          },
+        });
+        return { outcome: 'ok', kind: job.kind };
       }
       if (job.kind === 'proxy.check') {
         const c = ProxyCheckData.safeParse(result.data);

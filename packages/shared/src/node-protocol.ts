@@ -164,6 +164,8 @@ export const ProfileSignInCmd = z.object({
   kind: z.literal('profile.signIn'),
   profileId: id,
   startUrl: z.string().url(),
+  /** plan 0004: more tabs to open after the start tab (a tab already on the address is not opened twice) */
+  extraUrls: z.array(z.string().url()).max(9).optional(),
   cookies: z.array(BrowserCookie).max(500).optional(),
   credentials: z
     .object({
@@ -173,6 +175,19 @@ export const ProfileSignInCmd = z.object({
       totpSecret: z.string().min(1).max(128).optional(),
     })
     .optional(),
+});
+
+/**
+ * Plan 0004 phase 4. Reads every cookie of the profile's browser. Result data: {@link ExportCookiesData}. The
+ * result carries secrets: the gateway encrypts it before it reaches the job queue, and nothing logs it.
+ */
+export const ProfileExportCookiesCmd = z.object({ kind: z.literal('profile.exportCookies'), profileId: id });
+/** Plan 0004 phase 4. Clears the browser's cookies (signs every site out) and / or its HTTP cache. */
+export const ProfileClearDataCmd = z.object({
+  kind: z.literal('profile.clearData'),
+  profileId: id,
+  cookies: z.boolean(),
+  cache: z.boolean(),
 });
 
 export const Cmd = z.discriminatedUnion('kind', [
@@ -188,6 +203,8 @@ export const Cmd = z.discriminatedUnion('kind', [
   ProfileSignInCmd,
   ProxyCheckCmd,
   ProxyRotateCmd,
+  ProfileExportCookiesCmd,
+  ProfileClearDataCmd,
 ]);
 export type Cmd = z.infer<typeof Cmd>;
 export type CmdKind = Cmd['kind'];
@@ -213,6 +230,16 @@ export type ProxyCheckData = z.infer<typeof ProxyCheckData>;
 /** `proxy.rotate` → the HTTP status the change-IP link answered with. */
 export const ProxyRotateData = z.object({ status: z.number().int() });
 export type ProxyRotateData = z.infer<typeof ProxyRotateData>;
+
+/** Most cookies one export returns. */
+export const EXPORT_COOKIES_MAX = 3000;
+/** `profile.exportCookies` → the browser's cookies. */
+export const ExportCookiesData = z.object({
+  cookies: z.array(BrowserCookie).max(EXPORT_COOKIES_MAX),
+  /** true when the browser held more than {@link EXPORT_COOKIES_MAX} */
+  truncated: z.boolean().optional(),
+});
+export type ExportCookiesData = z.infer<typeof ExportCookiesData>;
 
 /** `profile.testProxy` → exit IP seen from the page and from the agent. */
 export const TestProxyData = z.object({

@@ -7,7 +7,7 @@ import { parseDeviceFingerprint } from '@/lib/device-fingerprint';
 import { ForbiddenError, requireMember, requireRole } from '@/lib/session';
 import { normalizeTotpSecret } from '@/lib/totp-secret';
 import { accounts, agents, browsers, nodes } from '@threadline/db';
-import { CookieParseError, cookieDomains, parseCookieJson } from '@threadline/shared';
+import { CookieParseError, cookieDomains, parseCookieText } from '@threadline/shared';
 import { encrypt } from '@threadline/shared/crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -15,6 +15,8 @@ import { z } from 'zod';
 
 /** `proxyId` value of the New browser form that means "a random pool proxy no browser uses". */
 const RANDOM_PROXY = '__random_unused__';
+/** Most browsers one "create" makes. */
+const QUICK_CREATE_MAX = 50;
 
 async function controllable(profileId: string) {
   const me = await requireMember();
@@ -289,7 +291,8 @@ const fail = (e: unknown): ActionState | null => {
 function readCookies(form: FormData): { enc: string; note: string } | undefined {
   const raw = String(form.get('cookies') ?? '').trim();
   if (!raw) return undefined;
-  const list = parseCookieJson(raw); // throws CookieParseError
+  // JSON, a cookies.txt file, or name=value pairs; pairs carry no site, so they go under the start tab's.
+  const list = parseCookieText(raw, { defaultDomain: pairDomain(String(form.get('startUrl') ?? '')) });
   const domains = cookieDomains(list);
   const n = list.length === 1 ? '1 cookie' : `${list.length} cookies`;
   const reddit = domains.some((d) => d === 'reddit.com' || d.endsWith('.reddit.com'));
@@ -298,6 +301,21 @@ function readCookies(form: FormData): { enc: string; note: string } | undefined 
     note: `${n} for ${domains.slice(0, 3).join(', ')}${domains.length > 3 ? '…' : ''} wait for the next sign-in.${reddit ? '' : ' None of them is for reddit.com.'}`,
   };
 }
+
+/** `.example.com` for the start tab's site; reddit.com when there is none. */
+function pairDomain(startUrl: string): string {
+  try {
+    const host = new URL(startUrl.trim()).hostname.replace(/^www\./, '');
+    return host ? `.${host}` : '.reddit.com';
+  } catch {
+    return '.reddit.com';
+  }
+}
+const lines = (form: FormData, k: string) =>
+  String(form.get(k) ?? '')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
 
 /** Optional password / 2FA fields → encrypted values (undefined = left blank). */
 function readCredentials(
@@ -317,37 +335,75 @@ function readCredentials(
 
 /** /browsers/new: a browser with no account. Editors and admins. Redirects to it on the Browsers screen. */
 export async function createBrowserAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
-  let profileId: string;
+  let target: string;
   try {
     const me = await requireRole('editor');
-    let proxyId = fid(form, 'proxyId') || null;
-    if (proxyId === RANDOM_PROXY) {
-      // Plan 0004 phase 3: a pool proxy no browser uses yet.
-      const free = await browsers.pickUnusedProxy(me.workspaceId);
-      if (!free) return { ok: false, message: 'Every proxy in the pool is in use. Add one or pick one.' };
-      proxyId = free.id;
-    }
-    if (proxyId && !(await browsers.listProxies(me.workspaceId)).some((x) => x.id === proxyId))
+    // Plan 0004 phase 4: "how many". One browser is the old form; more makes numbered copies of it.
+    const count = Number.parseInt(fid(form, 'count') || '1', 10);
+    if (!Number.isInteger(count) || count < 1 || count > QUICK_CREATE_MAX)
+      return { ok: false, message: `Create between 1 and ${QUICK_CREATE_MAX} browsers at a time.` };
+    const pool = await browsers.listProxies(me.workspaceId);
+    const picked = fid(form, 'proxyId') || null;
+    const random = picked === RANDOM_PROXY;
+    if (picked && !random && !pool.some((x) => x.id === picked))
       return { ok: false, message: 'That proxy is not in this workspace.' };
+    // Plan 0004 phase 3: pool proxies no browser uses yet, one per new browser.
+    const free = random
+      ? pool.filter((x) => x.profileCount === 0 && x.host && x.protocol !== 'none').map((x) => x.id)
+      : [];
+    if (random && free.length < count)
+      return {
+        ok: false,
+        message:
+          free.length === 0
+            ? 'Every proxy in the pool is in use. Add one or pick one.'
+            : `Only ${free.length} unused ${free.length === 1 ? 'proxy' : 'proxies'} in the pool for ${count} browsers.`,
+      };
+    for (let i = free.length - 1; i > 0; i--) {
+      const k = Math.floor(Math.random() * (i + 1));
+      [free[i], free[k]] = [free[k] as string, free[i] as string];
+    }
     const startUrl = browsers.normalizeStartUrl(fid(form, 'startUrl'));
     const cookies = readCookies(form);
-    const r = await browsers.createBrowser({
+    if (cookies && count > 1)
+      return {
+        ok: false,
+        message: 'Cookies belong to one browser. Create one browser, or leave the cookie box empty.',
+      };
+    const name = fid(form, 'name');
+    if (count > 1 && !name)
+      return { ok: false, message: 'Give the browsers a name; each gets a number after it.' };
+    const shared = {
       workspaceId: me.workspaceId,
       actorMemberId: me.id,
-      name: fid(form, 'name') || null,
       fingerprint: parseDeviceFingerprint(fid(form, 'fingerprint')),
-      proxyId,
       startUrl,
-      cookiesEnc: cookies?.enc ?? null,
-    });
-    profileId = r.profileId;
+      extraStartUrls: lines(form, 'extraStartUrls'),
+      groupId: fid(form, 'groupId') || null,
+      tagIds: form.getAll('tagIds').map(String).filter(Boolean),
+      notes: fid(form, 'notes') || null,
+    };
+    let first = '';
+    for (let i = 0; i < count; i++) {
+      const r = await browsers.createBrowser({
+        ...shared,
+        name: count > 1 ? `${name.slice(0, 72)} ${i + 1}` : name || null,
+        proxyId: random ? (free[i] ?? null) : picked,
+        cookiesEnc: cookies?.enc ?? null,
+      });
+      first ||= r.profileId;
+    }
+    target =
+      count > 1
+        ? `/browsers?q=${encodeURIComponent(name.slice(0, 72))}`
+        : `/browsers?id=${encodeURIComponent(first)}`;
   } catch (e) {
     const f = fail(e);
     if (f) return f;
     throw e;
   }
   revalidatePath('/browsers');
-  redirect(`/browsers?id=${encodeURIComponent(profileId)}`);
+  redirect(target);
 }
 
 /**
@@ -464,6 +520,7 @@ export async function saveBrowserSettingsAction(
       name: fid(form, 'name') || undefined,
       startUrl: fid(form, 'startUrl') || null,
       cookiesEnc: cookies ? cookies.enc : form.get('dropCookies') === 'on' ? null : undefined,
+      extraStartUrls: lines(form, 'extraStartUrls'),
     });
     revalidatePath('/browsers');
     if (!r.changed.length) return { ok: true, message: 'Nothing to change.' };

@@ -512,3 +512,110 @@ test('proxy pool: bulk add, search, edit without re-typing the login, delete (pl
     await prisma.proxy.deleteMany({ where: { workspaceId: jane.workspaceId, host } });
   }
 });
+
+test('quick create, more start tabs, cookies.txt import, CSV export and import (plan 0004)', async ({
+  page,
+}) => {
+  const s = Date.now().toString(36);
+  const base = `e2e batch ${s}`;
+  const jane = await prisma.workspaceMember.findFirstOrThrow({ where: { user: { email: 'jane@acme.so' } } });
+  const groupName = `e2e imp ${s}`;
+  try {
+    // Three numbered browsers from one form.
+    await page.goto('/browsers/new');
+    const form = page.getByTestId('new-browser-form');
+    await form.getByLabel('How many').fill('3');
+    await form.getByRole('button', { name: 'Create 3 browsers' }).click();
+    await expect(form.getByRole('status')).toContainText('Give the browsers a name');
+    await form.getByLabel('Name').fill(base);
+    await form
+      .getByLabel('More start tabs')
+      .fill('https://mail.example.com/\nhttps://www.reddit.com/message/inbox');
+    await form.getByLabel('Notes').fill('made in one go');
+    await form.getByRole('button', { name: 'Create 3 browsers' }).click();
+    await page.waitForURL(/\/browsers\?q=/);
+    await expect(page.getByTestId('list-total')).toHaveText('3 browsers');
+    const made = await prisma.browserProfile.findMany({
+      where: { workspaceId: jane.workspaceId, name: { startsWith: base } },
+      orderBy: { serial: 'asc' },
+    });
+    expect(made.map((b) => b.name)).toEqual([`${base} 1`, `${base} 2`, `${base} 3`]);
+    expect(new Set(made.map((b) => b.cloakSeed)).size).toBe(3); // three different devices
+    expect(made[0]?.extraStartUrls).toEqual([
+      'https://mail.example.com/',
+      'https://www.reddit.com/message/inbox',
+    ]);
+    expect(made[0]?.notes).toBe('made in one go');
+
+    // The drawer imports a cookies.txt file and edits the extra tabs.
+    await page.goto(`/browsers?id=${made[0]!.id}`);
+    const settings = page.getByTestId('browser-settings');
+    await expect(settings.getByLabel('More start tabs')).toHaveValue(
+      'https://mail.example.com/\nhttps://www.reddit.com/message/inbox',
+    );
+    await settings.getByLabel('More start tabs').fill('https://shop.example.com/');
+    await settings
+      .getByLabel('Cookie', { exact: true })
+      .fill(
+        '# Netscape HTTP Cookie File\n.reddit.com\tTRUE\t/\tTRUE\t1798000000\treddit_session\te2e-txt-cookie-value',
+      );
+    await settings.getByRole('button', { name: 'Save start tab and cookies' }).click();
+    await expect(settings.getByRole('status')).toContainText('1 cookie for reddit.com');
+    const saved = await prisma.browserProfile.findUniqueOrThrow({ where: { id: made[0]!.id } });
+    expect(saved.extraStartUrls).toEqual(['https://shop.example.com/']);
+    expect(saved.cookiesEnc).toBeTruthy();
+    expect(saved.cookiesEnc).not.toContain('e2e-txt-cookie-value');
+
+    // No node holds this browser, so an export says why instead of spinning.
+    await prisma.browserProfile.update({ where: { id: made[0]!.id }, data: { nodeId: null } });
+    const tools = page.getByTestId('cookie-tools');
+    await tools.getByRole('button', { name: 'Export cookies' }).click();
+    await expect(tools.getByRole('alert')).toContainText('no browser node');
+    await tools.getByRole('button', { name: 'Clear cookies' }).click();
+    await expect(tools.getByRole('status')).toContainText('Tick the box first');
+
+    // The CSV export of the filtered list has no secrets and is what the import reads.
+    const res = await page.request.get(`/browsers/export?q=${encodeURIComponent(base)}`);
+    expect(res.headers()['content-type']).toContain('text/csv');
+    const csv = await res.text();
+    expect(csv.split('\r\n')[0]).toBe('name,group,tags,notes,start_url,proxy,number,account,status,created');
+    expect(csv).toContain(`${base} 1,`);
+    expect(csv).toContain('made in one go');
+    expect(csv).not.toMatch(/e2e-txt-cookie-value|cookiesEnc|passwordEnc/);
+
+    // Import two rows; the missing group and tag are created.
+    await page.goto('/browsers/new');
+    const imp = page.getByTestId('import-browsers');
+    await imp.getByLabel('CSV text').fill(`name,group,tags\n${base} imported\n,${groupName},x`);
+    await imp.getByRole('button', { name: 'Import browsers' }).click();
+    await expect(imp.getByRole('status')).toContainText('Line 3: a browser needs a name');
+    expect(await prisma.browserProfile.count({ where: { name: `${base} imported` } })).toBe(0); // nothing half-done
+    await imp
+      .getByLabel('CSV text')
+      .fill(`name,group,tags,notes\n${base} imported,${groupName},e2e-${s};warm-${s},"with, a comma"`);
+    await imp.getByRole('button', { name: 'Import browsers' }).click();
+    await expect(imp.getByRole('status')).toContainText('Imported 1 browser.');
+    const imported = await prisma.browserProfile.findFirstOrThrow({
+      where: { name: `${base} imported` },
+      include: { group: true, tags: true },
+    });
+    expect(imported.group?.name).toBe(groupName);
+    expect(imported.tags.map((t) => t.name).sort()).toEqual([`e2e-${s}`, `warm-${s}`]);
+    expect(imported.notes).toBe('with, a comma');
+  } finally {
+    const scratch = await prisma.workspace.create({ data: { name: 'Test', slug: `t00-ws-e2e-batch-${s}` } });
+    for (const b of await prisma.browserProfile.findMany({ where: { name: { startsWith: base } } }))
+      await prisma.browserProfile.update({
+        where: { id: b.id },
+        data: {
+          workspaceId: scratch.id,
+          createdByMemberId: null,
+          nodeId: null,
+          groupId: null,
+          tags: { set: [] },
+        },
+      });
+    await prisma.browserGroup.deleteMany({ where: { name: groupName } });
+    await prisma.browserTag.deleteMany({ where: { name: { in: [`e2e-${s}`, `warm-${s}`] } } });
+  }
+});

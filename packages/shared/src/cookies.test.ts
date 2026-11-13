@@ -101,3 +101,68 @@ describe('profile.signIn', () => {
     ).toBe('profile.signIn');
   });
 });
+
+describe('other cookie formats (plan 0004)', () => {
+  const NETSCAPE = [
+    '# Netscape HTTP Cookie File',
+    '.reddit.com\tTRUE\t/\tTRUE\t1798000000\treddit_session\tabc%2Cdef',
+    '#HttpOnly_www.reddit.com\tFALSE\t/\tTRUE\t0\ttoken_v2\tsecret\twith\ttabs',
+    '',
+  ].join('\n');
+
+  it('reads a cookies.txt file, HttpOnly lines and session cookies included', async () => {
+    const { parseCookieText } = await import('./cookies');
+    expect(parseCookieText(NETSCAPE)).toEqual([
+      {
+        name: 'reddit_session',
+        value: 'abc%2Cdef',
+        domain: '.reddit.com',
+        path: '/',
+        expires: 1798000000,
+        httpOnly: false,
+        secure: true,
+        sameSite: 'Lax',
+      },
+      {
+        name: 'token_v2',
+        value: 'secret\twith\ttabs',
+        domain: 'www.reddit.com',
+        path: '/',
+        expires: -1,
+        httpOnly: true,
+        secure: true,
+        sameSite: 'Lax',
+      },
+    ]);
+  });
+
+  it('reads name=value pairs under the default domain and still reads JSON', async () => {
+    const { parseCookieText } = await import('./cookies');
+    const pairs = parseCookieText('Cookie: a=1; b=two=2', { defaultDomain: '.example.com' });
+    expect(pairs.map((c) => [c.name, c.value, c.domain])).toEqual([
+      ['a', '1', '.example.com'],
+      ['b', 'two=2', '.example.com'],
+    ]);
+    expect(parseCookieText('a=1')[0]?.domain).toBe('.reddit.com');
+    expect(parseCookieText('[{"name":"a","value":"1","domain":".reddit.com"}]')).toHaveLength(1);
+  });
+
+  it('refuses text that is none of the three, without echoing it', async () => {
+    const { parseCookieText, CookieParseError } = await import('./cookies');
+    for (const bad of ['just some words secret-value', '.reddit.com\tTRUE\t/\tTRUE'])
+      try {
+        parseCookieText(bad);
+        throw new Error('should have thrown');
+      } catch (e) {
+        expect(e).toBeInstanceOf(CookieParseError);
+        expect((e as Error).message).not.toContain('secret-value');
+      }
+  });
+
+  it('exports round-trip through both formats', async () => {
+    const { parseCookieText, cookiesToJson, cookiesToNetscape } = await import('./cookies');
+    const cookies = parseCookieText(NETSCAPE);
+    expect(parseCookieText(cookiesToNetscape(cookies))).toEqual(cookies);
+    expect(parseCookieText(cookiesToJson(cookies))).toEqual(cookies);
+  });
+});

@@ -87,6 +87,8 @@ const cmds: Cmd[] = [
   { kind: 'profile.remove', profileId: 'prof_1' },
   { kind: 'proxy.check', proxyId: 'px_1', proxy: { protocol: 'http', host: 'p.example', port: 8080 } },
   { kind: 'proxy.rotate', proxyId: 'px_1', url: 'https://vendor.example/rotate?token=abc' },
+  { kind: 'profile.exportCookies', profileId: 'prof_1' },
+  { kind: 'profile.clearData', profileId: 'prof_1', cookies: true, cache: false },
   {
     kind: 'action.submitComment',
     profileId: 'prof_1',

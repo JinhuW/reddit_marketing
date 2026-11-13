@@ -111,10 +111,12 @@ describe('pure helpers', () => {
     expect(store.lookup('p')).toBeUndefined();
   });
 
-  it('registers all five action kinds in the agent module', () => {
+  it('registers every action kind in the agent module', () => {
     expect(Object.keys(actionsModule.handlers).sort()).toEqual([
       'action.sendDm',
       'action.submitComment',
+      'profile.clearData',
+      'profile.exportCookies',
       'profile.signIn',
       'profile.testProxy',
       'profile.whoami',

@@ -221,6 +221,8 @@ export function profileView(p: Row, now = new Date(), node: NodeInfo | null = nu
         }
       : null,
     startUrl: p.startUrl ?? null,
+    /** more tabs opened after the start tab (plan 0004 phase 4) */
+    extraStartUrls: p.extraStartUrls ?? [],
     /** pasted cookies wait (encrypted) for the next sign-in run; never their values */
     cookies: {
       pending: Boolean(p.cookiesEnc),

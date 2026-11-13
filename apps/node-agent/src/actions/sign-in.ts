@@ -91,7 +91,44 @@ export async function signIn(
   } catch (err) {
     ctx.log.warn({ url: redactUrl(cmd.startUrl), err: errMessage(err) }, 'start tab did not load');
   }
+  await openExtraTabs(session, cmd.extraUrls ?? [], ctx);
   return who;
+}
+
+/**
+ * Plan 0004 phase 4: the other start tabs. Each opens in its own tab and stays open. A tab that is already on the
+ * address (an earlier sign-in run opened it) is not opened again, and one that fails to load is skipped: like the
+ * start tab, these are a convenience and never change the result.
+ */
+async function openExtraTabs(
+  session: Session,
+  urls: string[],
+  ctx: Pick<HandlerContext, 'log'>,
+): Promise<void> {
+  const context = session.page.context();
+  for (const url of urls) {
+    const open = context.pages().some((p) => sameAddress(p.url(), url));
+    if (open) continue;
+    try {
+      const tab = await context.newPage();
+      await tab.goto(url, { waitUntil: 'domcontentloaded', timeout: session.stepTimeout() });
+    } catch (err) {
+      ctx.log.warn(
+        { url: redactUrl(url), err: errMessage(err).split('\n')[0] },
+        'extra start tab did not load',
+      );
+    }
+  }
+}
+
+function sameAddress(a: string, b: string): boolean {
+  try {
+    const x = new URL(a);
+    const y = new URL(b);
+    return x.origin === y.origin && x.pathname.replace(/\/$/, '') === y.pathname.replace(/\/$/, '');
+  } catch {
+    return false;
+  }
 }
 
 function loggedIn(r: HandlerResult): boolean {

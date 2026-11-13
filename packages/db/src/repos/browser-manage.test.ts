@@ -456,3 +456,50 @@ describe('browsers.updateFingerprint / dispatch', () => {
     }
   });
 });
+
+describe('extra start tabs (plan 0004 phase 4)', () => {
+  it('stores up to nine http(s) addresses, dedupes, and sends them with the sign-in', async () => {
+    const ws = await testWorkspace();
+    try {
+      const me = await ws.member();
+      const { profileId } = await browsers.createBrowser({
+        workspaceId: ws.id,
+        actorMemberId: me.id,
+        startUrl: 'https://www.reddit.com/r/startups/',
+        extraStartUrls: [
+          'https://mail.example.com',
+          ' https://mail.example.com/ ',
+          'https://shop.example.com/a',
+        ],
+      });
+      expect((await browsers.getSignInForDispatch(ws.id, profileId))?.extraStartUrls).toEqual([
+        'https://mail.example.com/',
+        'https://shop.example.com/a',
+      ]);
+      expect(
+        await browsers.updateBrowserSettings(ws.id, profileId, me.id, {
+          extraStartUrls: ['https://one.example/'],
+        }),
+      ).toEqual({ changed: ['extraStartUrls'] });
+      expect(
+        await browsers.updateBrowserSettings(ws.id, profileId, me.id, {
+          extraStartUrls: ['https://one.example/'],
+        }),
+      ).toEqual({ changed: [] });
+      await expect(
+        browsers.updateBrowserSettings(ws.id, profileId, me.id, { extraStartUrls: ['javascript:alert(1)'] }),
+      ).rejects.toThrow(/http/);
+      const ten = Array.from({ length: 10 }, (_, i) => `https://t${i}.example/`);
+      await expect(
+        browsers.updateBrowserSettings(ws.id, profileId, me.id, { extraStartUrls: ten }),
+      ).rejects.toThrow(/At most 9/);
+      // A clone opens the same tabs.
+      const copy = await browsers.cloneProfile(ws.id, profileId, me.id);
+      expect((await browsers.getSignInForDispatch(ws.id, copy.profileId))?.extraStartUrls).toEqual([
+        'https://one.example/',
+      ]);
+    } finally {
+      await ws.cleanup();
+    }
+  });
+});

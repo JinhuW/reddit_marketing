@@ -85,6 +85,8 @@ export const BROWSER_DEADLINE_MS: Record<BrowserJobKind, number> = {
   'profile.whoami': 45_000,
   'profile.signIn': 120_000,
   'health.check': 15_000,
+  'profile.exportCookies': 45_000,
+  'profile.clearData': 45_000,
   'proxy.check': 60_000,
   'proxy.rotate': 30_000,
 };
@@ -555,6 +557,21 @@ export class Dispatcher {
         const result = await this.send(node.name, cmd, cmdId, job.kind);
         return this.apply({ ...ctx, sentCookiesEnc: cookiesEnc }, result);
       }
+      case 'profile.exportCookies':
+      case 'profile.clearData': {
+        // Both act on the running browser's own cookie jar.
+        const pre = await this.ensureRunning(node, profile, cmdId, 'test', null, lastAttempt);
+        if (pre) return pre;
+        const result = await this.send(
+          node.name,
+          job.kind === 'profile.exportCookies'
+            ? { kind: job.kind, profileId: profile.id }
+            : { kind: job.kind, profileId: profile.id, cookies: job.cookies, cache: job.cache },
+          cmdId,
+          job.kind,
+        );
+        return this.apply(ctx, result);
+      }
       case 'profile.remove': {
         // The volume is the browser's whole identity. Purge only what is in the trash; reset only what is not.
         if (job.after === 'purge' && !profile.trashed)
@@ -596,6 +613,7 @@ export class Dispatcher {
         kind: 'profile.signIn',
         profileId: profile.id,
         startUrl: s.startUrl,
+        ...(s.extraStartUrls.length ? { extraUrls: s.extraStartUrls } : {}),
         ...(cookies ? { cookies } : {}),
         ...(s.credentials ? { credentials: s.credentials } : {}),
       },

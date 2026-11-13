@@ -382,6 +382,8 @@ model BrowserProfile {
   name              String
   /// Tab opened on every profile.signIn run; null = https://www.reddit.com/
   startUrl          String?
+  /// Plan 0004 phase 4: more tabs opened after `startUrl` on a sign-in run (at most 9, so 10 tabs in all).
+  extraStartUrls    String[]             @default([])
   /// Cookie JSON waiting to be imported on the next profile.signIn (encrypted); cleared after import.
   cookiesEnc        String?
   cookiesImportedAt DateTime?

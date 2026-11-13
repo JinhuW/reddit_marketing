@@ -10,6 +10,7 @@
  */
 import type { CmdKind, CmdOf } from '@threadline/shared';
 import type { HandlerContext, HandlerMap, HandlerResult } from '../registry';
+import { clearData, exportCookies } from './browser-data';
 import type { HumanOptions } from './human';
 import { type ProxyLookup, profileProxies } from './proxy-store';
 import { proxyAuthWatchers } from './proxy-watch';
@@ -53,7 +54,13 @@ export interface ActionOptions {
 
 type ActionKind = Extract<
   CmdKind,
-  'action.submitComment' | 'action.sendDm' | 'profile.testProxy' | 'profile.whoami' | 'profile.signIn'
+  | 'action.submitComment'
+  | 'action.sendDm'
+  | 'profile.testProxy'
+  | 'profile.whoami'
+  | 'profile.signIn'
+  | 'profile.exportCookies'
+  | 'profile.clearData'
 >;
 
 export function createActionHandlers(options: ActionOptions = {}): Pick<HandlerMap, ActionKind> {
@@ -111,6 +118,10 @@ export function createActionHandlers(options: ActionOptions = {}): Pick<HandlerM
     }),
     'profile.whoami': action((s, cmd: CmdOf<'profile.whoami'>) => whoami(s, cmd, o)),
     'profile.signIn': action((s, cmd: CmdOf<'profile.signIn'>, ctx) => signIn(s, cmd, ctx, o)),
+    'profile.exportCookies': action((s, cmd: CmdOf<'profile.exportCookies'>, ctx) =>
+      exportCookies(s, cmd, ctx),
+    ),
+    'profile.clearData': action((s, cmd: CmdOf<'profile.clearData'>, ctx) => clearData(s, cmd, ctx)),
   };
 }
 

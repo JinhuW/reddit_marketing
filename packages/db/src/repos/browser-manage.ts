@@ -366,6 +366,7 @@ export function cloneProfile(workspaceId: string, sourceId: string, actorMemberI
       fingerprint: { ...device, capturedAt: new Date().toISOString() } as Prisma.InputJsonValue,
       proxyId: src.proxyId,
       startUrl: src.startUrl,
+      extraStartUrls: src.extraStartUrls,
       groupId: src.groupId,
       notes: src.notes,
       tagIds: src.tags.map((t) => t.id),

@@ -894,6 +894,8 @@ export interface CreateBrowserInput {
   startUrl?: string | null;
   /** cookie JSON, already validated (parseCookieJson) and encrypted */
   cookiesEnc?: string | null;
+  /** plan 0004 phase 4: more tabs after the start tab */
+  extraStartUrls?: string[];
   /** plan 0004: list fields; group and tags must belong to the workspace */
   groupId?: string | null;
   notes?: string | null;
@@ -945,6 +947,7 @@ export async function createBrowserTx(
       serial: await nextSerial(tx, input.workspaceId),
       fingerprint: input.fingerprint ?? {},
       startUrl,
+      extraStartUrls: normalizeExtraStartUrls(input.extraStartUrls),
       cookiesEnc: input.cookiesEnc ?? null,
       groupId: input.groupId ?? null,
       notes: input.notes?.trim().slice(0, 2000) || null,
@@ -1117,6 +1120,23 @@ export interface BrowserSettingsUpdate {
   startUrl?: string | null;
   /** already validated and encrypted; null drops pending cookies; undefined keeps them */
   cookiesEnc?: string | null;
+  /** plan 0004 phase 4: more tabs after the start tab; replaces the list (at most {@link MAX_EXTRA_START_URLS}) */
+  extraStartUrls?: string[];
+}
+
+/** Tabs a browser may open besides its start tab (10 in all). */
+export const MAX_EXTRA_START_URLS = 9;
+
+/** Validates the extra start tabs: http(s) addresses, no blanks, no duplicates, at most nine. */
+export function normalizeExtraStartUrls(raw: readonly string[] | undefined): string[] {
+  const out: string[] = [];
+  for (const line of raw ?? []) {
+    const u = normalizeStartUrl(line);
+    if (u && !out.includes(u)) out.push(u);
+  }
+  if (out.length > MAX_EXTRA_START_URLS)
+    throw new BrowserAssignError(`At most ${MAX_EXTRA_START_URLS} more start tabs (10 tabs in all).`);
+  return out;
 }
 
 /** Name, start tab and pending cookies. Writes `profile.settings_updated` (never with cookie values). */
@@ -1129,7 +1149,14 @@ export async function updateBrowserSettings(
   return prisma.$transaction(async (tx) => {
     const p = await tx.browserProfile.findFirst({
       where: { workspaceId, id: profileId },
-      select: { id: true, name: true, accountId: true, startUrl: true, cookiesEnc: true },
+      select: {
+        id: true,
+        name: true,
+        accountId: true,
+        startUrl: true,
+        cookiesEnc: true,
+        extraStartUrls: true,
+      },
     });
     if (!p) throw new Error('Browser not found');
     const name = data.name?.trim().slice(0, 80);
@@ -1149,6 +1176,13 @@ export async function updateBrowserSettings(
     if (data.cookiesEnc !== undefined && data.cookiesEnc !== p.cookiesEnc) {
       fields.cookiesEnc = data.cookiesEnc;
       changed.push(data.cookiesEnc ? 'cookies' : 'cookiesDropped');
+    }
+    if (data.extraStartUrls !== undefined) {
+      const extra = normalizeExtraStartUrls(data.extraStartUrls);
+      if (extra.join('\n') !== p.extraStartUrls.join('\n')) {
+        fields.extraStartUrls = extra;
+        changed.push('extraStartUrls');
+      }
     }
     if (!changed.length) return { changed: [] as string[] };
     await tx.browserProfile.update({ where: { id: p.id }, data: fields });
@@ -1180,6 +1214,8 @@ export async function markCookiesImported(workspaceId: string, profileId: string
 export interface SignInDispatch {
   profileId: string;
   startUrl: string;
+  /** plan 0004 phase 4: more tabs to open after the start tab */
+  extraStartUrls: string[];
   /** the encrypted cookie JSON that was sent, for {@link markCookiesImported}; null = none pending */
   cookiesEnc: string | null;
   cookies: BrowserCookie[] | null;
@@ -1207,6 +1243,7 @@ export async function getSignInForDispatch(
     select: {
       id: true,
       startUrl: true,
+      extraStartUrls: true,
       cookiesEnc: true,
       account: {
         select: {
@@ -1235,6 +1272,7 @@ export async function getSignInForDispatch(
   return {
     profileId: p.id,
     startUrl: p.startUrl ?? DEFAULT_START_URL,
+    extraStartUrls: p.extraStartUrls,
     cookiesEnc: p.cookiesEnc,
     cookies,
     account: a

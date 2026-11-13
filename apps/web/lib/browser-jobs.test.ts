@@ -195,3 +195,79 @@ describe('redisConnection', () => {
     expect(c.tls).toEqual({});
   });
 });
+
+describe('data jobs (plan 0004 phase 4)', async () => {
+  const { COOKIE_EXPORT_KEEP_SEC, cookieExportStatus, enqueueDataJob, enqueueProxyJob } = await import(
+    './browser-jobs'
+  );
+  const online = { name: 'browser-1', status: 'online' };
+
+  it('a cookie export is kept for minutes, not the usual week, and carries only ids', async () => {
+    const q = fakeQueue();
+    const r = await enqueueDataJob('ws', 'p1', { kind: 'profile.exportCookies' }, deps(online, q));
+    expect(r).toMatchObject({ queued: true, node: 'browser-1' });
+    expect(q.added[0]?.opts).toMatchObject({
+      removeOnComplete: { age: COOKIE_EXPORT_KEEP_SEC },
+      attempts: 2,
+    });
+    expect(q.added[0]?.data).toEqual({ kind: 'profile.exportCookies', workspaceId: 'ws', profileId: 'p1' });
+    expect(BrowserJobSchema.safeParse(q.added[0]?.data).success).toBe(true);
+    const clear = await enqueueDataJob(
+      'ws',
+      'p1',
+      { kind: 'profile.clearData', cookies: true, cache: false },
+      deps(online, q),
+    );
+    expect(clear.queued).toBe(true);
+    expect(BrowserJobSchema.safeParse(q.added[1]?.data).success).toBe(true);
+    expect(await enqueueDataJob('ws', 'p1', { kind: 'profile.exportCookies' }, deps(null, q))).toMatchObject({
+      queued: false,
+    });
+  });
+
+  it('reads an export back only for its own browser and kind', async () => {
+    const id = 'bj-profile.exportCookies-p1-abc';
+    const done = { outcome: 'ok', data: { enc: 'ENC', count: 12, truncated: false } };
+    const q = fakeQueue({
+      [id]: { state: 'completed', returnvalue: done },
+      'bj-profile.exportCookies-p1-run': { state: 'active' },
+      'bj-profile.exportCookies-p1-bad': { state: 'failed' },
+      'bj-profile.exportCookies-p2-abc': { state: 'completed', returnvalue: done },
+      'bj-profile.whoami-p1-abc': { state: 'completed', returnvalue: done },
+    });
+    const d = deps(online, q);
+    expect(await cookieExportStatus('ws', 'p1', id, d)).toEqual({
+      state: 'done',
+      enc: 'ENC',
+      count: 12,
+      truncated: false,
+    });
+    expect(await cookieExportStatus('ws', 'p1', 'bj-profile.exportCookies-p1-run', d)).toEqual({
+      state: 'pending',
+    });
+    expect((await cookieExportStatus('ws', 'p1', 'bj-profile.exportCookies-p1-bad', d)).state).toBe('failed');
+    // Another browser's export, another kind of job, or an expired one: gone.
+    expect(await cookieExportStatus('ws', 'p1', 'bj-profile.exportCookies-p2-abc', d)).toEqual({
+      state: 'gone',
+    });
+    expect(await cookieExportStatus('ws', 'p1', 'bj-profile.whoami-p1-abc', d)).toEqual({ state: 'gone' });
+    expect(await cookieExportStatus('ws', 'p1', 'bj-profile.exportCookies-p1-old', d)).toEqual({
+      state: 'gone',
+    });
+  });
+
+  it('pool proxy jobs go to any online node and wait when none is online', async () => {
+    const q = fakeQueue();
+    const base = { queue: q.queue as Deps['queue'], now: () => 1_700_000_000_000 };
+    expect(
+      await enqueueProxyJob('ws', 'px1', 'proxy.check', { ...base, onlineNodes: async () => [] }),
+    ).toMatchObject({ queued: false });
+    expect(q.added).toEqual([]);
+    const r = await enqueueProxyJob('ws', 'px1', 'proxy.check', {
+      ...base,
+      onlineNodes: async () => [{ name: 'browser-2' }],
+    });
+    expect(r).toMatchObject({ queued: true, node: 'browser-2' });
+    expect(q.added[0]?.data).toEqual({ kind: 'proxy.check', workspaceId: 'ws', proxyId: 'px1' });
+  });
+});

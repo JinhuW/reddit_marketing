@@ -196,6 +196,8 @@ export const AuditAction = [
   'proxy.updated',
   'proxy.deleted',
   'proxy.rotated',
+  'profile.cookies_exported',
+  'profile.data_cleared',
 ] as const;
 export type AuditAction = (typeof AuditAction)[number];
 

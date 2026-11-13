@@ -113,6 +113,13 @@ export function ListToolbar({
         {total} {total === 1 ? 'browser' : 'browsers'}
       </span>
       <div className="flex-1" />
+      <a
+        href={listHref(params, { id: '', manage: false, page: 1 }).replace('/browsers', '/browsers/export')}
+        className="btn btn-ghost !h-[30px]"
+        download
+      >
+        Export CSV
+      </a>
       <Link
         href={listHref(params, { manage: !params.manage, id: '' })}
         className="btn btn-ghost !h-[30px]"

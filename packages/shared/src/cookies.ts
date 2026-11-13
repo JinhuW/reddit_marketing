@@ -110,3 +110,101 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 export function cookieDomains(cookies: BrowserCookie[]): string[] {
   return [...new Set(cookies.map((c) => c.domain.replace(/^\./, '')))].sort();
 }
+
+// ── other formats (plan 0004 phase 4) ──
+
+/** `# Netscape HTTP Cookie File` lines: domain, subdomains flag, path, secure, expiry, name, value (tab separated). */
+function parseNetscape(text: string): BrowserCookie[] {
+  const rows: Record<string, unknown>[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    let line = raw;
+    let httpOnly = false;
+    // curl and wget mark HttpOnly cookies with this prefix on an otherwise normal line.
+    if (line.startsWith('#HttpOnly_')) {
+      httpOnly = true;
+      line = line.slice('#HttpOnly_'.length);
+    } else if (!line.trim() || line.startsWith('#')) continue;
+    const f = line.split('\t');
+    if (f.length < 7)
+      throw new CookieParseError(`Cookie line ${rows.length + 1} does not have 7 tab-separated fields.`);
+    const [domain, subdomains, path, secure, expiry, name] = f;
+    rows.push({
+      domain,
+      hostOnly: subdomains?.toUpperCase() !== 'TRUE' && !domain?.startsWith('.'),
+      path,
+      secure: secure?.toUpperCase() === 'TRUE',
+      expires: Number(expiry) || 0,
+      name,
+      // A value may itself contain tabs.
+      value: f.slice(6).join('\t'),
+      httpOnly,
+    });
+  }
+  return rows.map((c, i) => normalizeCookie(c, i));
+}
+
+/** A `Cookie:` header value, `name=value; other=value`, for one site. */
+function parseHeader(text: string, domain: string): BrowserCookie[] {
+  const body = text.replace(/^\s*cookie:\s*/i, '');
+  const rows = body
+    .split(/;\s*|\r?\n/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => {
+      const i = p.indexOf('=');
+      if (i <= 0) throw new CookieParseError('Cookie must be JSON, a cookies.txt file, or name=value pairs.');
+      return { name: p.slice(0, i).trim(), value: p.slice(i + 1), domain, path: '/', secure: true };
+    });
+  return rows.map((c, i) => normalizeCookie(c, i));
+}
+
+/**
+ * Parses what a person pastes into the Cookie box, whichever of the three common exports it is:
+ * JSON (Cookie-Editor, EditThisCookie, AdsPower), a Netscape `cookies.txt` file, or `name=value; name=value`
+ * pairs. Pairs carry no site, so they are filed under `defaultDomain`. Errors never include a cookie value.
+ */
+export function parseCookieText(text: string, opts: { defaultDomain?: string } = {}): BrowserCookie[] {
+  if (text.length > MAX_COOKIE_JSON) throw new CookieParseError('Cookie text is too large.');
+  const t = text.trim();
+  if (t.startsWith('[') || t.startsWith('{')) return parseCookieJson(t);
+  const list = /\t/.test(t) ? parseNetscape(t) : parseHeader(t, opts.defaultDomain ?? '.reddit.com');
+  if (list.length === 0) throw new CookieParseError('No cookies found.');
+  if (list.length > MAX_COOKIES) throw new CookieParseError(`At most ${MAX_COOKIES} cookies.`);
+  return list;
+}
+
+/** The JSON shape cookie extensions and anti-detect tools import (the reverse of {@link parseCookieJson}). */
+export function cookiesToJson(cookies: BrowserCookie[]): string {
+  return JSON.stringify(
+    cookies.map((c) => ({
+      domain: c.domain,
+      hostOnly: !c.domain.startsWith('.'),
+      name: c.name,
+      value: c.value,
+      path: c.path,
+      secure: c.secure,
+      httpOnly: c.httpOnly,
+      sameSite: c.sameSite === 'None' ? 'no_restriction' : c.sameSite.toLowerCase(),
+      session: c.expires <= 0,
+      ...(c.expires > 0 ? { expirationDate: c.expires } : {}),
+    })),
+    null,
+    2,
+  );
+}
+
+/** A Netscape `cookies.txt` file (curl, wget, yt-dlp and most browser tools read it). */
+export function cookiesToNetscape(cookies: BrowserCookie[]): string {
+  const lines = cookies.map((c) =>
+    [
+      `${c.httpOnly ? '#HttpOnly_' : ''}${c.domain}`,
+      c.domain.startsWith('.') ? 'TRUE' : 'FALSE',
+      c.path,
+      c.secure ? 'TRUE' : 'FALSE',
+      c.expires > 0 ? String(Math.floor(c.expires)) : '0',
+      c.name,
+      c.value,
+    ].join('\t'),
+  );
+  return `# Netscape HTTP Cookie File\n${lines.join('\n')}\n`;
+}

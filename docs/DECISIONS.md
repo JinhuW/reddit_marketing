@@ -297,3 +297,9 @@ Color Emoji), because the image ships Windows-metric fonts and `CloakGpu` has no
 - Forms that must keep what was typed after a refused submit send their data from `onSubmit` and still carry a
   server `action`. Without the `action`, a click before hydration made the browser submit a GET with the typed
   proxy login in the URL.
+- Cookie export (plan 0004 phase 4): cookies leave a browser only for an admin, the account owner or the
+  browser's creator. The agent does not register exported values with its log scrubber (it would blank them out
+  of the result); it simply never logs them. The gateway encrypts the list with `APP_ENCRYPTION_KEY` before it
+  becomes a BullMQ return value, the job is kept 10 minutes instead of a week, and every download is audited.
+- "Clear session" from the artboard became two buttons, Clear cookies and Clear cache; clearing cookies needs a
+  ticked confirmation.
