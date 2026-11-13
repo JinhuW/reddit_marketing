@@ -5,9 +5,9 @@
  *
  * Credentials go only into the proxy handshake; errors never include them.
  */
-import { request as httpRequest } from 'node:http';
-import { request as httpsRequest } from 'node:https';
-import { type Socket, connect as netConnect } from 'node:net';
+import { Agent as HttpAgent, request as httpRequest } from 'node:http';
+import { Agent as HttpsAgent, request as httpsRequest } from 'node:https';
+import { type Socket, isIP, connect as netConnect } from 'node:net';
 import { connect as tlsConnect } from 'node:tls';
 import type { ProxySpec } from '@threadline/shared';
 
@@ -29,6 +29,8 @@ export interface FetchedText {
 export interface ProxyFetchOptions {
   timeoutMs: number;
   signal?: AbortSignal;
+  /** Extra CA for the TLS connection to an `https` proxy (tests; real proxies use public certificates). */
+  proxyCa?: string;
 }
 
 const MAX_BODY = 64 * 1024;
@@ -46,6 +48,17 @@ export async function fetchViaProxy(
   const left = () => Math.max(1, deadline - Date.now());
 
   if (!proxy) return get(url, undefined, { headers: {} }, left(), opts.signal);
+  if (proxy.protocol === 'https' && !https) {
+    // Absolute-form request, like a plain HTTP proxy, but on the TLS connection to the proxy.
+    const socket = await dialProxy(proxy, left(), opts.signal, opts.proxyCa);
+    return get(
+      url,
+      socket,
+      { path: target.toString(), headers: { host: target.host, ...basicAuth(proxy) } },
+      left(),
+      opts.signal,
+    );
+  }
   if (proxy.protocol === 'http' && !https) {
     // Absolute-form request to the proxy itself.
     return get(
@@ -61,9 +74,21 @@ export async function fetchViaProxy(
       opts.signal,
     );
   }
-  const socket = await openTunnel(proxy, target.hostname, port, left(), opts.signal);
+  const socket = await openTunnel(proxy, target.hostname, port, left(), opts.signal, opts.proxyCa);
   const conn = https ? tlsConnect({ socket, servername: target.hostname }) : socket;
   return get(url, conn, { headers: {} }, left(), opts.signal);
+}
+
+/**
+ * A one-request agent that sends on `socket` (the tunnel or TLS connection to the proxy) and nothing else.
+ * `agent: false` with a `createConnection` request option does NOT do this: Node 22 and 26 ignore the option
+ * there and open a new, direct connection to the target, so the request would leave from the node's own address
+ * instead of the proxy.
+ */
+export function agentOver(socket: Socket, https: boolean): HttpAgent {
+  const agent = https ? new HttpsAgent({ keepAlive: false }) : new HttpAgent({ keepAlive: false });
+  (agent as unknown as { createConnection: () => Socket }).createConnection = () => socket;
+  return agent;
 }
 
 function basicAuth(proxy: ProxySpec): Record<string, string> {
@@ -90,10 +115,9 @@ function get(
         port: extra.port ?? (target.port || undefined),
         path: extra.path ?? `${target.pathname}${target.search}`,
         headers: { accept: 'application/json, text/plain', connection: 'close', ...extra.headers },
-        agent: false,
+        agent: socket ? agentOver(socket, req === httpsRequest) : false,
         timeout: timeoutMs,
         signal,
-        ...(socket ? { createConnection: () => socket } : {}),
       },
       (res) => {
         let body = '';
@@ -124,15 +148,16 @@ export async function openTunnel(
   port: number,
   timeoutMs: number,
   signal?: AbortSignal,
+  proxyCa?: string,
 ): Promise<Socket> {
-  const socket = await dial(proxy.host, proxy.port, timeoutMs, signal);
+  const socket = await dialProxy(proxy, timeoutMs, signal, proxyCa);
   const timer = setTimeout(
     () => socket.destroy(new ProxyFetchError('timeout', `proxy handshake took over ${timeoutMs} ms`)),
     timeoutMs,
   );
   try {
     const io = new Reader(socket);
-    if (proxy.protocol === 'http') {
+    if (proxy.protocol === 'http' || proxy.protocol === 'https') {
       const auth = basicAuth(proxy)['proxy-authorization'];
       socket.write(
         `CONNECT ${host}:${port} HTTP/1.1\r\nHost: ${host}:${port}\r\n${auth ? `Proxy-Authorization: ${auth}\r\n` : ''}\r\n`,
@@ -181,6 +206,44 @@ async function socks5(io: Reader, socket: Socket, proxy: ProxySpec, host: string
   if (rep !== 0) throw new ProxyFetchError('proxy_refused', `SOCKS5 connect failed with code ${rep}`);
   const addrLen = atyp === 1 ? 4 : atyp === 4 ? 16 : ((await io.read(1))[0] ?? 0);
   await io.read(addrLen + 2);
+}
+
+/**
+ * The connection to the proxy itself: plain TCP, or TLS on top of it for an `https` proxy. The proxy's
+ * certificate is verified against its host name like any HTTPS server's.
+ */
+async function dialProxy(
+  proxy: ProxySpec,
+  timeoutMs: number,
+  signal?: AbortSignal,
+  ca?: string,
+): Promise<Socket> {
+  const tcp = await dial(proxy.host, proxy.port, timeoutMs, signal);
+  if (proxy.protocol !== 'https') return tcp;
+  return new Promise<Socket>((resolve, reject) => {
+    const fail = (why: string) => {
+      tcp.destroy();
+      reject(
+        new ProxyFetchError('proxy_unreachable', `TLS to proxy ${proxy.host}:${proxy.port} failed: ${why}`),
+      );
+    };
+    const timer = setTimeout(() => fail('handshake timeout'), timeoutMs);
+    const secure = tlsConnect({
+      socket: tcp,
+      // SNI is for names only; an IP literal is checked against the certificate's IP entries.
+      ...(isIP(proxy.host) ? {} : { servername: proxy.host }),
+      ...(ca ? { ca } : {}),
+    });
+    secure.once('error', (e) => {
+      clearTimeout(timer);
+      fail(e.message);
+    });
+    secure.once('secureConnect', () => {
+      clearTimeout(timer);
+      secure.removeAllListeners('error');
+      resolve(secure);
+    });
+  });
 }
 
 function dial(host: string, port: number, timeoutMs: number, signal?: AbortSignal): Promise<Socket> {

@@ -63,7 +63,8 @@ export const Seats = z.object({ inUse: count, limit: count.nullable() });
 export type Seats = z.infer<typeof Seats>;
 
 export const ProxySpec = z.object({
-  protocol: z.enum(['http', 'socks5']),
+  /** `https` = an HTTP proxy reached over TLS */
+  protocol: z.enum(['http', 'https', 'socks5']),
   host: z.string().min(1),
   port: z.number().int().min(1).max(65_535),
   username: z.string().optional(),

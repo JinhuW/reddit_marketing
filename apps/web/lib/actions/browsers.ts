@@ -50,7 +50,7 @@ async function manageable(profileId: string) {
 const ProxyForm = z.object({
   profileId: z.string().min(1),
   provider: z.string().trim().min(1).max(120),
-  protocol: z.enum(['http', 'socks5', 'none']),
+  protocol: z.enum(['http', 'https', 'socks5', 'none']),
   host: z.string().trim().max(255).optional(),
   port: z.string().trim().optional(),
   username: z.string().optional(),

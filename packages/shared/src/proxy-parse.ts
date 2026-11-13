@@ -7,7 +7,7 @@
 export const PROXY_PASTE_MAX = 200;
 
 export interface ParsedProxy {
-  protocol: 'http' | 'socks5';
+  protocol: 'http' | 'https' | 'socks5';
   host: string;
   port: number;
   username: string | null;
@@ -21,12 +21,17 @@ export interface ProxyParseResult {
   errors: { line: number; reason: string }[];
 }
 
-const SCHEMES: Record<string, 'http' | 'socks5'> = { http: 'http', socks5: 'socks5', socks5h: 'socks5' };
+const SCHEMES: Record<string, 'http' | 'https' | 'socks5'> = {
+  http: 'http',
+  https: 'https',
+  socks5: 'socks5',
+  socks5h: 'socks5',
+};
 const validPort = (s: string) => /^\d{1,5}$/.test(s) && Number(s) >= 1 && Number(s) <= 65535;
 // A hostname or an IPv4 address. IPv6 literals need the URL form with brackets.
 const validHost = (s: string) => /^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/.test(s);
 
-function parseOne(raw: string, fallback: 'http' | 'socks5'): ParsedProxy | string {
+function parseOne(raw: string, fallback: 'http' | 'https' | 'socks5'): ParsedProxy | string {
   let rest = raw;
   let note: string | null = null;
   let refreshUrl: string | null = null;
@@ -48,7 +53,7 @@ function parseOne(raw: string, fallback: 'http' | 'socks5'): ParsedProxy | strin
   const scheme = /^([A-Za-z][A-Za-z0-9+.-]*):\/\//.exec(rest);
   if (scheme) {
     const known = SCHEMES[(scheme[1] ?? '').toLowerCase()];
-    if (!known) return `unsupported scheme ${scheme[1]} (use http or socks5)`;
+    if (!known) return `unsupported scheme ${scheme[1]} (use http, https or socks5)`;
     protocol = known;
     let u: URL;
     try {
@@ -94,7 +99,10 @@ function parseOne(raw: string, fallback: 'http' | 'socks5'): ParsedProxy | strin
 }
 
 /** Parses a pasted list. Blank lines and lines starting with `#` are skipped. */
-export function parseProxyLines(text: string, fallback: 'http' | 'socks5' = 'http'): ProxyParseResult {
+export function parseProxyLines(
+  text: string,
+  fallback: 'http' | 'https' | 'socks5' = 'http',
+): ProxyParseResult {
   const out: ProxyParseResult = { proxies: [], errors: [] };
   const lines = text.split(/\r?\n/);
   for (const [i, raw] of lines.entries()) {

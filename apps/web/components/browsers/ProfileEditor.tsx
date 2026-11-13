@@ -207,7 +207,7 @@ export function ProfileEditor({
                   aria-label="Protocol"
                   className="inline-flex gap-0.5 rounded-[9px] bg-surface-3 p-[3px]"
                 >
-                  {(['http', 'socks5', 'none'] as const).map((v) => (
+                  {(['http', 'https', 'socks5', 'none'] as const).map((v) => (
                     <label
                       key={v}
                       className={`relative flex h-[26px] flex-1 cursor-pointer items-center justify-center rounded-[7px] px-2.5 text-xs font-medium ${protocol === v ? 'bg-surface text-ink' : 'text-ink-3'}`}
@@ -220,7 +220,7 @@ export function ProfileEditor({
                         onChange={() => setProtocol(v)}
                         className="absolute h-0 w-0 opacity-0"
                       />
-                      {v === 'http' ? 'HTTP' : v === 'socks5' ? 'SOCKS5' : 'None'}
+                      {v === 'none' ? 'None' : v.toUpperCase()}
                     </label>
                   ))}
                 </div>

@@ -34,7 +34,7 @@ export function proxyRow(x: browsers.ProxyListItem, now = new Date()) {
       label: x.label ?? '',
       notes: x.notes ?? '',
       provider: x.provider,
-      protocol: x.protocol === 'socks5' ? ('socks5' as const) : ('http' as const),
+      protocol: x.protocol === 'none' ? ('http' as const) : x.protocol,
       host: x.host ?? '',
       port: x.port ? String(x.port) : '',
       region: x.region ?? '',

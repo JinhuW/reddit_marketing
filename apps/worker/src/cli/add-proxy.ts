@@ -18,7 +18,7 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8').trim();
 }
 
-/** `scheme://[user:pass@]host:port` → parts; only http and socks5 (socks5h counts as socks5). */
+/** `scheme://[user:pass@]host:port` → parts; http, https and socks5 (socks5h counts as socks5). */
 export function parseProxyUrl(raw: string) {
   let u: URL;
   try {
@@ -27,7 +27,12 @@ export function parseProxyUrl(raw: string) {
     throw new Error('not a proxy URL (expected scheme://[user:pass@]host:port)');
   }
   const scheme = u.protocol.replace(/:$/, '');
-  const protocol = scheme === 'http' ? 'http' : scheme === 'socks5' || scheme === 'socks5h' ? 'socks5' : null;
+  const protocol =
+    scheme === 'http' || scheme === 'https'
+      ? scheme
+      : scheme === 'socks5' || scheme === 'socks5h'
+        ? 'socks5'
+        : null;
   if (!protocol) throw new Error(`unsupported proxy scheme ${scheme}`);
   const port = Number(u.port);
   if (!u.hostname || !Number.isInteger(port) || port < 1 || port > 65535)

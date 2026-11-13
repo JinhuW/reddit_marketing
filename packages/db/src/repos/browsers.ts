@@ -154,7 +154,7 @@ export function canManageProfile(
 
 export interface ProxyUpdate {
   provider: string;
-  protocol: 'http' | 'socks5' | 'none';
+  protocol: 'http' | 'https' | 'socks5' | 'none';
   host: string | null;
   port: number | null;
   sticky: boolean;
@@ -278,7 +278,7 @@ export async function assignNode(
 export interface ProxyListItem {
   id: string;
   provider: string;
-  protocol: 'http' | 'socks5' | 'none';
+  protocol: 'http' | 'https' | 'socks5' | 'none';
   host: string | null;
   port: number | null;
   sticky: boolean;
@@ -336,7 +336,7 @@ export async function createProxy(
   workspaceId: string,
   data: {
     provider: string;
-    protocol: 'http' | 'socks5';
+    protocol: 'http' | 'https' | 'socks5';
     host: string;
     port: number;
     region?: string | null;

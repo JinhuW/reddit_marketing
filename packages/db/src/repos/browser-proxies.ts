@@ -10,7 +10,7 @@ import { BrowserManageError } from './browser-manage';
 import type { ProxyTest } from './browsers';
 
 export interface NewProxy {
-  protocol: 'http' | 'socks5';
+  protocol: 'http' | 'https' | 'socks5';
   host: string;
   port: number;
   /** plain username: compared with what is stored so a re-pasted list adds nothing twice; never stored plain */
@@ -96,7 +96,7 @@ export interface ProxyPatch {
   label?: string | null;
   notes?: string | null;
   provider?: string;
-  protocol?: 'http' | 'socks5';
+  protocol?: 'http' | 'https' | 'socks5';
   host?: string;
   port?: number;
   region?: string | null;

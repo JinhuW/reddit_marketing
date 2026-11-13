@@ -21,7 +21,7 @@ export type AccountHealth = (typeof AccountHealth)[number];
 export const BrowserProfileStatus = ['idle', 'running', 'check', 'error'] as const;
 export type BrowserProfileStatus = (typeof BrowserProfileStatus)[number];
 
-export const ProxyProtocol = ['http', 'socks5', 'none'] as const;
+export const ProxyProtocol = ['http', 'socks5', 'none', 'https'] as const;
 export type ProxyProtocol = (typeof ProxyProtocol)[number];
 
 export const SessionDriver = ['agent', 'human'] as const;

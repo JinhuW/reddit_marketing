@@ -310,3 +310,7 @@ Color Emoji), because the image ships Windows-metric fonts and `CloakGpu` has no
 - Group access (plan 0004 phase 5) is the narrow form on purpose: PLAN §10 keeps the VNC view to admins and the
   account owner, so a member with access to a group manages its browsers but cannot take one over, read its
   cookies or touch its account. Widening that is the workspace owner's call.
+- 2026-11-13: `fetchViaProxy` sent tunnelled requests outside the tunnel (Node 22 and 26 ignore
+  `createConnection` on a request with `agent: false`). Every agent-side proxy reading taken through a SOCKS5
+  proxy, or through an HTTP proxy to an https address, before this date was the node's own exit, not the
+  proxy's. The browser's own traffic was never affected: it uses `--proxy-server`.

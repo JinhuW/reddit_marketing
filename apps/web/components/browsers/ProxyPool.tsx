@@ -72,6 +72,7 @@ function ProxyFields({ p, idp, editing }: { p?: ProxyRow['edit']; idp: string; e
       <F id={`${idp}-protocol`} label="Type">
         <select id={`${idp}-protocol`} name="protocol" className="field" defaultValue={p?.protocol ?? 'http'}>
           <option value="http">HTTP</option>
+          <option value="https">HTTPS</option>
           <option value="socks5">SOCKS5</option>
         </select>
       </F>
@@ -188,6 +189,7 @@ export function AddProxies() {
           </label>
           <select id="px-default" name="protocol" className="field !h-7 !w-auto" defaultValue="http">
             <option value="http">HTTP</option>
+            <option value="https">HTTPS</option>
             <option value="socks5">SOCKS5</option>
           </select>
           <div className="flex-1" />

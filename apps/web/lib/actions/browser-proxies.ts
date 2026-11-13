@@ -61,7 +61,7 @@ export async function addProxyAction(_prev: ActionState | null, form: FormData):
   return guarded(async () => {
     const me = await requireRole('editor');
     const parsed = z
-      .object({ protocol: z.enum(['http', 'socks5']), host: Host, port: Port })
+      .object({ protocol: z.enum(['http', 'https', 'socks5']), host: Host, port: Port })
       .safeParse({ protocol: str(form, 'protocol'), host: str(form, 'host'), port: str(form, 'port') });
     if (!parsed.success)
       return { ok: false, message: parsed.error.issues[0]?.message ?? 'Check the fields.' };
@@ -93,7 +93,8 @@ export async function addProxyAction(_prev: ActionState | null, form: FormData):
 export async function bulkAddProxiesAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
   return guarded(async () => {
     const me = await requireRole('editor');
-    const fallback = str(form, 'protocol') === 'socks5' ? 'socks5' : 'http';
+    const picked = str(form, 'protocol');
+    const fallback = picked === 'socks5' || picked === 'https' ? picked : 'http';
     const { proxies, errors } = parseProxyLines(String(form.get('lines') ?? ''), fallback);
     // The parser reports line numbers and reasons only, so nothing pasted is echoed back.
     const bad = errors.length
@@ -136,7 +137,7 @@ export async function updateProxyAction(_prev: ActionState | null, form: FormDat
   const r = await guarded(async () => {
     const me = await requireRole('editor');
     const parsed = z
-      .object({ protocol: z.enum(['http', 'socks5']), host: Host, port: Port })
+      .object({ protocol: z.enum(['http', 'https', 'socks5']), host: Host, port: Port })
       .safeParse({ protocol: str(form, 'protocol'), host: str(form, 'host'), port: str(form, 'port') });
     if (!parsed.success)
       return { ok: false, message: parsed.error.issues[0]?.message ?? 'Check the fields.' };

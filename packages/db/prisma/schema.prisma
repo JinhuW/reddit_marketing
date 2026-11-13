@@ -56,6 +56,8 @@ enum ProxyProtocol {
   http
   socks5
   none
+  /// HTTP proxy reached over TLS (plan 0004 phase 6)
+  https
 }
 
 enum SessionDriver {

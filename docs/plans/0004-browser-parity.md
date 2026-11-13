@@ -77,8 +77,7 @@ BrowserSession transition writes an AuditEvent; secrets never in logs, job paylo
 - [x] Node commands `proxy.check` (no browser needed; any online node of the workspace) and `proxy.rotate`
       (calls the change-IP link from the node; only http(s) links that resolve to public addresses).
 - [x] "Random proxy no browser uses yet" on New browser (`browsers.pickUnusedProxy`).
-- [ ] Not built: HTTPS and SSH proxy types. Both need a TLS or SSH hop in the agent's own proxy requests and in
-      the CDP proxy sign-in, and a check on a node; HTTP and SOCKS5 cover what the pool holds today.
+- [x] HTTPS proxies came in phase 6; SSH proxies are not built.
 
 ### Phase 4 · Cookies, data, bulk create
 - [x] Cookie import also reads a Netscape `cookies.txt` file and `name=value` pairs (`parseCookieText`).
@@ -101,6 +100,15 @@ BrowserSession transition writes an AuditEvent; secrets never in logs, job paylo
       fingerprint settings of every browser in the group.
 - [x] It never means controlling (`canControlProfile`): take-over, sign-in, cookies, the account, a new
       fingerprint, delete and restore stay with admins, the account owner and the browser's creator.
+
+### Phase 6 · HTTPS proxies
+- [x] `https` proxy type (an HTTP proxy reached over TLS): pool and per-browser forms, bulk paste, the browser's
+      `--proxy-server=https://…`, and the agent's own requests (`dialProxy` verifies the proxy's certificate).
+- [x] Fixed on the way: the agent's tunnelled requests (SOCKS5, and HTTP proxies for https addresses) ignored the
+      tunnel and connected directly, because Node drops a `createConnection` request option when `agent: false`.
+      `agentOver` now owns the connection. Until this fix the agent's half of a connection test, and `proxy.check`
+      against the default https IP echo, measured the node's own address.
+- [ ] Not built: SSH proxies.
 
 ## Rollout
 

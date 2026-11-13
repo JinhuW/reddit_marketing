@@ -103,3 +103,14 @@ describe('parseProxyLines', () => {
     expect(r.errors).toHaveLength(1);
   });
 });
+
+describe('https proxies (plan 0004 phase 6)', () => {
+  it('reads the https scheme and takes it as the fallback', () => {
+    const r = parseProxyLines('https://u:p@gate.example.com:8443\nplain.example.com:8443', 'https');
+    expect(r.errors).toEqual([]);
+    expect(r.proxies.map((p) => [p.protocol, p.host, p.port])).toEqual([
+      ['https', 'gate.example.com', 8443],
+      ['https', 'plain.example.com', 8443],
+    ]);
+  });
+});
