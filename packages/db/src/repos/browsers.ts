@@ -36,6 +36,11 @@ export interface ProxyTest {
   testedAt?: string;
   kind?: string;
   label?: string;
+  /** false = the last test failed (`error` holds the agent's error code); absent on older rows */
+  ok?: boolean;
+  error?: string;
+  lat?: number;
+  lon?: number;
 }
 
 const profileInclude = {
@@ -1136,4 +1141,61 @@ export async function getSignInForDispatch(
       : null,
     credentials,
   };
+}
+
+// ── live status and connection tests (docs/plans/0004-browser-parity.md, phase 0) ──
+
+/** Sets one profile's status. No audit row: `profile.started` / `profile.stopped` already record the transition. */
+export async function setStatus(
+  workspaceId: string,
+  profileId: string,
+  status: 'idle' | 'running' | 'check' | 'error',
+): Promise<void> {
+  await prisma.browserProfile.updateMany({
+    where: { id: profileId, workspaceId, status: { not: status } },
+    data: { status },
+  });
+}
+
+/**
+ * Makes `status` match what a node reports: its running profiles become `running`, and profiles it no longer
+ * runs go from `running` back to `idle`. `check` / `error` on a stopped profile are kept until it runs again.
+ */
+export async function syncNodeRunning(nodeId: string, runningProfileIds: string[]): Promise<void> {
+  await prisma.$transaction([
+    prisma.browserProfile.updateMany({
+      where: { nodeId, id: { in: runningProfileIds }, status: { not: 'running' } },
+      data: { status: 'running' },
+    }),
+    prisma.browserProfile.updateMany({
+      where: { nodeId, id: { notIn: runningProfileIds }, status: 'running' },
+      data: { status: 'idle' },
+    }),
+  ]);
+}
+
+/** Stores a connection test on the profile's proxy row. A profile with no proxy row has nowhere to keep it. */
+export async function recordProxyTest(
+  workspaceId: string,
+  profileId: string,
+  test: ProxyTest,
+): Promise<{ stored: boolean }> {
+  const p = await prisma.browserProfile.findFirst({
+    where: { id: profileId, workspaceId },
+    select: { proxyId: true },
+  });
+  if (!p?.proxyId) return { stored: false };
+  const cur = await prisma.proxy.findUnique({ where: { id: p.proxyId }, select: { lastTest: true } });
+  const prev = (cur?.lastTest ?? {}) as ProxyTest;
+  // `kind` / `label` are display hints set elsewhere; a test never removes them.
+  const next: ProxyTest = {
+    ...(prev.kind ? { kind: prev.kind } : {}),
+    ...(prev.label ? { label: prev.label } : {}),
+    ...test,
+  };
+  await prisma.proxy.update({
+    where: { id: p.proxyId },
+    data: { lastTest: next as Prisma.InputJsonValue },
+  });
+  return { stored: true };
 }

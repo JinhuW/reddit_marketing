@@ -70,17 +70,6 @@ export async function saveProxyAction(_prev: ActionState | null, form: FormData)
   return { ok: true, message: 'Proxy saved.' };
 }
 
-export async function runProxyTestAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
-  try {
-    await controllable(String(form.get('profileId') ?? ''));
-  } catch (e) {
-    if (e instanceof ForbiddenError) return { ok: false, message: e.message };
-    throw e;
-  }
-  // The test runs inside the profile's container (worker, M6). No result is invented here.
-  return { ok: false, message: 'Connection tests run in the worker (M6); last result shown.' };
-}
-
 export async function startSessionAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
   const profileId = String(form.get('profileId') ?? '');
   const reason = String(form.get('reason') ?? '').trim();
@@ -136,6 +125,7 @@ const JOB_DONE: Record<WebBrowserJobKind, string> = {
   'profile.stop': 'Stop queued.',
   'profile.whoami': 'Checking the sign-in…',
   'profile.signIn': 'Sign-in queued.',
+  'profile.testProxy': 'Test started. The result shows here in a few seconds.',
 };
 
 async function queueJob(form: FormData, kind: WebBrowserJobKind): Promise<ActionState> {
@@ -149,6 +139,11 @@ async function queueJob(form: FormData, kind: WebBrowserJobKind): Promise<Action
     if (f) return f;
     throw e;
   }
+}
+
+/** "Test now": runs inside the profile's own browser on its node; the gateway stores the result on the proxy. */
+export async function runProxyTestAction(_prev: ActionState | null, form: FormData) {
+  return queueJob(form, 'profile.testProxy');
 }
 
 /** Start / Stop on the Browsers screen: Admin or the account owner. */

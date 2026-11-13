@@ -133,6 +133,9 @@ function setup(opts: {
       username: who.name,
     })),
     markCookiesImported: vi.fn(async () => undefined),
+    setStatus: vi.fn(async () => undefined),
+    recordProxyTest: vi.fn(async () => undefined),
+    now: () => new Date('2026-11-12T00:00:00Z'),
   } satisfies OutcomeDeps;
   const deps: Partial<DispatchDeps> = {
     getProfile: vi.fn(async () => profile(opts.account)),
@@ -141,6 +144,8 @@ function setup(opts: {
       throw new Error('draft must not be loaded');
     }),
     markFailed: vi.fn(),
+    syncRunning: vi.fn(async () => undefined),
+    setStatus: vi.fn(async () => undefined),
     ...opts.deps,
   };
   const d = new Dispatcher({

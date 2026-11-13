@@ -17,7 +17,7 @@ import { sendDm } from './send-dm';
 import { ActionError, type Session, defaultCdpUrl, errMessage, openSession } from './session';
 import { signIn } from './sign-in';
 import { submitComment } from './submit-comment';
-import { DEFAULT_IP_URL, testProxy } from './test-proxy';
+import { DEFAULT_GEO_URL, DEFAULT_IP_URL, testProxy } from './test-proxy';
 import { whoami } from './whoami';
 
 export { profileProxies, ProfileProxies, type ProxyLookup } from './proxy-store';
@@ -38,6 +38,11 @@ export interface ActionOptions {
   redditOrigin?: string;
   /** IP echo for the connection test; default {@link DEFAULT_IP_URL}. */
   ipUrl?: string;
+  /**
+   * Geo lookup for the connection test, fetched through the proxy. Default {@link DEFAULT_GEO_URL}; with a custom
+   * `ipUrl` and no `geoUrl` the lookup and the Reddit reachability check are skipped (tests stay offline).
+   */
+  geoUrl?: string | null;
   /** Cap for one Playwright step; default 15 s. */
   stepTimeoutMs?: number;
   /** How long to wait for Reddit to show a submitted item (or answer a login submit); default 20 s. */
@@ -59,6 +64,8 @@ export function createActionHandlers(options: ActionOptions = {}): Pick<HandlerM
       options.proxyWatched ?? (options.proxyFor ? () => false : (id: string) => proxyAuthWatchers.covers(id)),
     redditOrigin: options.redditOrigin ?? 'https://www.reddit.com',
     ipUrl: options.ipUrl ?? DEFAULT_IP_URL,
+    geoUrl: options.geoUrl !== undefined ? options.geoUrl : options.ipUrl ? null : DEFAULT_GEO_URL,
+    checkReddit: options.geoUrl !== undefined || !options.ipUrl,
     stepTimeoutMs: options.stepTimeoutMs ?? 15_000,
     confirmTimeoutMs: options.confirmTimeoutMs ?? 20_000,
     human: options.human,
@@ -94,7 +101,13 @@ export function createActionHandlers(options: ActionOptions = {}): Pick<HandlerM
           'this agent has no proxy on record for the profile; restart the profile to test its proxy',
         );
       }
-      return testProxy(s, cmd, { ipUrl: o.ipUrl, proxy, signal: ctx.signal });
+      return testProxy(s, cmd, {
+        ipUrl: o.ipUrl,
+        proxy,
+        signal: ctx.signal,
+        geoUrl: o.geoUrl,
+        redditUrl: o.checkReddit ? new URL('/robots.txt', o.redditOrigin).toString() : null,
+      });
     }),
     'profile.whoami': action((s, cmd: CmdOf<'profile.whoami'>) => whoami(s, cmd, o)),
     'profile.signIn': action((s, cmd: CmdOf<'profile.signIn'>, ctx) => signIn(s, cmd, ctx, o)),

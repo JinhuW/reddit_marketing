@@ -7,7 +7,12 @@ import { type BrowserJob, WhoamiData, browserJobId, browserQueue } from '@thread
 import { type JobsOptions, Queue } from 'bullmq';
 
 /** The kinds the web app may enqueue. Actions (submitComment/sendDm) are never queued from here. */
-export type WebBrowserJobKind = 'profile.start' | 'profile.stop' | 'profile.whoami' | 'profile.signIn';
+export type WebBrowserJobKind =
+  | 'profile.start'
+  | 'profile.stop'
+  | 'profile.whoami'
+  | 'profile.signIn'
+  | 'profile.testProxy';
 
 export type EnqueueResult = { queued: true; jobId: string; node: string } | { queued: false; reason: string };
 
@@ -116,7 +121,7 @@ export async function enqueueProfileJob(
     // A sign-in check / sign-in run is something the person is waiting on: retry twice, not for minutes after the
     // page gave up (and never hammer reddit.com/login).
     const opts =
-      kind === 'profile.whoami' || kind === 'profile.signIn'
+      kind === 'profile.whoami' || kind === 'profile.signIn' || kind === 'profile.testProxy'
         ? { ...BROWSER_JOB_OPTIONS, attempts: 2 }
         : BROWSER_JOB_OPTIONS;
     await withTimeout(deps.queue(node.name).add(node.name, job, { ...opts, jobId }));

@@ -163,7 +163,24 @@ export type CmdOf<K extends CmdKind> = Extract<Cmd, { kind: K }>;
 // ── result payloads (`Result.data`) for commands that return data ──
 
 /** `profile.testProxy` → exit IP seen from the page and from the agent. */
-export const TestProxyData = z.object({ pageIp: z.string().min(1), agentIp: z.string().min(1) });
+export const TestProxyData = z.object({
+  pageIp: z.string().min(1),
+  agentIp: z.string().min(1),
+  /** ms for the agent's IP echo through the proxy */
+  latencyMs: z.number().int().nonnegative().optional(),
+  /** reddit.com answered through the proxy (any status below 500) */
+  redditOk: z.boolean().optional(),
+  /** where the exit IP is, from the agent's geo lookup through the proxy; absent when the lookup failed */
+  geo: z
+    .object({
+      city: z.string().max(120).optional(),
+      country: z.string().max(80).optional(),
+      timeZone: z.string().max(64).optional(),
+      lat: z.number().min(-90).max(90).optional(),
+      lon: z.number().min(-180).max(180).optional(),
+    })
+    .optional(),
+});
 export type TestProxyData = z.infer<typeof TestProxyData>;
 
 /** `health.check` */

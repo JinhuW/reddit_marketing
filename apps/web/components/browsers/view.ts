@@ -216,6 +216,9 @@ export function profileView(p: Row, now = new Date(), node: NodeInfo | null = nu
           latency: test.latencyMs != null ? `${test.latencyMs} ms` : '—',
           latencyMs: test.latencyMs ?? null,
           redditOk: test.redditOk ?? null,
+          /** false only when the last test failed; older rows have no flag */
+          failed: test.ok === false,
+          error: test.error ?? null,
           testedAgo: test.testedAt ? `${ago(test.testedAt, now)} ago` : 'never',
         }
       : null,

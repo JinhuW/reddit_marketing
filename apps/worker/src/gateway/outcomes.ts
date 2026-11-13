@@ -25,7 +25,14 @@
  * Only `error.code` from the agent is recorded or logged: agent messages may quote page text or proxy URLs.
  */
 import { accounts, audit, browsers, drafts, prisma } from '@threadline/db';
-import { type BrowserJob, type PauseReason, PostedData, type Result, WhoamiData } from '@threadline/shared';
+import {
+  type BrowserJob,
+  type PauseReason,
+  PostedData,
+  type Result,
+  TestProxyData,
+  WhoamiData,
+} from '@threadline/shared';
 import { log as rootLog } from '../log';
 import { NodeError } from './hub';
 
@@ -50,6 +57,15 @@ export interface OutcomeDeps {
   ) => Promise<{ changed: boolean; username: string }>;
   /** browsers.markCookiesImported: clears the pending cookies only if they are still the ones that were sent. */
   markCookiesImported: (workspaceId: string, profileId: string, cookiesEnc: string) => Promise<unknown>;
+  /** browsers.setStatus: the Status chip on the Browsers screen. */
+  setStatus: (
+    workspaceId: string,
+    profileId: string,
+    status: 'idle' | 'running' | 'error',
+  ) => Promise<unknown>;
+  /** browsers.recordProxyTest: the "Last connection test" box. */
+  recordProxyTest: (workspaceId: string, profileId: string, test: browsers.ProxyTest) => Promise<unknown>;
+  now: () => Date;
   notifyNeedsHuman: (input: {
     workspaceId: string;
     memberId: string;
@@ -69,6 +85,9 @@ export const defaultOutcomeDeps: OutcomeDeps = {
   // Same shape post.publish writes for NeedsBrowser (there is no notifications repo yet; see DECISIONS).
   completeIdentity: (ws, accountId, who) => accounts.completeBrowserIdentity(ws, accountId, who),
   markCookiesImported: (ws, profileId, cookiesEnc) => browsers.markCookiesImported(ws, profileId, cookiesEnc),
+  setStatus: (ws, profileId, status) => browsers.setStatus(ws, profileId, status),
+  recordProxyTest: (ws, profileId, test) => browsers.recordProxyTest(ws, profileId, test),
+  now: () => new Date(),
   notifyNeedsHuman: (n) =>
     prisma.notification.create({
       data: {
@@ -168,6 +187,35 @@ export async function applyOutcome(
           accountId: ctx.profile.accountId,
           meta: { item: ctx.profile.name, node: ctx.node, reason: job.reason },
         });
+        await deps.setStatus(
+          job.workspaceId,
+          ctx.profile.id,
+          job.kind === 'profile.start' ? 'running' : 'idle',
+        );
+      }
+      if (job.kind === 'profile.testProxy' && ctx.profile) {
+        const t = TestProxyData.safeParse(result.data);
+        if (!t.success) {
+          l.error({ code: 'bad_test_data' }, 'testProxy result does not match the protocol');
+          throw new FinalOutcomeError('bad_test_data', 'the node returned an unreadable connection test');
+        }
+        // The page and the agent must leave through the same address, or the browser is not on the proxy.
+        const same = t.data.pageIp === t.data.agentIp;
+        const test: browsers.ProxyTest = {
+          ok: same,
+          ...(same ? {} : { error: 'ip_mismatch' }),
+          ip: t.data.pageIp,
+          ...(t.data.latencyMs === undefined ? {} : { latencyMs: t.data.latencyMs }),
+          ...(t.data.redditOk === undefined ? {} : { redditOk: t.data.redditOk }),
+          ...(t.data.geo ?? {}),
+          // Same form as the Region column shows elsewhere: "Boston, US".
+          ...(t.data.geo?.city
+            ? { city: [t.data.geo.city, t.data.geo.country].filter(Boolean).join(', ') }
+            : {}),
+          testedAt: deps.now().toISOString(),
+        };
+        await deps.recordProxyTest(job.workspaceId, ctx.profile.id, test);
+        return { outcome: 'ok', kind: job.kind, data: { ok: same } };
       }
       if (job.kind === 'profile.whoami') return applyWhoami(ctx, result.data, deps, l);
       if (job.kind === 'profile.signIn') {
@@ -211,6 +259,13 @@ export async function applyOutcome(
     case 'proxy_failed': {
       const reason: PauseReason = result.outcome;
       const p = ctx.profile;
+      if (p && job.kind === 'profile.testProxy' && reason === 'proxy_failed') {
+        await deps.recordProxyTest(job.workspaceId, p.id, {
+          ok: false,
+          error: result.error?.code ?? 'proxy_failed',
+          testedAt: deps.now().toISOString(),
+        });
+      }
       if (!p) {
         l.warn({ outcome: reason }, 'pause outcome without a profile');
         return { outcome: reason, paused: false, accountId: null };
