@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/JinhuW/reddit_marketing/compare/v0.9.0...v0.10.0) (2026-11-13)
+
+
+### Features
+
+* **browsers:** cookie export, clear data, more start tabs, quick create and CSV ([f794966](https://github.com/JinhuW/reddit_marketing/commit/f794966f119f20822eb6c1e0fd9ef607516940f6))
+
 ## [0.9.0](https://github.com/JinhuW/reddit_marketing/compare/v0.8.0...v0.9.0) (2026-11-13)
 
 
