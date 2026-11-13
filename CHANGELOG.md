@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/JinhuW/reddit_marketing/compare/v0.14.0...v0.15.0) (2026-11-13)
+
+
+### Features
+
+* **browsers:** fold the start tab form into Account; close the drawer from the table ([#36](https://github.com/JinhuW/reddit_marketing/issues/36)) ([46c1bf5](https://github.com/JinhuW/reddit_marketing/commit/46c1bf5deefb1ad0d523c111b239cccdd6123cf6))
+
 ## [0.14.0](https://github.com/JinhuW/reddit_marketing/compare/v0.13.0...v0.14.0) (2026-11-13)
 
 
