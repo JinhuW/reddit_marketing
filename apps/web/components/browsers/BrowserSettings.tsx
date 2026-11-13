@@ -20,7 +20,7 @@ export function cookieStatus(c: ProfileView['cookies']): string {
 }
 
 /**
- * Plan 0003: the browser's name, start tab (标签页) and cookie import, shown inside the Account section. The cookie
+ * Plan 0003: the browser's name, start tab (标签页) and cookie import, folded away at the foot of the Account section. The cookie
  * box is write-only: what was pasted is encrypted, imported by the next `profile.signIn`, then dropped; it is never
  * shown again.
  */
@@ -37,6 +37,8 @@ export function BrowserSettings({ p, canEdit }: { p: ProfileView; canEdit: boole
   const [name, setName] = useState(p.name);
   const [startUrl, setStartUrl] = useState(p.startUrl ?? '');
   const [cookies, setCookies] = useState('');
+  // Folded like the Account section's other forms; a refused save keeps it open so the error shows.
+  const [open, setOpen] = useState(false);
   const extraSaved = p.extraStartUrls.join('\n');
   const [extra, setExtra] = useState(extraSaved);
   const [seeded, setSeeded] = useState({ name: p.name, startUrl: p.startUrl, extra: extraSaved });
@@ -48,16 +50,25 @@ export function BrowserSettings({ p, canEdit }: { p: ProfileView; canEdit: boole
   }
 
   return (
-    <div
-      className="flex flex-col gap-2.5 border-t border-line-soft pt-3"
-      role="group"
-      aria-labelledby={`settings-h-${p.id}`}
+    <details
+      className="group flex flex-col"
+      open={open || state?.ok === false}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
       data-testid="browser-settings"
     >
-      <h4 id={`settings-h-${p.id}`} className="m-0 text-[12.5px] font-semibold">
-        Start tab and cookies
-      </h4>
-      <form action={act} className="flex flex-col gap-2.5">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[12.5px] font-medium text-ink-2 [&::-webkit-details-marker]:hidden">
+        <span aria-hidden className="inline-block text-ink-3 transition-transform group-open:rotate-90">
+          ›
+        </span>
+        Browser name, start tabs and cookies
+        <span
+          className={`chip ml-auto ${p.cookies.pending ? 'chip-warn' : p.cookies.importedAt ? 'chip-ok' : 'chip-mid'}`}
+          data-testid="cookie-status"
+        >
+          {cookieStatus(p.cookies)}
+        </span>
+      </summary>
+      <form action={act} className="mt-2.5 flex flex-col gap-2.5">
         <input type="hidden" name="profileId" value={p.id} />
         <fieldset className="m-0 flex flex-col gap-2.5 border-0 p-0" disabled={!canEdit}>
           <div className="flex flex-col gap-[5px]">
@@ -106,17 +117,9 @@ export function BrowserSettings({ p, canEdit }: { p: ProfileView; canEdit: boole
             </span>
           </div>
           <div className="flex flex-col gap-[5px]">
-            <div className="flex items-center gap-2">
-              <label htmlFor={`cookies-${p.id}`} className="text-xs font-semibold">
-                Cookie
-              </label>
-              <span
-                className={`chip ${p.cookies.pending ? 'chip-warn' : p.cookies.importedAt ? 'chip-ok' : 'chip-mid'}`}
-                data-testid="cookie-status"
-              >
-                {cookieStatus(p.cookies)}
-              </span>
-            </div>
+            <label htmlFor={`cookies-${p.id}`} className="text-xs font-semibold">
+              Cookie
+            </label>
             <textarea
               id={`cookies-${p.id}`}
               name="cookies"
@@ -148,6 +151,6 @@ export function BrowserSettings({ p, canEdit }: { p: ProfileView; canEdit: boole
         </fieldset>
       </form>
       <Msg s={state} />
-    </div>
+    </details>
   );
 }

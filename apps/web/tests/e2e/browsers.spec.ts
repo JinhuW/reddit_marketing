@@ -30,6 +30,10 @@ test('profile table lists 3 profiles and flags Sam’s region mismatch', async (
   await expect(page).toHaveURL(/[?&]id=/);
   await expect(page.getByTestId('connection-test')).toContainText('owner is in Austin, US');
   await expect(page.getByRole('note')).toContainText('Region mismatch');
+  // A click on the table panel outside any row closes the drawer again.
+  await page.getByText('Idle — session saved, nothing open').click();
+  await expect(page).not.toHaveURL(/[?&]id=/);
+  await expect(page.getByTestId('profile-editor')).toBeHidden();
 });
 
 test('saving a proxy port persists and never echoes credentials', async ({ page }) => {
@@ -551,6 +555,9 @@ test('quick create, more start tabs, cookies.txt import, CSV export and import (
     // The drawer imports a cookies.txt file and edits the extra tabs.
     await page.goto(`/browsers?id=${made[0]!.id}`);
     const settings = page.getByTestId('browser-settings');
+    // The form is folded inside the Account section.
+    await settings.locator('summary').click();
+    await expect(settings.getByLabel('More start tabs')).toBeVisible();
     await expect(settings.getByLabel('More start tabs')).toHaveValue(
       'https://mail.example.com/\nhttps://www.reddit.com/message/inbox',
     );
