@@ -223,6 +223,7 @@ model Workspace {
   redditAccounts  RedditAccount[]
   browserProfiles BrowserProfile[]
   browserGroups   BrowserGroup[]
+  apiKeys         ApiKey[]
   browserTags     BrowserTag[]
   browserNodes    BrowserNode[]
   proxies         Proxy[]
@@ -320,6 +321,7 @@ model WorkspaceMember {
   startedSessions   BrowserSession[]
   createdBrowsers   BrowserProfile[]     @relation("BrowserProfileCreatedBy")
   browserGroups     BrowserGroupMember[]
+  apiKeys           ApiKey[]
   auditEvents       AuditEvent[]
   notifications     Notification[]
 
@@ -461,6 +463,27 @@ model BrowserGroupMember {
 
   @@id([groupId, memberId])
   @@index([memberId])
+}
+
+/// Plan 0004 phase 7: a key for the browser management API (/api/v1). It acts as the member it belongs to and can
+/// only do what that member can; it can never post, take a browser over or read cookies. Only its hash is kept.
+model ApiKey {
+  id          String    @id @default(cuid())
+  workspaceId String
+  memberId    String
+  name        String
+  /// first characters of the key, shown so a person can tell keys apart
+  prefix      String
+  /// sha256 of the whole key, hex
+  keyHash     String    @unique
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  member    WorkspaceMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
 }
 
 /// Plan 0004: a label on browser profiles; a profile can carry several.

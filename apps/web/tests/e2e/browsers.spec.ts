@@ -666,3 +666,79 @@ test('an admin gives a member access to a group; a viewer never sees the access 
     await prisma.browserGroup.deleteMany({ where: { id: group.id } });
   }
 });
+
+test('management API: a key lists and creates browsers, cannot do more, and stops when revoked (plan 0004)', async ({
+  page,
+  request,
+}) => {
+  const s = Date.now().toString(36);
+  const keyName = `e2e key ${s}`;
+  const browserName = `e2e api ${s}`;
+  try {
+    await page.goto('/browsers');
+    await page.getByRole('link', { name: 'API', exact: true }).click();
+    await page.waitForLoadState('networkidle');
+    const box = page.getByTestId('new-api-key');
+    await box.getByLabel('Key name').fill(keyName);
+    await box.getByRole('button', { name: 'Create key' }).click();
+    await expect(box.getByRole('status')).toContainText('Copy it now');
+    const key = await box.getByTestId('api-key-value').inputValue();
+    expect(key).toMatch(/^tl_/);
+    // Stored as a hash only.
+    const stored = await prisma.apiKey.findFirstOrThrow({ where: { name: keyName } });
+    expect(JSON.stringify(stored)).not.toContain(key);
+
+    const auth = { headers: { authorization: `Bearer ${key}` } };
+    // No key, a wrong key and a session cookie alone are all refused.
+    expect((await request.get('/api/v1/browsers', { headers: { cookie: '' } })).status()).toBe(401);
+    expect(
+      (await request.get('/api/v1/browsers', { headers: { authorization: 'Bearer tl_nope' } })).status(),
+    ).toBe(401);
+
+    const list = await request.get('/api/v1/browsers', auth);
+    expect(list.status()).toBe(200);
+    const body = await list.json();
+    expect(body.total).toBeGreaterThanOrEqual(3);
+    const text = JSON.stringify(body);
+    expect(text).not.toMatch(/cookiesEnc|passwordEnc|usernameEnc|cloakSeed|fingerprint/);
+
+    const made = await request.post('/api/v1/browsers', {
+      ...auth,
+      data: { name: browserName, notes: 'from the API' },
+    });
+    expect(made.status()).toBe(201);
+    const id = (await made.json()).browser.id as string;
+    expect((await request.get(`/api/v1/browsers/${id}`, auth)).status()).toBe(200);
+    expect((await request.post('/api/v1/browsers', { ...auth, data: {} })).status()).toBe(400);
+    // Start on a browser whose node is not online: refused with a reason, nothing queued.
+    await prisma.browserProfile.update({ where: { id }, data: { nodeId: null } });
+    const start = await request.post(`/api/v1/browsers/${id}/start`, auth);
+    expect(start.status()).toBe(409);
+    expect((await start.json()).error.code).toBe('not_queued');
+    // There is no automation, cookie or take-over endpoint.
+    for (const path of [
+      `/api/v1/browsers/${id}/cookies`,
+      `/api/v1/browsers/${id}/cdp`,
+      `/api/v1/browsers/${id}/post`,
+    ])
+      expect([404, 405]).toContain((await request.post(path, auth)).status());
+    expect((await request.get('/api/v1/groups', auth)).status()).toBe(200);
+    const proxies = await request.get('/api/v1/proxies', auth);
+    expect(JSON.stringify(await proxies.json())).not.toMatch(/password|usernameEnc|refreshUrl/);
+
+    await page.reload();
+    await page
+      .locator(`tr[data-key="${keyName}"]`)
+      .getByRole('button', { name: `Revoke ${keyName}` })
+      .click();
+    await expect(page.locator(`tr[data-key="${keyName}"]`)).toContainText('Revoked');
+    expect((await request.get('/api/v1/browsers', auth)).status()).toBe(401);
+  } finally {
+    const scratch = await prisma.workspace.create({ data: { name: 'Test', slug: `t00-ws-e2e-api-${s}` } });
+    await prisma.browserProfile.updateMany({
+      where: { name: browserName },
+      data: { workspaceId: scratch.id, createdByMemberId: null, nodeId: null },
+    });
+    await prisma.apiKey.deleteMany({ where: { name: keyName } });
+  }
+});

@@ -137,6 +137,9 @@ export default async function BrowsersPage({
             <Link href="/browsers/proxies" className="btn">
               Proxy pool
             </Link>
+            <Link href="/browsers/api" className="btn">
+              API
+            </Link>
             {canCreate ? (
               <Link href="/browsers/new" className="btn btn-primary">
                 New browser

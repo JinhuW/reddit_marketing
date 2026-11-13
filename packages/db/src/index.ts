@@ -14,3 +14,4 @@ export * as tracking from './repos/tracking';
 export * as browsers from './repos/browsers';
 export * as nodes from './repos/nodes';
 export * as settings from './repos/settings';
+export * as apiKeys from './repos/api-keys';

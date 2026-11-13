@@ -314,3 +314,6 @@ Color Emoji), because the image ships Windows-metric fonts and `CloakGpu` has no
   `createConnection` on a request with `agent: false`). Every agent-side proxy reading taken through a SOCKS5
   proxy, or through an HTTP proxy to an https address, before this date was the node's own exit, not the
   proxy's. The browser's own traffic was never affected: it uses `--proxy-server`.
+- `/api/v1` (plan 0004 phase 7) is management only. It was kept out at first with RPA and the CDP endpoint; the
+  line is drawn at driving a browser, not at having an API. Listing, creating, starting and stopping browsers
+  cannot post anything, so the approval gate is untouched.

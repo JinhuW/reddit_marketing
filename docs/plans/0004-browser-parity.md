@@ -16,7 +16,7 @@ AdsPower's core is six things. Threadline had the third and a thin slice of the 
 
 | Question | Decision | Why |
 |---|---|---|
-| RPA builder, Local API / MCP, user-facing CDP endpoint, AI agent | **Not built.** | A general automation path could post to Reddit without an approved Draft and an `approverMemberId`. |
+| RPA builder, MCP, user-facing CDP endpoint, AI agent | **Not built.** A management-only API exists (phase 7). | A general automation path could post to Reddit without an approved Draft and an `approverMemberId`. |
 | Synchronizer | Not built. | Needs input mirroring across separate VNC containers; a separate module in AdsPower too. |
 | Extensions, group-level member permissions, sharing a profile across workspaces | Later. | Second tier; none blocks the six core areas. |
 | Firefox kernel, mobile personas, cloud data sync, proxy store, billing | Not built. | Engine or commercial features. |
@@ -109,6 +109,14 @@ BrowserSession transition writes an AuditEvent; secrets never in logs, job paylo
       `agentOver` now owns the connection. Until this fix the agent's half of a connection test, and `proxy.check`
       against the default https IP echo, measured the node's own address.
 - [ ] Not built: SSH proxies.
+
+### Phase 7 · Management API
+- [x] `/api/v1` with bearer keys (`ApiKey`, sha256 only in the database, shown once, revocable, 120 requests a
+      minute): list, read and create browsers, start and stop, list groups, list and check proxies.
+- [x] A key acts as the admin who made it, through `canManageProfile` and the role checks the pages use.
+- [x] By design there is no endpoint that posts, drives a page, returns a debugging address, or returns cookies,
+      proxy logins or account passwords. This is the part of an anti-detect browser's "Local API" that fits the
+      approval gate; Selenium / Puppeteer attachment and an MCP server are not offered.
 
 ## Rollout
 
