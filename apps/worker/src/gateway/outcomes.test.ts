@@ -40,6 +40,8 @@ function deps(
     markCookiesImported: vi.fn(async () => undefined),
     setStatus: vi.fn(async () => undefined),
     recordProxyTest: vi.fn(async () => undefined),
+    purgeProfile: vi.fn(async () => undefined),
+    resetProfileData: vi.fn(async () => undefined),
     now: () => new Date('2026-11-12T10:00:00Z'),
   } as unknown as OutcomeDeps & {
     completeIdentity: ReturnType<typeof vi.fn>;

@@ -220,6 +220,8 @@ model Workspace {
   members         WorkspaceMember[]
   redditAccounts  RedditAccount[]
   browserProfiles BrowserProfile[]
+  browserGroups   BrowserGroup[]
+  browserTags     BrowserTag[]
   browserNodes    BrowserNode[]
   proxies         Proxy[]
   browserSessions BrowserSession[]
@@ -399,6 +401,17 @@ model BrowserProfile {
   cloakPersona      String?
   /// "nvidia" | "intel" | "amd" (CloakGpu)
   cloakGpu          String?
+  /// Plan 0004: number shown in the list ("#12"); unique among a workspace's browsers (browsers.nextSerial).
+  serial            Int                  @default(0)
+  groupId           String?
+  /// Free text the team keeps about this browser (AdsPower's "remark").
+  notes             String?
+  /// Trash: set = hidden from every list and refused by dispatch; purged 30 days later.
+  deletedAt         DateTime?
+  deletedByMemberId String?
+  /// Purged: container and volume are gone and the row is only a tombstone. Audit rows point at its sessions
+  /// and AuditEvent is append-only, so the row itself is never deleted.
+  purgedAt          DateTime?
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
 
@@ -407,7 +420,42 @@ model BrowserProfile {
   createdBy WorkspaceMember? @relation("BrowserProfileCreatedBy", fields: [createdByMemberId], references: [id], onDelete: SetNull)
   proxy     Proxy?           @relation(fields: [proxyId], references: [id])
   node      BrowserNode?     @relation(fields: [nodeId], references: [id])
+  group     BrowserGroup?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  tags      BrowserTag[]
   sessions  BrowserSession[]
+
+  @@index([workspaceId, deletedAt])
+  @@index([groupId])
+}
+
+/// Plan 0004: a folder of browser profiles. A profile is in at most one group.
+model BrowserGroup {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  profiles  BrowserProfile[]
+
+  @@unique([workspaceId, name])
+}
+
+/// Plan 0004: a label on browser profiles; a profile can carry several.
+model BrowserTag {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  /// token name from packages/ui-tokens chips: "gray" | "blue" | "green" | "amber" | "red" | "violet"
+  color       String   @default("gray")
+  createdAt   DateTime @default(now())
+
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  profiles  BrowserProfile[]
+
+  @@unique([workspaceId, name])
 }
 
 /// A local x86 VM running node-agent + CloakBrowser containers; dials the gateway outbound (ADR-0001).

@@ -88,6 +88,12 @@ export const ProfileStartCmd = z.object({
   proxy: ProxySpec.nullable(),
 });
 export const ProfileStopCmd = z.object({ kind: z.literal('profile.stop'), profileId: id });
+/**
+ * Plan 0004. Stops the profile's container and deletes its volume: cookies, cache and the fingerprint lock are
+ * gone for good. Sent when a trashed browser is purged, or its data is reset. A missing container or volume is
+ * not an error.
+ */
+export const ProfileRemoveCmd = z.object({ kind: z.literal('profile.remove'), profileId: id });
 export const SubmitCommentCmd = z.object({
   kind: z.literal('action.submitComment'),
   profileId: id,
@@ -148,6 +154,7 @@ export const ProfileSignInCmd = z.object({
 export const Cmd = z.discriminatedUnion('kind', [
   ProfileStartCmd,
   ProfileStopCmd,
+  ProfileRemoveCmd,
   SubmitCommentCmd,
   SendDmCmd,
   TestProxyCmd,

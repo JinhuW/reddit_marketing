@@ -61,20 +61,46 @@ const profileInclude = {
       agent: { select: { name: true, color: true } },
     },
   },
+  group: { select: { id: true, name: true } },
+  tags: { select: { id: true, name: true, color: true }, orderBy: { name: 'asc' } },
 } satisfies Prisma.BrowserProfileInclude;
+/** The include every profile read uses (browser-manage.ts builds its filtered list on it). */
+export const PROFILE_INCLUDE = profileInclude;
 
 export type ProfileRow = Prisma.BrowserProfileGetPayload<{ include: typeof profileInclude }>;
 
+/** Every browser of the workspace that is not in the trash, oldest first. */
 export function listProfiles(workspaceId: string) {
   return prisma.browserProfile.findMany({
-    where: { workspaceId },
+    where: { workspaceId, deletedAt: null },
     include: profileInclude,
     orderBy: { createdAt: 'asc' },
   });
 }
 
-export function getProfile(workspaceId: string, id: string) {
-  return prisma.browserProfile.findFirst({ where: { workspaceId, id }, include: profileInclude });
+/**
+ * One browser. A trashed browser (plan 0004) reads as missing unless `trashed` is set, so nothing can start,
+ * edit or take over a browser that sits in the trash; only restore and purge look there.
+ */
+export function getProfile(workspaceId: string, id: string, opts: { trashed?: boolean } = {}) {
+  return prisma.browserProfile.findFirst({
+    where: {
+      workspaceId,
+      id,
+      ...(opts.trashed ? { deletedAt: { not: null }, purgedAt: null } : { deletedAt: null }),
+    },
+    include: profileInclude,
+  });
+}
+
+/**
+ * The next list number for a workspace's browser. Takes a transaction-scoped advisory lock, so two browsers
+ * created at once never share a number. Call inside the transaction that creates the row.
+ */
+export async function nextSerial(tx: Db, workspaceId: string): Promise<number> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`browser-serial:${workspaceId}`}))`;
+  const r = await tx.browserProfile.aggregate({ where: { workspaceId }, _max: { serial: true } });
+  return (r._max.serial ?? 0) + 1;
 }
 
 /**
@@ -576,6 +602,8 @@ export interface DispatchProfile {
   screen: string;
   /** decrypted; null when the profile has no proxy or protocol `none` */
   proxy: ProxySpec | null;
+  /** in the trash (plan 0004); only loaded with `includeTrashed` */
+  trashed: boolean;
 }
 
 /**
@@ -586,9 +614,16 @@ export interface DispatchProfile {
 export async function getProfileForDispatch(
   workspaceId: string,
   profileId: string,
+  /** `includeTrashed`: only for `profile.stop` / `profile.remove`; nothing else may reach a trashed browser */
+  opts: { includeTrashed?: boolean } = {},
 ): Promise<DispatchProfile | null> {
   const p = await prisma.browserProfile.findFirst({
-    where: { workspaceId, id: profileId },
+    where: {
+      workspaceId,
+      id: profileId,
+      purgedAt: null,
+      ...(opts.includeTrashed ? {} : { deletedAt: null }),
+    },
     include: {
       proxy: true,
       node: { select: { id: true, name: true, status: true } },
@@ -636,6 +671,7 @@ export async function getProfileForDispatch(
     locale: normalizeLocale(fp.locale),
     screen: normalizeScreen(fp.screen) ?? '1920x1080',
     proxy,
+    trashed: p.deletedAt !== null,
   };
 }
 
@@ -812,6 +848,10 @@ export interface CreateBrowserInput {
   startUrl?: string | null;
   /** cookie JSON, already validated (parseCookieJson) and encrypted */
   cookiesEnc?: string | null;
+  /** plan 0004: list fields; group and tags must belong to the workspace */
+  groupId?: string | null;
+  notes?: string | null;
+  tagIds?: string[];
 }
 
 /** {@link createBrowser} inside `tx`. */
@@ -840,14 +880,29 @@ export async function createBrowserTx(
     });
     name = `${first} · Chrome${n ? ` ${n + 1}` : ''}`;
   }
+  if (input.groupId) {
+    const g = await tx.browserGroup.findFirst({
+      where: { workspaceId: input.workspaceId, id: input.groupId },
+    });
+    if (!g) throw new BrowserAssignError('Group not found.');
+  }
+  const tagIds = [...new Set(input.tagIds ?? [])];
+  if (tagIds.length) {
+    const n = await tx.browserTag.count({ where: { workspaceId: input.workspaceId, id: { in: tagIds } } });
+    if (n !== tagIds.length) throw new BrowserAssignError('Tag not found.');
+  }
   const created = await tx.browserProfile.create({
     data: {
       workspaceId: input.workspaceId,
       createdByMemberId: actor.id,
       name,
+      serial: await nextSerial(tx, input.workspaceId),
       fingerprint: input.fingerprint ?? {},
       startUrl,
       cookiesEnc: input.cookiesEnc ?? null,
+      groupId: input.groupId ?? null,
+      notes: input.notes?.trim().slice(0, 2000) || null,
+      ...(tagIds.length ? { tags: { connect: tagIds.map((id) => ({ id })) } } : {}),
     },
     select: { id: true },
   });
@@ -1102,7 +1157,7 @@ export async function getSignInForDispatch(
   profileId: string,
 ): Promise<SignInDispatch | null> {
   const p = await prisma.browserProfile.findFirst({
-    where: { workspaceId, id: profileId },
+    where: { workspaceId, id: profileId, deletedAt: null },
     select: {
       id: true,
       startUrl: true,
@@ -1199,3 +1254,5 @@ export async function recordProxyTest(
   });
   return { stored: true };
 }
+
+export * from './browser-manage';

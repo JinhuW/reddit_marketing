@@ -75,6 +75,10 @@ export class FakeDocker implements DockerBackend {
     this.calls.push(`remove ${name}`);
     this.containers.delete(name);
   }
+  async removeVolume(name: string) {
+    this.calls.push(`removeVolume ${name}`);
+    this.volumes.delete(name);
+  }
   async attachSelf() {
     return false;
   }

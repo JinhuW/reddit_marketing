@@ -357,7 +357,7 @@ async function main() {
     },
   ] as const;
   const PROFILE: Record<string, string> = {};
-  for (const b of browserDefs) {
+  for (const [serialIdx, b] of browserDefs.entries()) {
     const proxy = await prisma.proxy.create({
       data: {
         ...W,
@@ -382,6 +382,7 @@ async function main() {
         ...W,
         accountId: ACC[b.key]!.id,
         name: b.name,
+        serial: serialIdx + 1,
         status: b.status,
         proxyId: proxy.id,
         fingerprint: { ...b.fp, capturedAt: b.since.toISOString() },

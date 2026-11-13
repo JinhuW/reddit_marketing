@@ -68,7 +68,13 @@ export async function testWorkspace(): Promise<TestWorkspace> {
         },
       });
       const p = await prisma.browserProfile.create({
-        data: { workspaceId: ws.id, accountId: a.id, name: 'Test · Chrome', nodeId },
+        data: {
+          workspaceId: ws.id,
+          accountId: a.id,
+          name: 'Test · Chrome',
+          nodeId,
+          serial: (await prisma.browserProfile.count({ where: { workspaceId: ws.id } })) + 1,
+        },
       });
       return { accountId: a.id, profileId: p.id };
     },

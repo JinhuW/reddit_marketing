@@ -15,6 +15,7 @@ export const QUEUES = {
   contextEmbed: 'context.embed',
   browserHealth: 'browser.health',
   sessionIdle: 'session.idle',
+  browserPurge: 'trash.purge',
   reportWeekly: 'report.weekly',
 } as const;
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
@@ -61,6 +62,11 @@ export type BrowserJob =
    * signed in, opens the start tab. The gateway loads the secrets with browsers.getSignInForDispatch.
    */
   | { kind: 'profile.signIn'; workspaceId: string; profileId: string }
+  /**
+   * Plan 0004: deletes the profile's container and volume on its node. `purge` then deletes the BrowserProfile
+   * row (a trashed browser removed for good); `reset` keeps the row and gives it a new fingerprint seed.
+   */
+  | { kind: 'profile.remove'; workspaceId: string; profileId: string; then: 'purge' | 'reset' }
   | { kind: 'health.check'; workspaceId: string };
 export type BrowserJobKind = BrowserJob['kind'];
 
@@ -94,6 +100,14 @@ export const BrowserJobSchema: z.ZodType<BrowserJob> = z.union([
   z.object({ kind: z.literal('profile.testProxy'), workspaceId: id, profileId: id }).strict(),
   z.object({ kind: z.literal('profile.whoami'), workspaceId: id, profileId: id }).strict(),
   z.object({ kind: z.literal('profile.signIn'), workspaceId: id, profileId: id }).strict(),
+  z
+    .object({
+      kind: z.literal('profile.remove'),
+      workspaceId: id,
+      profileId: id,
+      then: z.enum(['purge', 'reset']),
+    })
+    .strict(),
   z.object({ kind: z.literal('health.check'), workspaceId: id }).strict(),
 ]);
 
