@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/JinhuW/reddit_marketing/compare/v0.10.0...v0.10.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **node:** rebuild the browser image when its launch code changes ([98ec596](https://github.com/JinhuW/reddit_marketing/commit/98ec596c94b45c8e662b95005dc1cea9df64d080))
+
 ## [0.10.0](https://github.com/JinhuW/reddit_marketing/compare/v0.9.0...v0.10.0) (2026-11-13)
 
 
