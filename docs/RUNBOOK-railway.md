@@ -69,7 +69,8 @@ Findings that change the steps below:
   be changed on both services, worker first matters most.
 - `REDDIT_REDIRECT_URI` is not set on Railway, so the Reddit OAuth callback is derived from `APP_URL`
   (`apps/web/lib/reddit-oauth.ts`). Changing `APP_URL` changes the redirect URI Reddit must accept (§4).
-- `ERP_API_URL` on `web` is not read anywhere in this repo. Leave it; ask the owner whether it can go.
+- `ERP_API_URL` on `web` turns on sign-in with Recycle Servers ERP credentials (`apps/web/lib/erp-auth.ts`).
+  Unset it to go back to magic link / Google only.
 - No `/healthz` route exists yet; T16 adds it. Until then, check `web` with `/login`.
 
 ## 2. Before you start
@@ -466,7 +467,7 @@ are never written here.
 | `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `REDDIT_USER_AGENT` | ✓ | ✓ | | Reddit app; redirect URI `https://app.<domain>/api/auth/reddit/callback` |
 | `RESEND_API_KEY`, `AUTH_EMAIL_FROM` | ✓ | | | magic-link email |
 | `OTEL_*` | auto | auto | auto | injected by Railway tracing |
-| `ERP_API_URL` | ✓ | | | unused by this repo; owner to confirm |
+| `ERP_API_URL` | ✓ | | | ERP sign-in; unset = magic link / Google only |
 
 Never on Railway: `CLOAKBROWSER_LICENSE_KEY`, `GATEWAY_URL`, `NODE_NAME`, `NODE_TOKEN` (node env file only),
 `SHADOW_DATABASE_URL` (dev only).

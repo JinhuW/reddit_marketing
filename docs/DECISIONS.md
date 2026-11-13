@@ -317,3 +317,19 @@ Color Emoji), because the image ships Windows-metric fonts and `CloakGpu` has no
 - `/api/v1` (plan 0004 phase 7) is management only. It was kept out at first with RPA and the CDP endpoint; the
   line is drawn at driving a browser, not at having an API. Listing, creating, starting and stopping browsers
   cannot post anything, so the approval gate is untouched.
+
+## 2026-11-13 · Sign-in with Recycle Servers ERP credentials
+
+Written on 2026-11-07 and deployed from a working copy, but never committed, so later deploys of `main` removed
+it. This puts it back.
+
+- **Sign-in uses ERP credentials when `ERP_API_URL` is set.** The server action posts the email and password to
+  the ERP's `/api/auth/login`, revokes the ERP refresh token it got back, then writes an Auth.js database session
+  itself (the Credentials provider cannot use database sessions). Nothing about the password is stored.
+  Rate-limited per IP and per email (10 / 5 min) before the ERP's own lockout.
+- **ERP users join on first sign-in.** This replaces "Sign-in is invite-only" for ERP users only: ERP `manager`
+  becomes Admin with `canApprove`, everyone else Editor without approval rights. Existing memberships are never
+  changed. New users join `ERP_WORKSPACE_SLUG`, else the oldest top-level workspace, else a new "Recycle Servers"
+  workspace. Magic-link and Google sign-in stay invite-only.
+- With ERP sign-in on, the magic-link form is hidden unless `RESEND_API_KEY` is set, so links are never only
+  printed to production logs.
