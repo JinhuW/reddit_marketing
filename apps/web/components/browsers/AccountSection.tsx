@@ -9,6 +9,7 @@ import {
 } from '@/lib/actions/browsers';
 import { useActionState, useState } from 'react';
 import { Msg } from './BrowserControls';
+import { BrowserSettings } from './BrowserSettings';
 import type { ActionState } from './action-state';
 import type { ProfileView } from './view';
 
@@ -291,6 +292,7 @@ export function AccountSection({
         <p className="muted m-0 text-xs">No account in this browser.</p>
       )}
       <Msg s={latest} />
+      <BrowserSettings p={p} canEdit={canEdit} />
     </section>
   );
 }

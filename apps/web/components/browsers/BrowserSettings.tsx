@@ -20,8 +20,9 @@ export function cookieStatus(c: ProfileView['cookies']): string {
 }
 
 /**
- * Plan 0003: the browser's name, start tab (标签页) and cookie import. The cookie box is write-only: what was
- * pasted is encrypted, imported by the next `profile.signIn`, then dropped; it is never shown again.
+ * Plan 0003: the browser's name, start tab (标签页) and cookie import, shown inside the Account section. The cookie
+ * box is write-only: what was pasted is encrypted, imported by the next `profile.signIn`, then dropped; it is never
+ * shown again.
  */
 export function BrowserSettings({ p, canEdit }: { p: ProfileView; canEdit: boolean }) {
   const [state, act, saving] = useActionState<ActionState | null, FormData>(
@@ -47,14 +48,15 @@ export function BrowserSettings({ p, canEdit }: { p: ProfileView; canEdit: boole
   }
 
   return (
-    <section
-      className="flex flex-col gap-2.5 border-b border-line-soft px-[18px] py-4 text-[12.5px]"
+    <div
+      className="flex flex-col gap-2.5 border-t border-line-soft pt-3"
+      role="group"
       aria-labelledby={`settings-h-${p.id}`}
       data-testid="browser-settings"
     >
-      <h3 id={`settings-h-${p.id}`} className="m-0 text-[12.5px] font-semibold">
+      <h4 id={`settings-h-${p.id}`} className="m-0 text-[12.5px] font-semibold">
         Start tab and cookies
-      </h3>
+      </h4>
       <form action={act} className="flex flex-col gap-2.5">
         <input type="hidden" name="profileId" value={p.id} />
         <fieldset className="m-0 flex flex-col gap-2.5 border-0 p-0" disabled={!canEdit}>
@@ -146,6 +148,6 @@ export function BrowserSettings({ p, canEdit }: { p: ProfileView; canEdit: boole
         </fieldset>
       </form>
       <Msg s={state} />
-    </section>
+    </div>
   );
 }
