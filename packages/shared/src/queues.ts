@@ -67,6 +67,8 @@ export type BrowserJob =
    * row (a trashed browser removed for good); `reset` keeps the row and gives it a new fingerprint seed.
    */
   | { kind: 'profile.remove'; workspaceId: string; profileId: string; after: 'purge' | 'reset' }
+  /** Plan 0004 phase 3: pool proxy jobs. They need no browser; any online node of the workspace runs them. */
+  | { kind: 'proxy.check' | 'proxy.rotate'; workspaceId: string; proxyId: string }
   | { kind: 'health.check'; workspaceId: string };
 export type BrowserJobKind = BrowserJob['kind'];
 
@@ -108,6 +110,7 @@ export const BrowserJobSchema: z.ZodType<BrowserJob> = z.union([
       after: z.enum(['purge', 'reset']),
     })
     .strict(),
+  z.object({ kind: z.enum(['proxy.check', 'proxy.rotate']), workspaceId: id, proxyId: id }).strict(),
   z.object({ kind: z.literal('health.check'), workspaceId: id }).strict(),
 ]);
 
@@ -117,7 +120,14 @@ export const BrowserJobSchema: z.ZodType<BrowserJob> = z.union([
  * the workspace; pass `suffix` (e.g. a time bucket) to make a repeating job unique.
  */
 export function browserJobId(job: BrowserJob, suffix?: string): string {
-  const key = 'draftId' in job ? job.draftId : 'profileId' in job ? job.profileId : job.workspaceId;
+  const key =
+    'draftId' in job
+      ? job.draftId
+      : 'profileId' in job
+        ? job.profileId
+        : 'proxyId' in job
+          ? job.proxyId
+          : job.workspaceId;
   const out = `bj-${job.kind}-${key}${suffix ? `-${suffix}` : ''}`;
   if (out.includes(':')) throw new Error(`browser job id must not contain ':' (${out})`);
   return out;

@@ -165,6 +165,37 @@ export async function enqueueRemoveJob(
   return { queued: true, jobId, node: p.node.name };
 }
 
+/**
+ * Queues a pool proxy job (plan 0004 phase 3): `proxy.check` or `proxy.rotate`. These need no browser, so any
+ * online node of the workspace runs them; with no node online nothing is queued. Callers check permissions first.
+ */
+export async function enqueueProxyJob(
+  workspaceId: string,
+  proxyId: string,
+  kind: 'proxy.check' | 'proxy.rotate',
+  deps: Pick<BrowserJobDeps, 'queue' | 'now'> & {
+    onlineNodes: (workspaceId: string) => Promise<{ name: string }[]>;
+  } = { ...defaultDeps, onlineNodes: (ws) => nodes.listOnline(ws) },
+): Promise<EnqueueResult> {
+  const online = await deps.onlineNodes(workspaceId);
+  const node = online[0];
+  if (!node)
+    return {
+      queued: false,
+      reason: 'No browser node is online. Proxy checks run from a node; try again later.',
+    };
+  const job: BrowserJob = { kind, workspaceId, proxyId };
+  const jobId = browserJobId(job, deps.now().toString(36));
+  try {
+    await withTimeout(
+      deps.queue(node.name).add(node.name, job, { ...BROWSER_JOB_OPTIONS, attempts: 2, jobId }),
+    );
+  } catch {
+    return { queued: false, reason: 'Could not reach the job queue. Try again in a minute.' };
+  }
+  return { queued: true, jobId, node: node.name };
+}
+
 /** BullMQ waits forever for a missing Redis (`maxRetriesPerRequest: null`); a page action must not. */
 export const QUEUE_TIMEOUT_MS = 5_000;
 function withTimeout<T>(p: Promise<T>, ms = QUEUE_TIMEOUT_MS): Promise<T> {

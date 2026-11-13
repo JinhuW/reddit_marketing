@@ -85,6 +85,8 @@ export const BROWSER_DEADLINE_MS: Record<BrowserJobKind, number> = {
   'profile.whoami': 45_000,
   'profile.signIn': 120_000,
   'health.check': 15_000,
+  'proxy.check': 60_000,
+  'proxy.rotate': 30_000,
 };
 
 /** BullMQ options every producer of a browser job should use: node errors are retryable. */
@@ -132,6 +134,8 @@ export interface DispatchDeps {
   markFailed: (draftId: string, error: string) => Promise<unknown>;
   pauseAccount: typeof browsers.pauseAccount;
   resumeAccount: typeof browsers.resumeAccount;
+  /** GATEWAY-ONLY: a pool proxy with its login and change-IP link decrypted (`proxy.check` / `proxy.rotate`). */
+  getProxy: typeof browsers.getProxyForDispatch;
   /** browsers.syncNodeRunning: profile status follows what the node reports. */
   syncRunning: (nodeId: string, runningProfileIds: string[]) => Promise<unknown>;
   setStatus: (
@@ -151,6 +155,7 @@ const defaultDeps: DispatchDeps = {
   markFailed: (id, error) => drafts.markFailed(id, error),
   pauseAccount: (i) => browsers.pauseAccount(i),
   resumeAccount: (i) => browsers.resumeAccount(i),
+  getProxy: (ws, id) => browsers.getProxyForDispatch(ws, id),
   syncRunning: (nodeId, ids) => browsers.syncNodeRunning(nodeId, ids),
   setStatus: (ws, id, status) => browsers.setStatus(ws, id, status),
 };
@@ -439,6 +444,22 @@ export class Dispatcher {
         const result = await this.send(nodeName, { kind: 'health.check' }, cmdId, data.kind);
         return await this.apply({ job: data, cmdId, node: nodeName, profile: null }, result);
       }
+      if ('proxyId' in data) {
+        // Pool jobs need no browser. The login and the change-IP link are decrypted here and go only into
+        // the command.
+        const px = await this.deps.getProxy(data.workspaceId, data.proxyId);
+        if (!px) throw new DispatchRefused('proxy not found');
+        let cmd: Cmd;
+        if (data.kind === 'proxy.check') {
+          if (!px.spec) throw new DispatchRefused('proxy has no host to check');
+          cmd = { kind: 'proxy.check', proxyId: px.id, proxy: px.spec };
+        } else {
+          if (!px.refreshUrl) throw new DispatchRefused('proxy has no change-IP link');
+          cmd = { kind: 'proxy.rotate', proxyId: px.id, url: px.refreshUrl };
+        }
+        const result = await this.send(nodeName, cmd, cmdId, data.kind);
+        return await this.apply({ job: data, cmdId, node: nodeName, profile: null }, result);
+      }
       // BullMQ counts failed attempts in attemptsMade; this run is the last one when no retry is left.
       const lastAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
       return await this.withProfileLock(`${nodeName}/${data.profileId}`, () =>
@@ -463,7 +484,7 @@ export class Dispatcher {
 
   private async processProfileJob(
     node: NodeInfo,
-    job: Exclude<BrowserJob, { kind: 'health.check' }>,
+    job: Extract<BrowserJob, { profileId: string }>,
     cmdId: string,
     lastAttempt = false,
   ): Promise<DispatchResult> {

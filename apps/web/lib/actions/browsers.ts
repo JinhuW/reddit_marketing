@@ -13,6 +13,9 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 
+/** `proxyId` value of the New browser form that means "a random pool proxy no browser uses". */
+const RANDOM_PROXY = '__random_unused__';
+
 async function controllable(profileId: string) {
   const me = await requireMember();
   const profile = await browsers.getProfile(me.workspaceId, profileId);
@@ -317,7 +320,13 @@ export async function createBrowserAction(_prev: ActionState | null, form: FormD
   let profileId: string;
   try {
     const me = await requireRole('editor');
-    const proxyId = fid(form, 'proxyId') || null;
+    let proxyId = fid(form, 'proxyId') || null;
+    if (proxyId === RANDOM_PROXY) {
+      // Plan 0004 phase 3: a pool proxy no browser uses yet.
+      const free = await browsers.pickUnusedProxy(me.workspaceId);
+      if (!free) return { ok: false, message: 'Every proxy in the pool is in use. Add one or pick one.' };
+      proxyId = free.id;
+    }
     if (proxyId && !(await browsers.listProxies(me.workspaceId)).some((x) => x.id === proxyId))
       return { ok: false, message: 'That proxy is not in this workspace.' };
     const startUrl = browsers.normalizeStartUrl(fid(form, 'startUrl'));

@@ -291,3 +291,9 @@ Color Emoji), because the image ships Windows-metric fonts and `CloakGpu` has no
   (see 2026-11-09) and no per-field canvas / WebGL / audio / fonts control: those stay with the seed.
 - The two fingerprint forms submit by hand (`onSubmit` + `startTransition`) instead of a form `action`: React
   resets a form after an action, which put a chosen GPU vendor back to the old one after a refused submit.
+- Proxy pool (plan 0004 phase 3): logins and change-IP links are write-only, as on the per-browser proxy form.
+  The change-IP link is called from a browser node, never from Railway, and the node refuses links that resolve
+  to loopback, private, link-local or CGNAT addresses and does not follow redirects.
+- Forms that must keep what was typed after a refused submit send their data from `onSubmit` and still carry a
+  server `action`. Without the `action`, a click before hydration made the browser submit a GET with the typed
+  proxy login in the URL.

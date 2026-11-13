@@ -63,6 +63,9 @@ export function NewBrowserForm({ proxies }: { proxies: { id: string; label: stri
           onChange={(e) => setProxyId(e.target.value)}
         >
           <option value="">No proxy · direct connection</option>
+          {proxies.length ? (
+            <option value="__random_unused__">Random proxy no browser uses yet</option>
+          ) : null}
           {proxies.map((x) => (
             <option key={x.id} value={x.id}>
               {x.label}

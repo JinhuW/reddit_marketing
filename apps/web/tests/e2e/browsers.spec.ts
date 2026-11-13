@@ -439,3 +439,76 @@ test('fingerprint: settings save and reach the start command; a new fingerprint 
     });
   }
 });
+
+test('proxy pool: bulk add, search, edit without re-typing the login, delete (plan 0004)', async ({
+  page,
+}) => {
+  const s = Date.now().toString(36);
+  const host = `gate-${s}.pool.test`;
+  const jane = await prisma.workspaceMember.findFirstOrThrow({ where: { user: { email: 'jane@acme.so' } } });
+  try {
+    await page.goto('/browsers');
+    await page.getByRole('link', { name: 'Proxy pool' }).click();
+    await expect(page.getByRole('heading', { name: 'Proxy pool' })).toBeVisible();
+
+    const add = page.getByTestId('add-proxies');
+    const lines = add.getByLabel(/One proxy per line/);
+    await lines.fill(
+      [
+        `${host}:7000:e2e-user-1:e2e-pool-pass-1{first one}`,
+        `socks5://e2e-user-2:e2e-pool-pass-2@${host}:7001 [https://vendor.test/rotate?token=e2e-link-token]`,
+        'this is not a proxy',
+      ].join('\n'),
+    );
+    await add.getByRole('button', { name: 'Add proxies' }).click();
+    const status = add.getByRole('status');
+    await expect(status).toContainText('Added 2 proxies.');
+    await expect(status).toContainText('line 3');
+    // Nothing that was pasted is echoed back or left in the box.
+    await expect(lines).toHaveValue('');
+    expect(await page.content()).not.toMatch(/e2e-pool-pass|e2e-link-token/);
+
+    const stored = await prisma.proxy.findMany({ where: { host }, orderBy: { port: 'asc' } });
+    expect(stored.map((p) => [p.protocol, p.port, p.notes])).toEqual([
+      ['http', 7000, 'first one'],
+      ['socks5', 7001, null],
+    ]);
+    expect(stored[0]?.passwordEnc).toBeTruthy();
+    expect(stored[0]?.passwordEnc).not.toContain('e2e-pool-pass-1');
+    expect(stored[1]?.refreshUrlEnc).not.toContain('e2e-link-token');
+
+    // Search, then edit the name and port: the login stays although its fields were left empty.
+    await page.getByLabel('Search proxies').fill(host);
+    await page.getByRole('button', { name: 'Search' }).click();
+    await expect(page.getByTestId('pool-total')).toHaveText('2 proxies');
+    const first = page.locator(`tr[data-proxy="${host}:7000"]`);
+    await expect(first).toContainText('Not checked');
+    await expect(first).toContainText('first one');
+    await first.getByRole('link', { name: 'Edit' }).click();
+    const edit = page.getByTestId('edit-proxy');
+    await expect(edit.locator('form[data-ready="true"]')).toBeVisible(); // interactive before typing
+    await expect(edit.getByLabel('Password')).toHaveValue('');
+    await edit.getByLabel('Name', { exact: true }).fill(`e2e pool ${s}`);
+    await edit.getByLabel('Port').fill('70000');
+    await edit.getByRole('button', { name: 'Save proxy' }).click();
+    await expect(edit.getByRole('status')).toContainText('Port must be 1 to 65535');
+    await expect(edit.getByLabel('Name', { exact: true })).toHaveValue(`e2e pool ${s}`); // a refused save keeps what was typed
+    await edit.getByLabel('Port').fill('7002');
+    await edit.getByRole('button', { name: 'Save proxy' }).click();
+    await expect(page).toHaveURL(/saved=1/);
+    const edited = await prisma.proxy.findUniqueOrThrow({ where: { id: stored[0]!.id } });
+    expect(edited).toMatchObject({ label: `e2e pool ${s}`, port: 7002 });
+    expect(edited.passwordEnc).toBe(stored[0]?.passwordEnc);
+
+    // Delete both with the bulk bar.
+    await page.goto(`/browsers/proxies?q=${host}`);
+    const bar = page.getByTestId('proxy-bulk-bar');
+    await page.getByLabel('Select every proxy').check();
+    await expect(bar.getByTestId('proxy-count')).toHaveText('2 selected');
+    await bar.getByRole('button', { name: 'Delete', exact: true }).click();
+    await expect(bar.getByRole('status')).toContainText('Deleted 2 proxies.');
+    expect(await prisma.proxy.count({ where: { host } })).toBe(0);
+  } finally {
+    await prisma.proxy.deleteMany({ where: { workspaceId: jane.workspaceId, host } });
+  }
+});

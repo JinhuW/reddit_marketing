@@ -192,6 +192,10 @@ export const AuditAction = [
   'browser_tag.created',
   'browser_tag.deleted',
   'profile.fingerprint_updated',
+  'proxy.created',
+  'proxy.updated',
+  'proxy.deleted',
+  'proxy.rotated',
 ] as const;
 export type AuditAction = (typeof AuditAction)[number];
 

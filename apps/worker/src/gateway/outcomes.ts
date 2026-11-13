@@ -29,6 +29,8 @@ import {
   type BrowserJob,
   type PauseReason,
   PostedData,
+  ProxyCheckData,
+  ProxyRotateData,
   type Result,
   TestProxyData,
   WhoamiData,
@@ -65,6 +67,9 @@ export interface OutcomeDeps {
   ) => Promise<unknown>;
   /** browsers.recordProxyTest: the "Last connection test" box. */
   recordProxyTest: (workspaceId: string, profileId: string, test: browsers.ProxyTest) => Promise<unknown>;
+  /** browsers.recordProxyCheck / recordProxyRotated: pool jobs (`proxy.check`, `proxy.rotate`). */
+  recordProxyCheck: (workspaceId: string, proxyId: string, test: browsers.ProxyTest) => Promise<unknown>;
+  recordProxyRotated: (workspaceId: string, proxyId: string, status: number) => Promise<unknown>;
   /** browsers.purgeProfile / resetProfileData: what follows a `profile.remove` the node carried out. */
   purgeProfile: (workspaceId: string, profileId: string) => Promise<unknown>;
   resetProfileData: (workspaceId: string, profileId: string) => Promise<unknown>;
@@ -90,6 +95,8 @@ export const defaultOutcomeDeps: OutcomeDeps = {
   markCookiesImported: (ws, profileId, cookiesEnc) => browsers.markCookiesImported(ws, profileId, cookiesEnc),
   setStatus: (ws, profileId, status) => browsers.setStatus(ws, profileId, status),
   recordProxyTest: (ws, profileId, test) => browsers.recordProxyTest(ws, profileId, test),
+  recordProxyCheck: (ws, proxyId, test) => browsers.recordProxyCheck(ws, proxyId, test),
+  recordProxyRotated: (ws, proxyId, status) => browsers.recordProxyRotated(ws, proxyId, status),
   purgeProfile: (ws, profileId) => browsers.purgeProfile(ws, profileId, null),
   resetProfileData: (ws, profileId) => browsers.resetProfileData(ws, profileId, null),
   now: () => new Date(),
@@ -109,7 +116,7 @@ export interface OutcomeContext {
   /** cmdId = BullMQ job id */
   cmdId: string;
   node: string;
-  /** null only for `health.check` */
+  /** null for `health.check` and the pool jobs `proxy.check` / `proxy.rotate` */
   profile: Pick<browsers.DispatchProfile, 'id' | 'name' | 'accountId' | 'account'> | null;
   /**
    * `profile.signIn` only: the encrypted cookie JSON that went out in the command (null = none were sent). Still
@@ -148,6 +155,12 @@ export const FINAL_NON_ACTION_CODES: ReadonlySet<string> = new Set([
   'bad_config',
   'seat_limit',
   'max_profiles',
+  // proxy.rotate: the link itself is the problem; calling it again changes nothing
+  'bad_url',
+  'unresolvable',
+  'private_address',
+  'rotate_refused',
+  'rotate_failed',
 ]);
 
 /**
@@ -197,6 +210,30 @@ export async function applyOutcome(
           ctx.profile.id,
           job.kind === 'profile.start' ? 'running' : 'idle',
         );
+      }
+      if (job.kind === 'proxy.check') {
+        const c = ProxyCheckData.safeParse(result.data);
+        if (!c.success) {
+          l.error({ code: 'bad_check_data' }, 'proxy.check result does not match the protocol');
+          throw new FinalOutcomeError('bad_check_data', 'the node returned an unreadable proxy check');
+        }
+        await deps.recordProxyCheck(job.workspaceId, job.proxyId, {
+          ok: true,
+          ip: c.data.ip,
+          latencyMs: c.data.latencyMs,
+          ...(c.data.redditOk === undefined ? {} : { redditOk: c.data.redditOk }),
+          ...(c.data.geo ?? {}),
+          ...(c.data.geo?.city
+            ? { city: [c.data.geo.city, c.data.geo.country].filter(Boolean).join(', ') }
+            : {}),
+          testedAt: deps.now().toISOString(),
+        });
+        return { outcome: 'ok', kind: job.kind, data: { ok: true } };
+      }
+      if (job.kind === 'proxy.rotate') {
+        const r = ProxyRotateData.safeParse(result.data);
+        await deps.recordProxyRotated(job.workspaceId, job.proxyId, r.success ? r.data.status : 0);
+        return { outcome: 'ok', kind: job.kind };
       }
       if (job.kind === 'profile.remove' && ctx.profile) {
         // The volume is gone on the node; only now does the database follow.
@@ -270,6 +307,15 @@ export async function applyOutcome(
     case 'license_denied':
     case 'proxy_failed': {
       const reason: PauseReason = result.outcome;
+      if (job.kind === 'proxy.check' && reason === 'proxy_failed') {
+        // A pool check belongs to no account: the failure is stored on the proxy and nothing is paused.
+        await deps.recordProxyCheck(job.workspaceId, job.proxyId, {
+          ok: false,
+          error: result.error?.code ?? 'proxy_failed',
+          testedAt: deps.now().toISOString(),
+        });
+        return { outcome: reason, paused: false, accountId: null };
+      }
       const p = ctx.profile;
       if (p && job.kind === 'profile.testProxy' && reason === 'proxy_failed') {
         await deps.recordProxyTest(job.workspaceId, p.id, {

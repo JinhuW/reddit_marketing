@@ -484,20 +484,25 @@ model BrowserNode {
 }
 
 model Proxy {
-  id          String        @id @default(cuid())
-  workspaceId String
-  provider    String
-  protocol    ProxyProtocol @default(http)
-  host        String?
-  port        Int?
-  usernameEnc String?
-  passwordEnc String?
-  sticky      Boolean       @default(true)
-  region      String?
+  id            String        @id @default(cuid())
+  workspaceId   String
+  provider      String
+  protocol      ProxyProtocol @default(http)
+  host          String?
+  port          Int?
+  usernameEnc   String?
+  passwordEnc   String?
+  sticky        Boolean       @default(true)
+  region        String?
   /// { ip, city, country, latencyMs, redditOk, testedAt }
-  lastTest    Json?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  lastTest      Json?
+  /// Plan 0004 phase 3: a name the team gives the proxy in the pool ("US mobile 3").
+  label         String?
+  notes         String?
+  /// Change-IP link of a mobile / rotating proxy (encrypted: it carries the vendor token). Called from a node.
+  refreshUrlEnc String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   profiles  BrowserProfile[]

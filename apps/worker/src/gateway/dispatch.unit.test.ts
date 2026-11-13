@@ -138,6 +138,8 @@ function setup(opts: {
     setStatus: vi.fn(async () => undefined),
     recordProxyTest: vi.fn(async () => undefined),
     purgeProfile: vi.fn(async () => undefined),
+    recordProxyCheck: vi.fn(async () => undefined),
+    recordProxyRotated: vi.fn(async () => undefined),
     resetProfileData: vi.fn(async () => undefined),
     now: () => new Date('2026-11-12T00:00:00Z'),
   } satisfies OutcomeDeps;
@@ -427,5 +429,94 @@ describe('profile.remove dispatch (plan 0004)', () => {
       t.run({ kind: 'profile.start', workspaceId: 'w1', profileId: 'p1', reason: 'takeover' }),
     ).rejects.toThrow(/not found/);
     expect(t.deps.getProfile).toHaveBeenCalledWith('w1', 'p1', { includeTrashed: false });
+  });
+});
+
+describe('pool proxy jobs (plan 0004 phase 3)', () => {
+  const check: BrowserJob = { kind: 'proxy.check', workspaceId: 'w1', proxyId: 'px1' };
+  const rotate: BrowserJob = { kind: 'proxy.rotate', workspaceId: 'w1', proxyId: 'px1' };
+  const LINK = 'https://vendor.example/rotate?token=link-token-1';
+  const PROXY_PASS = 'pool-proxy-pass-1';
+  const withProxy = (over: Partial<browsers.ProxyDispatch> = {}) => ({
+    getProxy: vi.fn(async () => ({
+      id: 'px1',
+      spec: { protocol: 'http' as const, host: 'p.example', port: 8080, username: 'u', password: PROXY_PASS },
+      refreshUrl: LINK,
+      ...over,
+    })),
+    getProfile: vi.fn(async () => {
+      throw new Error('a pool job must not load a profile');
+    }),
+  });
+
+  it('proxy.check sends the decrypted proxy, stores the reading and logs no secret', async () => {
+    const t = setup({ account: null, deps: withProxy() });
+    t.hub.replies['proxy.check'] = {
+      outcome: 'ok',
+      data: { ip: '203.0.113.9', latencyMs: 88, redditOk: true, geo: { city: 'Boston', country: 'US' } },
+    } as Result;
+    const out = await t.run(check);
+    expect(t.hub.sent[0]?.cmd).toMatchObject({
+      kind: 'proxy.check',
+      proxyId: 'px1',
+      proxy: { host: 'p.example' },
+    });
+    expect(t.outcomeDeps.recordProxyCheck).toHaveBeenCalledWith(
+      'w1',
+      'px1',
+      expect.objectContaining({
+        ok: true,
+        ip: '203.0.113.9',
+        latencyMs: 88,
+        city: 'Boston, US',
+        redditOk: true,
+      }),
+    );
+    expect(out).toEqual({ outcome: 'ok', kind: 'proxy.check', data: { ok: true } });
+    expect(t.lines.join('\n') + JSON.stringify(out)).not.toContain(PROXY_PASS);
+  });
+
+  it('a failed check is stored on the proxy and pauses nothing', async () => {
+    const t = setup({ account: null, deps: withProxy() });
+    t.hub.replies['proxy.check'] = {
+      outcome: 'proxy_failed',
+      error: { code: 'proxy_auth_failed', message: 'x' },
+    } as Result;
+    const out = await t.run(check);
+    expect(out).toEqual({ outcome: 'proxy_failed', paused: false, accountId: null });
+    expect(t.outcomeDeps.recordProxyCheck).toHaveBeenCalledWith(
+      'w1',
+      'px1',
+      expect.objectContaining({ ok: false, error: 'proxy_auth_failed' }),
+    );
+    expect(t.outcomeDeps.pauseAccount).not.toHaveBeenCalled();
+  });
+
+  it('proxy.rotate sends the link only to the node and never logs it', async () => {
+    const t = setup({ account: null, deps: withProxy() });
+    t.hub.replies['proxy.rotate'] = { outcome: 'ok', data: { status: 200 } } as Result;
+    const out = await t.run(rotate);
+    expect(t.hub.sent[0]?.cmd).toEqual({ kind: 'proxy.rotate', proxyId: 'px1', url: LINK });
+    expect(t.outcomeDeps.recordProxyRotated).toHaveBeenCalledWith('w1', 'px1', 200);
+    expect(t.lines.join('\n') + JSON.stringify(out)).not.toContain('link-token-1');
+  });
+
+  it('refuses what cannot run and does not retry a link the node refused', async () => {
+    const noLink = setup({ account: null, deps: withProxy({ refreshUrl: null }) });
+    await expect(noLink.run(rotate)).rejects.toThrow(/no change-IP link/);
+    const noHost = setup({ account: null, deps: withProxy({ spec: null }) });
+    await expect(noHost.run(check)).rejects.toThrow(/no host/);
+    const gone = setup({ account: null, deps: { getProxy: vi.fn(async () => null) } });
+    await expect(gone.run(check)).rejects.toThrow(/proxy not found/);
+    for (const t of [noLink, noHost, gone]) expect(t.hub.sent).toEqual([]);
+
+    const priv = setup({ account: null, deps: withProxy() });
+    priv.hub.replies['proxy.rotate'] = {
+      outcome: 'error',
+      error: { code: 'private_address', message: 'x' },
+    } as Result;
+    const err = await priv.run(rotate).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).name).toBe('UnrecoverableError'); // final: BullMQ will not call the link again
   });
 });

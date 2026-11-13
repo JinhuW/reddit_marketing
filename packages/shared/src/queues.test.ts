@@ -10,6 +10,7 @@ const jobs: BrowserJob[] = [
   { kind: 'profile.whoami', workspaceId: 'ws', profileId: 'prof' },
   { kind: 'health.check', workspaceId: 'ws' },
   { kind: 'profile.remove', workspaceId: 'ws', profileId: 'prof', after: 'purge' },
+  { kind: 'proxy.check', workspaceId: 'ws', proxyId: 'px' },
 ];
 
 describe('browser queues', () => {
@@ -28,6 +29,7 @@ describe('browser queues', () => {
       'bj-profile.whoami-prof',
       'bj-health.check-ws',
       'bj-profile.remove-prof',
+      'bj-proxy.check-px',
     ]);
     expect(browserJobId(jobs[6]!, '202611071200')).toBe('bj-health.check-ws-202611071200');
     expect(() => browserJobId({ kind: 'health.check', workspaceId: 'a:b' })).toThrow();

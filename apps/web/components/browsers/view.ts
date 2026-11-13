@@ -59,10 +59,12 @@ export function savedProxyLabel(x: {
   host: string | null;
   port: number | null;
   profileCount: number;
+  /** the pool name, when the team gave it one (plan 0004) */
+  label?: string | null;
 }) {
   const where = x.protocol === 'none' || !x.host ? 'direct' : `${x.host}${x.port ? `:${x.port}` : ''}`;
   const used = x.profileCount === 1 ? '1 profile' : `${x.profileCount} profiles`;
-  return `${x.provider} · ${where} · ${used}`;
+  return `${x.label || x.provider} · ${where} · ${used}`;
 }
 
 /** What the session page shows for a browser-mode sign-in check. */

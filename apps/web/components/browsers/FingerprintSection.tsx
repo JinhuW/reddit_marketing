@@ -79,7 +79,9 @@ export function FingerprintSection({ p, canEdit }: { p: ProfileView; canEdit: bo
       <form
         // Re-seeded when the saved values change (a save here, or a new fingerprint).
         key={JSON.stringify(f)}
-        // Submitted by hand, like the form below: a refused save keeps what was typed.
+        // Sent by `onSubmit` once the page is interactive, so a refused save keeps what was typed (a form
+        // `action` resets the fields). `action` stays as what a click before hydration runs.
+        action={save}
         onSubmit={(e) => {
           e.preventDefault();
           const data = new FormData(e.currentTarget);
@@ -224,8 +226,9 @@ export function FingerprintSection({ p, canEdit }: { p: ProfileView; canEdit: bo
         <details className="rounded-[12px] border border-line-soft px-3.5 py-2.5">
           <summary className="cursor-pointer font-semibold">New fingerprint</summary>
           <form
-            // Submitted by hand: a form `action` makes React reset the fields afterwards, which would silently
+            // Sent by `onSubmit`: a form `action` makes React reset the fields afterwards, which would silently
             // put the graphics choice and the confirmation back after a refused submit.
+            action={renew}
             onSubmit={(e) => {
               e.preventDefault();
               const data = new FormData(e.currentTarget);

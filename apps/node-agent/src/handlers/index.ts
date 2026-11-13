@@ -6,6 +6,13 @@ import type { AgentModule } from '../registry';
 import { actionsModule } from './actions';
 import { healthModule } from './health';
 import { profileModule } from './profile';
+import { proxyModule } from './proxy';
 import { vncModule } from './vnc';
 
-export const modules: readonly AgentModule[] = [healthModule, profileModule, actionsModule, vncModule];
+export const modules: readonly AgentModule[] = [
+  healthModule,
+  profileModule,
+  actionsModule,
+  vncModule,
+  proxyModule,
+];

@@ -269,6 +269,11 @@ export interface ProxyListItem {
   hasCredentials: boolean;
   profileCount: number;
   createdAt: Date;
+  /** plan 0004 phase 3 */
+  label: string | null;
+  notes: string | null;
+  /** a change-IP link is saved (encrypted); the link is not returned */
+  hasRefreshUrl: boolean;
 }
 
 /** The workspace's proxies, oldest first (the "use an existing proxy" picker). */
@@ -288,13 +293,18 @@ export async function listProxies(workspaceId: string): Promise<ProxyListItem[]>
       createdAt: true,
       usernameEnc: true,
       passwordEnc: true,
-      _count: { select: { profiles: true } },
+      label: true,
+      notes: true,
+      refreshUrlEnc: true,
+      // Trashed browsers still hold their proxy (a restore brings it back), so they count as using it.
+      _count: { select: { profiles: { where: { purgedAt: null } } } },
     },
   });
-  return rows.map(({ usernameEnc, passwordEnc, _count, lastTest, ...r }) => ({
+  return rows.map(({ usernameEnc, passwordEnc, refreshUrlEnc, _count, lastTest, ...r }) => ({
     ...r,
     lastTest: (lastTest ?? null) as ProxyTest | null,
     hasCredentials: Boolean(usernameEnc || passwordEnc),
+    hasRefreshUrl: Boolean(refreshUrlEnc),
     profileCount: _count.profiles,
   }));
 }
@@ -1292,3 +1302,4 @@ export async function recordProxyTest(
 }
 
 export * from './browser-manage';
+export * from './browser-proxies';

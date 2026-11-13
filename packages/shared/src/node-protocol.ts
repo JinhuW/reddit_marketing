@@ -121,6 +121,21 @@ export const SendDmCmd = z.object({
   body: z.string().min(1),
 });
 export const TestProxyCmd = z.object({ kind: z.literal('profile.testProxy'), profileId: id });
+/**
+ * Plan 0004 phase 3. Checks a pool proxy without a browser: the agent's own request through `proxy` to an IP
+ * echo, a geo lookup and reddit.com. Result data: {@link ProxyCheckData}. Carries the proxy credentials: built by
+ * the gateway at dispatch time, never logged.
+ */
+export const ProxyCheckCmd = z.object({ kind: z.literal('proxy.check'), proxyId: id, proxy: ProxySpec });
+/**
+ * Plan 0004 phase 3. Calls a mobile proxy's change-IP link from the node (the link carries the vendor token:
+ * never logged). Only http(s) links to public addresses are called. Result data: {@link ProxyRotateData}.
+ */
+export const ProxyRotateCmd = z.object({
+  kind: z.literal('proxy.rotate'),
+  proxyId: id,
+  url: z.string().url().max(2000),
+});
 export const VncOpenCmd = z.object({
   kind: z.literal('vnc.open'),
   profileId: id,
@@ -171,12 +186,33 @@ export const Cmd = z.discriminatedUnion('kind', [
   HealthCheckCmd,
   ProfileWhoamiCmd,
   ProfileSignInCmd,
+  ProxyCheckCmd,
+  ProxyRotateCmd,
 ]);
 export type Cmd = z.infer<typeof Cmd>;
 export type CmdKind = Cmd['kind'];
 export type CmdOf<K extends CmdKind> = Extract<Cmd, { kind: K }>;
 
 // ── result payloads (`Result.data`) for commands that return data ──
+
+const ProxyGeo = z.object({
+  city: z.string().max(120).optional(),
+  country: z.string().max(80).optional(),
+  timeZone: z.string().max(64).optional(),
+  lat: z.number().min(-90).max(90).optional(),
+  lon: z.number().min(-180).max(180).optional(),
+});
+/** `proxy.check` → what the proxy's exit looks like from the node. */
+export const ProxyCheckData = z.object({
+  ip: z.string().min(1),
+  latencyMs: z.number().int().nonnegative(),
+  redditOk: z.boolean().optional(),
+  geo: ProxyGeo.optional(),
+});
+export type ProxyCheckData = z.infer<typeof ProxyCheckData>;
+/** `proxy.rotate` → the HTTP status the change-IP link answered with. */
+export const ProxyRotateData = z.object({ status: z.number().int() });
+export type ProxyRotateData = z.infer<typeof ProxyRotateData>;
 
 /** `profile.testProxy` → exit IP seen from the page and from the agent. */
 export const TestProxyData = z.object({

@@ -41,6 +41,8 @@ function deps(
     setStatus: vi.fn(async () => undefined),
     recordProxyTest: vi.fn(async () => undefined),
     purgeProfile: vi.fn(async () => undefined),
+    recordProxyCheck: vi.fn(async () => undefined),
+    recordProxyRotated: vi.fn(async () => undefined),
     resetProfileData: vi.fn(async () => undefined),
     now: () => new Date('2026-11-12T10:00:00Z'),
   } as unknown as OutcomeDeps & {

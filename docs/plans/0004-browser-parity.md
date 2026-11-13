@@ -29,6 +29,8 @@ AdsPower's core is six things. Threadline had the third and a thin slice of the 
 | OS persona | Not a choice: every new, cloned or reset browser is `windows` (DECISIONS 2026-11-09). | The image ships Windows-metric fonts and `CloakGpu` has no Apple value, so a macOS or Linux persona contradicts itself. |
 | WebRTC "real" | Never offered while a proxy is set; the save is refused, dispatch falls back to `disable_udp`, and the image ignores it behind a proxy. | It would show the node's home IP. |
 | Existing browsers | New flags are sent only for a setting a person changed. | A launch-flag change on a browser Reddit already knows is a device change. |
+| Pool rights | Editors add, edit, check and delete unused proxies; only an admin deletes one that browsers use. | Taking a proxy away changes other people's browsers. |
+| Same proxy twice | A proxy is host + port + username: pasting a list again adds nothing. | Vendors hand out many logins on one gateway host:port. |
 | Proxy change-IP URL, pool checks | Called from the node agent, never from the web app. | The URL is user input: no server-side request from Railway. |
 
 Unchanged rules: a post only from an approved Draft with an `approverMemberId`; every Draft / Lead / RedditAccount /
@@ -70,8 +72,13 @@ BrowserSession transition writes an AuditEvent; secrets never in logs, job paylo
       and a browser-wide one needs a check on an x86 node. Chrome's default (ask) stays.
 
 ### Phase 3 · Proxy pool
-- [ ] `/browsers/proxies`: list, add, bulk add by paste, edit, delete, bulk check, notes, change-IP URL.
-- [ ] `https` protocol; node commands `proxy.check` and `proxy.rotate`; "random unused proxy".
+- [x] `/browsers/proxies` (the artboard's "Proxy pool" button): list with the last check, search, add one, bulk
+      add by paste (`packages/shared/src/proxy-parse.ts`), edit, delete, bulk Check and Change IP, name, notes.
+- [x] Node commands `proxy.check` (no browser needed; any online node of the workspace) and `proxy.rotate`
+      (calls the change-IP link from the node; only http(s) links that resolve to public addresses).
+- [x] "Random proxy no browser uses yet" on New browser (`browsers.pickUnusedProxy`).
+- [ ] Not built: HTTPS and SSH proxy types. Both need a TLS or SSH hop in the agent's own proxy requests and in
+      the CDP proxy sign-in, and a check on a node; HTTP and SOCKS5 cover what the pool holds today.
 
 ### Phase 4 · Cookies, data, bulk create
 - [ ] Cookie export (`profile.exportCookies`), Netscape and `name=value` import.

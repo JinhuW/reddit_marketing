@@ -127,11 +127,16 @@ export default async function BrowsersPage({
         title="Browsers and proxies"
         sub="One dedicated browser profile per connected account. Agents draft and post only inside that profile, so each account always logs in from the same device and place."
         actions={
-          canCreate ? (
-            <Link href="/browsers/new" className="btn btn-primary">
-              New browser
+          <div className="flex items-center gap-2">
+            <Link href="/browsers/proxies" className="btn">
+              Proxy pool
             </Link>
-          ) : null
+            {canCreate ? (
+              <Link href="/browsers/new" className="btn btn-primary">
+                New browser
+              </Link>
+            ) : null}
+          </div>
         }
       />
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
