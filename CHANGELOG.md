@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/JinhuW/reddit_marketing/compare/v0.11.0...v0.11.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **node-agent:** send tunnelled proxy requests through the tunnel; add HTTPS proxies ([60bc35c](https://github.com/JinhuW/reddit_marketing/commit/60bc35c2a56c1b08ce217204381c0e9189b2666d))
+
 ## [0.11.0](https://github.com/JinhuW/reddit_marketing/compare/v0.10.1...v0.11.0) (2026-11-13)
 
 
