@@ -628,3 +628,41 @@ test('quick create, more start tabs, cookies.txt import, CSV export and import (
     await prisma.browserTag.deleteMany({ where: { name: { in: [`e2e-${s}`, `warm-${s}`] } } });
   }
 });
+
+test('an admin gives a member access to a group; a viewer never sees the access editor (plan 0004)', async ({
+  page,
+  browser,
+}) => {
+  const s = Date.now().toString(36);
+  const groupName = `e2e access ${s}`;
+  const jane = await prisma.workspaceMember.findFirstOrThrow({ where: { user: { email: 'jane@acme.so' } } });
+  const helper = await prisma.workspaceMember.findFirstOrThrow({
+    where: { workspaceId: jane.workspaceId, role: { in: ['editor', 'approver'] } },
+    include: { user: true },
+  });
+  const group = await prisma.browserGroup.create({
+    data: { workspaceId: jane.workspaceId, name: groupName },
+  });
+  try {
+    await page.goto('/browsers?manage=1');
+    await page.waitForLoadState('networkidle');
+    const row = page.locator(`li[data-group="${groupName}"]`);
+    await row.getByText('Access: owners and admins only').click();
+    await expect(row).toContainText('cannot take a browser over');
+    await row.getByLabel(helper.user.name ?? helper.user.email).check();
+    await row.getByRole('button', { name: 'Save access' }).click();
+    await expect(row.getByTestId('group-access').locator('summary')).toContainText('Access: 1 member');
+    expect(await prisma.browserGroupMember.findMany({ where: { groupId: group.id } })).toMatchObject([
+      { memberId: helper.id },
+    ]);
+
+    const ctx = await browser.newContext({ storageState: RHEA });
+    const viewer = await ctx.newPage();
+    await viewer.goto('/browsers?manage=1');
+    await expect(viewer.locator(`li[data-group="${groupName}"]`)).toBeVisible();
+    await expect(viewer.getByTestId('group-access')).toHaveCount(0);
+    await ctx.close();
+  } finally {
+    await prisma.browserGroup.deleteMany({ where: { id: group.id } });
+  }
+});

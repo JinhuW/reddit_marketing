@@ -47,6 +47,7 @@ export interface SavedProxy {
 export function ProfileEditor({
   p,
   canEdit,
+  canManage = canEdit,
   isAdmin = false,
   nodeOptions = [],
   savedProxies = [],
@@ -58,6 +59,8 @@ export function ProfileEditor({
 }: {
   p: ProfileView;
   canEdit: boolean;
+  /** may manage (group access, plan 0004 phase 5): details and fingerprint settings; defaults to `canEdit` */
+  canManage?: boolean;
   isAdmin?: boolean;
   nodeOptions?: { id: string; label: string }[];
   /** the workspace's proxies (safe fields only), for "Use a saved proxy" */
@@ -118,7 +121,7 @@ export function ProfileEditor({
       <AccountSection p={p} canEdit={canEdit} assignable={assignable} />
       <BrowserSettings p={p} canEdit={canEdit} />
       <CookieTools p={p} canEdit={canEdit} />
-      <ProfileDetails p={p} canEdit={canEdit} groups={groups} tags={tags} />
+      <ProfileDetails p={p} canEdit={canManage} groups={groups} tags={tags} />
       <form id={useFormId} action={attachAction} className="hidden">
         <input type="hidden" name="profileId" value={p.id} />
       </form>
@@ -382,7 +385,7 @@ export function ProfileEditor({
           ) : null}
         </div>
 
-        <FingerprintSection p={p} canEdit={canEdit} />
+        <FingerprintSection p={p} canEdit={canManage} canReset={canEdit} />
 
         <div className="flex flex-col gap-2">
           <div className="text-[12.5px] font-semibold">What the agent may do here</div>

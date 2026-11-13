@@ -61,7 +61,13 @@ export default async function BrowsersPage({
     profileView(r, now, r.nodeId ? (nodeById.get(r.nodeId) ?? null) : null);
   const profiles = all.map(view);
   const shown = found.rows.map(view);
-  const controllable = new Set(found.rows.filter((r) => browsers.canControlProfile(me, r)).map((r) => r.id));
+  // Rows the viewer may tick: in the trash that takes control (restore, delete); in the live list, managing
+  // (which includes members an admin gave access to the browser's group).
+  const controllable = new Set(
+    found.rows
+      .filter((r) => (params.trash ? browsers.canControlProfile(me, r) : browsers.canManageProfile(me, r)))
+      .map((r) => r.id),
+  );
   // The editor drawer opens only when a live browser is picked (?id=); otherwise the table takes the full width.
   const selRow = params.trash ? undefined : all.find((r) => r.id === params.id);
   const sel = selRow ? view(selRow) : null;
@@ -181,7 +187,21 @@ export default async function BrowsersPage({
           Browser moved to the trash. <Link href="/browsers?view=trash">Open the trash</Link> to restore it.
         </output>
       ) : null}
-      {params.manage ? <GroupsTagsPanel groups={groups} tags={tags} canEdit={canCreate} /> : null}
+      {params.manage ? (
+        <GroupsTagsPanel
+          groups={groups}
+          tags={tags}
+          canEdit={canCreate}
+          // Only admins see and change who has access to a group.
+          members={
+            isAdmin
+              ? (await members.listMembers(me.workspaceId))
+                  .filter((m) => m.role !== 'admin' && m.role !== 'viewer')
+                  .map((m) => ({ id: m.id, name: m.user.name ?? m.user.email }))
+              : null
+          }
+        />
+      ) : null}
       {profiles.length === 0 && !params.trash ? (
         <div className="panel muted p-6 text-[13px]">
           No browser profiles yet. Create one with New browser, or connect a Reddit account.
@@ -199,6 +219,7 @@ export default async function BrowsersPage({
             key={sel.id}
             p={sel}
             canEdit={browsers.canControlProfile(me, selRow)}
+            canManage={browsers.canManageProfile(me, selRow)}
             isAdmin={isAdmin}
             nodeOptions={nodeOptions(online, selRow.nodeId ? (nodeById.get(selRow.nodeId) ?? null) : null)}
             savedProxies={savedProxies}

@@ -32,7 +32,15 @@ function Row({ id, label, children }: { id: string; label: string; children: Rea
  * decides (canvas, WebGL, audio, fonts, the GPU model) is listed as fixed. A new seed or GPU vendor needs the
  * browser's data cleared, because the volume is locked to the fingerprint it first ran with.
  */
-export function FingerprintSection({ p, canEdit }: { p: ProfileView; canEdit: boolean }) {
+export function FingerprintSection({
+  p,
+  canEdit,
+  canReset = canEdit,
+}: {
+  p: ProfileView;
+  canEdit: boolean /** a new fingerprint deletes data: control, not just management */;
+  canReset?: boolean;
+}) {
   const [saved, save, saving] = useActionState<ActionState | null, FormData>(saveFingerprintAction, null);
   const [renewed, renew, renewing] = useActionState<ActionState | null, FormData>(newFingerprintAction, null);
   const f = p.fp;
@@ -222,7 +230,7 @@ export function FingerprintSection({ p, canEdit }: { p: ProfileView; canEdit: bo
         <Msg s={saved} />
       </form>
 
-      {canEdit ? (
+      {canReset ? (
         <details className="rounded-[12px] border border-line-soft px-3.5 py-2.5">
           <summary className="cursor-pointer font-semibold">New fingerprint</summary>
           <form

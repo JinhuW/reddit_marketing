@@ -6,6 +6,7 @@ import {
   deleteGroupAction,
   deleteTagAction,
   renameGroupAction,
+  setGroupAccessAction,
 } from '@/lib/actions/browser-list';
 import { BrowserTagColor } from '@threadline/shared';
 import { useActionState } from 'react';
@@ -16,12 +17,19 @@ import { tagChip } from './list-params';
 type Act = (prev: ActionState | null, form: FormData) => Promise<ActionState>;
 const useAct = (fn: Act) => useActionState<ActionState | null, FormData>(fn, null);
 
-function GroupRow({
-  g,
-  canEdit,
-}: { g: { id: string; name: string; profileCount: number }; canEdit: boolean }) {
+interface Group {
+  id: string;
+  name: string;
+  profileCount: number;
+  memberIds?: string[];
+}
+type Member = { id: string; name: string };
+
+function GroupRow({ g, canEdit, members }: { g: Group; canEdit: boolean; members: Member[] | null }) {
   const [renamed, rename, renaming] = useAct(renameGroupAction);
   const [deleted, del, deleting] = useAct(deleteGroupAction);
+  const [access, saveAccess, savingAccess] = useAct(setGroupAccessAction);
+  const has = new Set(g.memberIds ?? []);
   return (
     <li className="flex flex-col gap-1" data-group={g.name}>
       <div className="flex items-center gap-1.5">
@@ -54,6 +62,45 @@ function GroupRow({
         ) : null}
       </div>
       <Msg s={renamed && !renamed.ok ? renamed : deleted && !deleted.ok ? deleted : null} />
+      {members ? (
+        <details className="pl-0.5" data-testid="group-access">
+          <summary className="muted cursor-pointer text-xs">
+            Access:{' '}
+            {has.size ? `${has.size} ${has.size === 1 ? 'member' : 'members'}` : 'owners and admins only'}
+          </summary>
+          {members.length ? (
+            <form key={[...has].join(',')} action={saveAccess} className="mt-1.5 flex flex-col gap-1.5">
+              <input type="hidden" name="id" value={g.id} />
+              <span className="muted text-xs leading-normal">
+                Ticked members can start, stop and change the settings of every browser in this group. They
+                cannot take a browser over, read its cookies, change its account or delete it.
+              </span>
+              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {members.map((m) => (
+                  <label key={m.id} className="flex items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      name="memberIds"
+                      value={m.id}
+                      defaultChecked={has.has(m.id)}
+                      className="m-0 accent-[var(--ink)]"
+                    />
+                    {m.name}
+                  </label>
+                ))}
+              </div>
+              <button type="submit" className="btn !h-7 self-start" disabled={savingAccess}>
+                Save access
+              </button>
+              <Msg s={access} />
+            </form>
+          ) : (
+            <p className="muted m-0 mt-1 text-xs">
+              No editors or approvers in this workspace to give access to.
+            </p>
+          )}
+        </details>
+      ) : null}
     </li>
   );
 }
@@ -90,10 +137,13 @@ export function GroupsTagsPanel({
   groups,
   tags,
   canEdit,
+  members = null,
 }: {
-  groups: { id: string; name: string; profileCount: number }[];
+  groups: Group[];
   tags: { id: string; name: string; color: string; profileCount: number }[];
   canEdit: boolean;
+  /** editors and approvers who can be given access to a group; null hides the access editor (not an admin) */
+  members?: Member[] | null;
 }) {
   const [newGroup, addGroup, addingGroup] = useAct(createGroupAction);
   const [newTag, addTag, addingTag] = useAct(createTagAction);
@@ -108,7 +158,7 @@ export function GroupsTagsPanel({
         {groups.length ? (
           <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
             {groups.map((g) => (
-              <GroupRow key={g.id} g={g} canEdit={canEdit} />
+              <GroupRow key={g.id} g={g} canEdit={canEdit} members={members} />
             ))}
           </ul>
         ) : (

@@ -77,7 +77,7 @@ const profileInclude = {
       agent: { select: { name: true, color: true } },
     },
   },
-  group: { select: { id: true, name: true } },
+  group: { select: { id: true, name: true, members: { select: { memberId: true } } } },
   tags: { select: { id: true, name: true, color: true }, orderBy: { name: 'asc' } },
 } satisfies Prisma.BrowserProfileInclude;
 /** The include every profile read uses (browser-manage.ts builds its filtered list on it). */
@@ -131,6 +131,25 @@ export function canControlProfile(
   return profile.account
     ? profile.account.ownerMemberId === me.id
     : profile.createdByMemberId != null && profile.createdByMemberId === me.id;
+}
+
+/**
+ * Plan 0004 phase 5: who may manage a browser without controlling it. Everyone who controls it, plus an editor
+ * (or above) an admin gave access to the browser's group. Managing is starting, stopping, testing the proxy and
+ * changing name, notes, group, tags, proxy and fingerprint settings. It is never taking the browser over, reading
+ * or clearing its cookies, touching its account, or deleting it: those stay with {@link canControlProfile}.
+ */
+export function canManageProfile(
+  me: { id: string; role: string },
+  profile: {
+    account: { ownerMemberId: string } | null;
+    createdByMemberId?: string | null;
+    group?: { members?: { memberId: string }[] } | null;
+  },
+): boolean {
+  if (canControlProfile(me, profile)) return true;
+  if (me.role === 'viewer') return false;
+  return profile.group?.members?.some((m) => m.memberId === me.id) ?? false;
 }
 
 export interface ProxyUpdate {

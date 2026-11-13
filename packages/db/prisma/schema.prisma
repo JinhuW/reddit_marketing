@@ -312,11 +312,12 @@ model WorkspaceMember {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   ownedAccounts     RedditAccount[]
-  approverForAgents Agent[]          @relation("AgentApprover")
-  approvedDrafts    Draft[]          @relation("DraftApprover")
-  ownedLeads        Lead[]           @relation("LeadOwner")
+  approverForAgents Agent[]              @relation("AgentApprover")
+  approvedDrafts    Draft[]              @relation("DraftApprover")
+  ownedLeads        Lead[]               @relation("LeadOwner")
   startedSessions   BrowserSession[]
-  createdBrowsers   BrowserProfile[] @relation("BrowserProfileCreatedBy")
+  createdBrowsers   BrowserProfile[]     @relation("BrowserProfileCreatedBy")
+  browserGroups     BrowserGroupMember[]
   auditEvents       AuditEvent[]
   notifications     Notification[]
 
@@ -439,10 +440,25 @@ model BrowserGroup {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   profiles  BrowserProfile[]
+  members   BrowserGroupMember[]
 
   @@unique([workspaceId, name])
+}
+
+/// Plan 0004 phase 5: a member an admin lets manage every browser in a group (start, stop, settings; never
+/// take-over, cookies or the account).
+model BrowserGroupMember {
+  groupId   String
+  memberId  String
+  createdAt DateTime @default(now())
+
+  group  BrowserGroup    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  member WorkspaceMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, memberId])
+  @@index([memberId])
 }
 
 /// Plan 0004: a label on browser profiles; a profile can carry several.

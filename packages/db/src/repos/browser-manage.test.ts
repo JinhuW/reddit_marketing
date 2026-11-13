@@ -52,7 +52,7 @@ describe('browsers.searchProfiles', () => {
       expect((await browsers.searchProfiles(ws.id, { pageSize: 2, page: 9 })).page).toBe(2);
 
       expect(await browsers.listGroups(ws.id)).toEqual([
-        { id: g.id, name: 'Shop accounts', profileCount: 1 },
+        { id: g.id, name: 'Shop accounts', profileCount: 1, memberIds: [] },
       ]);
       expect(await browsers.listTags(ws.id)).toEqual([
         { id: hot.id, name: 'warm', color: 'amber', profileCount: 1 },
@@ -500,6 +500,60 @@ describe('extra start tabs (plan 0004 phase 4)', () => {
       ]);
     } finally {
       await ws.cleanup();
+    }
+  });
+});
+
+describe('group access (plan 0004 phase 5)', () => {
+  it('lets a member manage a group’s browsers without ever controlling them', async () => {
+    const ws = await testWorkspace();
+    const other = await testWorkspace();
+    try {
+      const admin = await ws.member('Admin');
+      const helper = await ws.member('Helper');
+      const outsider = await ws.member('Outsider');
+      const foreign = await other.member();
+      const g = await browsers.createGroup(ws.id, admin.id, 'Shops');
+      const { profileId } = await ws.profileOn(null); // holds another member's account
+      await browsers.updateProfileMeta(ws.id, profileId, admin.id, { groupId: g.id });
+      const as = (m: { id: string }, role = 'editor') => ({ id: m.id, role });
+      const load = async () => (await browsers.getProfile(ws.id, profileId))!;
+
+      expect(browsers.canManageProfile(as(helper), await load())).toBe(false);
+      expect(await browsers.setGroupMembers(ws.id, admin.id, g.id, [helper.id])).toEqual({
+        added: 1,
+        removed: 0,
+      });
+      expect(await browsers.setGroupMembers(ws.id, admin.id, g.id, [helper.id])).toEqual({
+        added: 0,
+        removed: 0,
+      });
+      const row = await load();
+      expect(browsers.canManageProfile(as(helper), row)).toBe(true);
+      // Managing is not controlling: no take-over, cookies, account or delete.
+      expect(browsers.canControlProfile(as(helper), row)).toBe(false);
+      expect(browsers.canManageProfile(as(outsider), row)).toBe(false);
+      // A viewer changes nothing, even with access.
+      expect(browsers.canManageProfile(as(helper, 'viewer'), row)).toBe(false);
+      expect((await browsers.listGroups(ws.id))[0]?.memberIds).toEqual([helper.id]);
+
+      await expect(browsers.setGroupMembers(ws.id, admin.id, g.id, [foreign.id])).rejects.toThrow(
+        /Member not found/,
+      );
+      await expect(browsers.setGroupMembers(other.id, foreign.id, g.id, [])).rejects.toThrow(
+        /Group not found/,
+      );
+
+      // Out of the group, or access taken away: back to nothing.
+      await browsers.updateProfileMeta(ws.id, profileId, admin.id, { groupId: null });
+      expect(browsers.canManageProfile(as(helper), await load())).toBe(false);
+      await browsers.updateProfileMeta(ws.id, profileId, admin.id, { groupId: g.id });
+      expect(await browsers.setGroupMembers(ws.id, admin.id, g.id, [])).toEqual({ added: 0, removed: 1 });
+      expect(browsers.canManageProfile(as(helper), await load())).toBe(false);
+      expect(await audits(ws.id, 'browser_group.access_changed')).toHaveLength(2);
+    } finally {
+      await ws.cleanup();
+      await other.cleanup();
     }
   });
 });

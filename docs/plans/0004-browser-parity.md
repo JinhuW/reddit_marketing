@@ -95,6 +95,13 @@ BrowserSession transition writes an AuditEvent; secrets never in logs, job paylo
 - [ ] Not built: clearing local storage, IndexedDB or history on their own (no reliable all-sites call over CDP),
       and a button that deletes cookies in bulk across browsers (too easy to sign a fleet out by accident).
 
+### Phase 5 · Group access
+- [x] An admin gives editors and approvers access to a group (`BrowserGroupMember`, `browsers.setGroupMembers`).
+      Access means managing (`canManageProfile`): start, stop, proxy test, name, notes, group, tags, proxy and
+      fingerprint settings of every browser in the group.
+- [x] It never means controlling (`canControlProfile`): take-over, sign-in, cookies, the account, a new
+      fingerprint, delete and restore stay with admins, the account owner and the browser's creator.
+
 ## Rollout
 
 New protocol fields are optional, so an older node agent keeps working. Each phase that touches

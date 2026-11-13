@@ -307,3 +307,6 @@ Color Emoji), because the image ships Windows-metric fonts and `CloakGpu` has no
   label). Before, an unchanged `CLOAK_VERSION` kept the old image, so the phase 2 launch flags had not reached
   the nodes. Checked on browser-1 after the rebuild (CloakBrowser 156.0.8078.47.1-pro, seed 424242): 12 cores and
   8 GB by default, 4 and 2 with `FP_CPU=4 FP_MEMORY_GB=2`; `FP_NOISE=off` changes the canvas hash.
+- Group access (plan 0004 phase 5) is the narrow form on purpose: PLAN §10 keeps the VNC view to admins and the
+  account owner, so a member with access to a group manages its browsers but cannot take one over, read its
+  cookies or touch its account. Widening that is the workspace owner's call.

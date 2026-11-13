@@ -31,6 +31,22 @@ async function controllable(profileId: string) {
   return { me, profile };
 }
 
+/**
+ * Plan 0004 phase 5: like `controllable`, but also lets in an editor an admin gave access to the browser's group.
+ * Only for what `browsers.canManageProfile` covers: start, stop, proxy test, name, notes, group, tags, proxy and
+ * fingerprint settings.
+ */
+async function manageable(profileId: string) {
+  const me = await requireMember();
+  const profile = await browsers.getProfile(me.workspaceId, profileId);
+  if (!profile) throw new ForbiddenError('Browser not found.');
+  if (!browsers.canManageProfile(me, profile))
+    throw new ForbiddenError(
+      'Only an admin, the browser’s owner, or a member with access to its group can change this browser.',
+    );
+  return { me, profile };
+}
+
 const ProxyForm = z.object({
   profileId: z.string().min(1),
   provider: z.string().trim().min(1).max(120),
@@ -48,7 +64,7 @@ export async function saveProxyAction(_prev: ActionState | null, form: FormData)
   if (!parsed.success) return { ok: false, message: 'Check the proxy fields.' };
   const d = parsed.data;
   try {
-    const { me } = await controllable(d.profileId);
+    const { me } = await manageable(d.profileId);
     let port: number | null = null;
     if (d.protocol !== 'none') {
       if (!d.host) return { ok: false, message: 'Host is required unless the protocol is None.' };
@@ -135,7 +151,9 @@ const JOB_DONE: Record<WebBrowserJobKind, string> = {
 
 async function queueJob(form: FormData, kind: WebBrowserJobKind): Promise<ActionState> {
   try {
-    const { me, profile } = await controllable(fid(form, 'profileId'));
+    // Starting, stopping and testing the proxy are management; a sign-in or identity check is control.
+    const manage = kind === 'profile.start' || kind === 'profile.stop' || kind === 'profile.testProxy';
+    const { me, profile } = await (manage ? manageable : controllable)(fid(form, 'profileId'));
     const r = await enqueueProfileJob(me.workspaceId, profile.id, kind);
     revalidatePath('/browsers');
     return r.queued ? { ok: true, message: JOB_DONE[kind] } : { ok: false, message: r.reason };
@@ -206,7 +224,7 @@ export async function assignNodeAction(_prev: ActionState | null, form: FormData
 /** Points the profile at a proxy the workspace already has. Nothing is decrypted. */
 export async function attachProxyAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
   try {
-    const { me, profile } = await controllable(fid(form, 'profileId'));
+    const { me, profile } = await manageable(fid(form, 'profileId'));
     const proxyId = fid(form, 'proxyId');
     if (!proxyId) return { ok: false, message: 'Pick a saved proxy.' };
     const proxies = await browsers.listProxies(me.workspaceId);

@@ -40,7 +40,12 @@ async function applyOne(me: Me, op: BulkOp, id: string, form: FormData): Promise
   const inTrash = op === 'restore' || op === 'purge';
   const p = await browsers.getProfile(me.workspaceId, id, { trashed: inTrash });
   if (!p) return 'not found';
-  if (!browsers.canControlProfile(me, p)) return 'not yours to change';
+  // Deleting, restoring and purging need control; the rest is management (plan 0004 phase 5).
+  const full = op === 'trash' || op === 'restore' || op === 'purge';
+  if (!(full ? browsers.canControlProfile(me, p) : browsers.canManageProfile(me, p)))
+    return full && browsers.canManageProfile(me, p)
+      ? 'only its owner or an admin can delete it'
+      : 'not yours to change';
   switch (op) {
     case 'start':
     case 'stop': {
@@ -151,6 +156,22 @@ async function controllable(profileId: string) {
   return { me, profile };
 }
 
+/**
+ * Plan 0004 phase 5: like `controllable`, but also lets in an editor an admin gave access to the browser's group.
+ * Only for what `browsers.canManageProfile` covers: start, stop, proxy test, name, notes, group, tags, proxy and
+ * fingerprint settings.
+ */
+async function manageable(profileId: string) {
+  const me = await requireMember();
+  const profile = await browsers.getProfile(me.workspaceId, profileId);
+  if (!profile) throw new ForbiddenError('Browser not found.');
+  if (!browsers.canManageProfile(me, profile))
+    throw new ForbiddenError(
+      'Only an admin, the browser’s owner, or a member with access to its group can change this browser.',
+    );
+  return { me, profile };
+}
+
 async function guarded(fn: () => Promise<ActionState>): Promise<ActionState> {
   try {
     return await fn();
@@ -164,7 +185,7 @@ async function guarded(fn: () => Promise<ActionState>): Promise<ActionState> {
 /** Drawer "Details": group, tags and notes of one browser. */
 export async function saveDetailsAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
   return guarded(async () => {
-    const { me, profile } = await controllable(str(form, 'profileId'));
+    const { me, profile } = await manageable(str(form, 'profileId'));
     const r = await browsers.updateProfileMeta(me.workspaceId, profile.id, me.id, {
       groupId: str(form, 'groupId') || null,
       tagIds: form.getAll('tagIds').map(String).filter(Boolean),
@@ -178,7 +199,7 @@ export async function saveDetailsAction(_prev: ActionState | null, form: FormDat
 /** Quick edit in the list: the notes of one browser. */
 export async function saveNotesAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
   return guarded(async () => {
-    const { me, profile } = await controllable(str(form, 'profileId'));
+    const { me, profile } = await manageable(str(form, 'profileId'));
     await browsers.updateProfileMeta(me.workspaceId, profile.id, me.id, {
       notes: String(form.get('notes') ?? ''),
     });
@@ -265,7 +286,7 @@ const pick = (raw: string, options: readonly number[]) => {
 /** Drawer "Fingerprint": screen, time zone, language, CPU, memory, WebRTC and noise. Applies at the next start. */
 export async function saveFingerprintAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
   return guarded(async () => {
-    const { me, profile } = await controllable(str(form, 'profileId'));
+    const { me, profile } = await manageable(str(form, 'profileId'));
     const parsed = FingerprintSettings.safeParse({
       screen: str(form, 'screen').replace(/\s*[×xX]\s*/, 'x'),
       tzMode: str(form, 'tzMode'),
@@ -475,5 +496,23 @@ export async function importBrowsersAction(_prev: ActionState | null, form: Form
       });
     revalidatePath('/browsers');
     return { ok: true, message: `Imported ${count(plan.length)}. They are on the Browsers page.` };
+  });
+}
+
+/** Groups panel, admins only: which members may manage the browsers of a group (plan 0004 phase 5). */
+export async function setGroupAccessAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  return guarded(async () => {
+    const me = await requireRole('admin');
+    const r = await browsers.setGroupMembers(
+      me.workspaceId,
+      me.id,
+      str(form, 'id'),
+      form.getAll('memberIds').map(String).filter(Boolean),
+    );
+    revalidatePath('/browsers');
+    return {
+      ok: true,
+      message: r.added || r.removed ? 'Access saved.' : 'Nothing to change.',
+    };
   });
 }

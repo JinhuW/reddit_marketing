@@ -189,6 +189,7 @@ export const AuditAction = [
   'browser_group.created',
   'browser_group.renamed',
   'browser_group.deleted',
+  'browser_group.access_changed',
   'browser_tag.created',
   'browser_tag.deleted',
   'profile.fingerprint_updated',

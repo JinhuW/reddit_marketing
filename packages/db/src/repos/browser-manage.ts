@@ -115,9 +115,18 @@ export async function listGroups(workspaceId: string) {
   const rows = await prisma.browserGroup.findMany({
     where: { workspaceId },
     orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-    include: { _count: { select: { profiles: { where: { deletedAt: null } } } } },
+    include: {
+      _count: { select: { profiles: { where: { deletedAt: null } } } },
+      members: { select: { memberId: true } },
+    },
   });
-  return rows.map((g) => ({ id: g.id, name: g.name, profileCount: g._count.profiles }));
+  return rows.map((g) => ({
+    id: g.id,
+    name: g.name,
+    profileCount: g._count.profiles,
+    /** members an admin let manage this group's browsers (phase 5) */
+    memberIds: g.members.map((m) => m.memberId),
+  }));
 }
 
 export async function createGroup(workspaceId: string, actorMemberId: string, rawName: string) {
@@ -169,6 +178,51 @@ export async function renameGroup(workspaceId: string, actorMemberId: string, id
     if (isUnique(e)) throw new BrowserManageError(`A group named ${name} already exists.`);
     throw e;
   }
+}
+
+/**
+ * Sets which members may manage the browsers of a group (see `canManageProfile`). Replaces the list. Members must
+ * belong to the workspace. Audit `browser_group.access_changed` with who was added and removed.
+ */
+export function setGroupMembers(
+  workspaceId: string,
+  actorMemberId: string,
+  groupId: string,
+  memberIds: string[],
+) {
+  return prisma.$transaction(async (tx) => {
+    const g = await tx.browserGroup.findFirst({
+      where: { workspaceId, id: groupId },
+      include: { members: { select: { memberId: true } } },
+    });
+    if (!g) throw new BrowserManageError('Group not found.');
+    const want = [...new Set(memberIds)];
+    const valid = await tx.workspaceMember.findMany({
+      where: { workspaceId, id: { in: want } },
+      select: { id: true },
+    });
+    if (valid.length !== want.length) throw new BrowserManageError('Member not found.');
+    const have = new Set(g.members.map((m) => m.memberId));
+    const added = want.filter((id) => !have.has(id));
+    const removed = [...have].filter((id) => !want.includes(id));
+    if (added.length === 0 && removed.length === 0) return { added: 0, removed: 0 };
+    if (removed.length)
+      await tx.browserGroupMember.deleteMany({ where: { groupId, memberId: { in: removed } } });
+    if (added.length)
+      await tx.browserGroupMember.createMany({ data: added.map((memberId) => ({ groupId, memberId })) });
+    await writeAudit(
+      {
+        workspaceId,
+        actorMemberId,
+        action: 'browser_group.access_changed',
+        targetType: 'BrowserGroup',
+        targetId: groupId,
+        meta: { item: `Access to group ${g.name} changed`, added, removed },
+      },
+      tx,
+    );
+    return { added: added.length, removed: removed.length };
+  });
 }
 
 /** Deletes the group; its browsers stay and become ungrouped. */
