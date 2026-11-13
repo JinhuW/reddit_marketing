@@ -303,3 +303,7 @@ Color Emoji), because the image ships Windows-metric fonts and `CloakGpu` has no
   becomes a BullMQ return value, the job is kept 10 minutes instead of a week, and every download is audited.
 - "Clear session" from the artboard became two buttons, Clear cookies and Clear cache; clearing cookies needs a
   ticked confirmation.
+- The node install now rebuilds the browser image when the supervisor sources change (a hash of them is an image
+  label). Before, an unchanged `CLOAK_VERSION` kept the old image, so the phase 2 launch flags had not reached
+  the nodes. Checked on browser-1 after the rebuild (CloakBrowser 156.0.8078.47.1-pro, seed 424242): 12 cores and
+  8 GB by default, 4 and 2 with `FP_CPU=4 FP_MEMORY_GB=2`; `FP_NOISE=off` changes the canvas hash.
