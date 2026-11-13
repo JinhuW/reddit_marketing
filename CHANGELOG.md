@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/JinhuW/reddit_marketing/compare/v0.8.0...v0.9.0) (2026-11-13)
+
+
+### Features
+
+* **browsers:** proxy pool page with bulk add, checks and change-IP links ([c2f2c95](https://github.com/JinhuW/reddit_marketing/commit/c2f2c951d0321d751c0c73babe8eadbf0f7b715c))
+
 ## [0.8.0](https://github.com/JinhuW/reddit_marketing/compare/v0.7.0...v0.8.0) (2026-11-13)
 
 
