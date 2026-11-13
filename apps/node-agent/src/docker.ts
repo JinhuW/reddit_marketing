@@ -149,6 +149,14 @@ export function containerSpec(cmd: CmdOf<'profile.start'>, opts: SpecOptions): C
     LOCALE: cmd.locale,
     SCREEN: cmd.screen,
   };
+  // Plan 0004 phase 2: optional fingerprint settings; an image that predates them ignores the variables.
+  if (cmd.cpu) env.FP_CPU = String(cmd.cpu);
+  if (cmd.memoryGb) env.FP_MEMORY_GB = String(cmd.memoryGb);
+  if (cmd.noise === false) env.FP_NOISE = 'off';
+  if (cmd.webrtc) {
+    env.FP_WEBRTC = cmd.webrtc.mode;
+    if (cmd.webrtc.ip) env.FP_WEBRTC_IP = cmd.webrtc.ip;
+  }
   const proxy = proxyUrl(cmd.proxy);
   if (proxy) env.PROXY_URL = proxy;
   if (opts.licenseKey) env.CLOAKBROWSER_LICENSE_KEY = opts.licenseKey;

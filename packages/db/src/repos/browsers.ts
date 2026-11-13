@@ -1,6 +1,7 @@
 // Repository functions for Browsers (9b) and Remote session (9c). See docs/PLAN.md §6, §7.
 // Browser-node functions (assignNode … getProfileForDispatch): docs/plans/0001-infra-implementation.md §3.
 import { createHash, randomBytes } from 'node:crypto';
+import { isIP } from 'node:net';
 import type { Prisma } from '@prisma/client';
 import {
   type AccountAuthMode,
@@ -9,7 +10,9 @@ import {
   CloakPersona,
   type PauseReason,
   type ProxySpec,
+  type WebRtcMode,
   parseCookieJson,
+  resolveZoneAndLocale,
 } from '@threadline/shared';
 import { decrypt } from '@threadline/shared/crypto';
 import { prisma } from '../client';
@@ -25,6 +28,19 @@ export interface Fingerprint {
   capturedAt?: string;
   /** hex salt `cloakSeed` was derived from (ensureCloakFingerprint); kept so the seed is reproducible */
   cloakSalt?: string;
+  // Plan 0004 phase 2 (FingerprintSettings in packages/shared/src/fingerprint.ts). Absent = as before.
+  /** `proxy` = follow the proxy's last connection test at every start; `custom` (or absent) = `tz` / `locale` */
+  tzMode?: 'proxy' | 'custom';
+  localeMode?: 'proxy' | 'custom';
+  /** `navigator.hardwareConcurrency`; absent = from the seed */
+  cpu?: number;
+  /** `navigator.deviceMemory` in GB; absent = from the seed */
+  memoryGb?: number;
+  webrtc?: WebRtcMode;
+  /** false = canvas / WebGL / audio noise off */
+  noise?: boolean;
+  /** GPU vendor the next "new fingerprint" applies (the volume locks the current one until its data is reset) */
+  nextGpu?: CloakGpu;
 }
 export interface ProxyTest {
   ip?: string;
@@ -604,6 +620,13 @@ export interface DispatchProfile {
   proxy: ProxySpec | null;
   /** in the trash (plan 0004); only loaded with `includeTrashed` */
   trashed: boolean;
+  /** plan 0004 phase 2: optional launch settings; absent keys keep the engine's own values */
+  device: {
+    cpu?: number;
+    memoryGb?: number;
+    noise?: boolean;
+    webrtc?: { mode: WebRtcMode; ip?: string };
+  };
 }
 
 /**
@@ -652,6 +675,11 @@ export async function getProfileForDispatch(
       ...(px.passwordEnc ? { password: decrypt(px.passwordEnc) } : {}),
     };
   }
+  const test = (px?.lastTest ?? null) as ProxyTest | null;
+  const zone = resolveZoneAndLocale(fp, test);
+  // `real` WebRTC behind a proxy would show the node's own address: it is never sent.
+  const webrtcMode = fp.webrtc === 'real' && proxy ? 'disable_udp' : fp.webrtc;
+  const exitIp = test?.ok !== false && test?.ip && isIP(test.ip) ? test.ip : undefined;
   return {
     id: p.id,
     workspaceId: p.workspaceId,
@@ -667,11 +695,19 @@ export async function getProfileForDispatch(
             persona: (p.cloakPersona ?? 'windows') as CloakPersona,
             gpu: (p.cloakGpu ?? 'intel') as CloakGpu,
           },
-    tz: fp.tz || 'UTC',
-    locale: normalizeLocale(fp.locale),
+    tz: zone.tz || 'UTC',
+    locale: normalizeLocale(zone.locale),
     screen: normalizeScreen(fp.screen) ?? '1920x1080',
     proxy,
     trashed: p.deletedAt !== null,
+    device: {
+      ...(fp.cpu ? { cpu: fp.cpu } : {}),
+      ...(fp.memoryGb ? { memoryGb: fp.memoryGb } : {}),
+      ...(fp.noise === false ? { noise: false } : {}),
+      ...(webrtcMode
+        ? { webrtc: { mode: webrtcMode, ...(webrtcMode === 'replace' && exitIp ? { ip: exitIp } : {}) } }
+        : {}),
+    },
   };
 }
 

@@ -1,7 +1,7 @@
 // Plan 0004 phase 1: the profile list of the Browsers screen. Search, groups, tags, notes, clone and trash.
 // Re-exported from ./browsers, so callers use `browsers.searchProfiles(...)`.
 import type { Prisma } from '@prisma/client';
-import { BrowserTagColor, CloakGpu } from '@threadline/shared';
+import { BrowserTagColor, CloakGpu, FingerprintSettings, GPU_OPTIONS } from '@threadline/shared';
 import { prisma } from '../client';
 import { writeAudit } from './audit';
 import { type Fingerprint, PROFILE_INCLUDE, createBrowserTx, ensureCloakFingerprintTx } from './browsers';
@@ -513,7 +513,7 @@ export function resetProfileData(
   return prisma.$transaction(async (tx) => {
     const p = await tx.browserProfile.findFirst({ where: { workspaceId, id: profileId, deletedAt: null } });
     if (!p) return { reset: false };
-    const { cloakSalt: _salt, ...fp } = (p.fingerprint ?? {}) as Fingerprint;
+    const { cloakSalt: _salt, nextGpu, ...fp } = (p.fingerprint ?? {}) as Fingerprint;
     await tx.browserProfile.update({
       where: { id: p.id },
       data: {
@@ -527,7 +527,8 @@ export function resetProfileData(
       workspaceId,
       profileId: p.id,
       actorMemberId,
-      gpu: CloakGpu.find((v) => v === p.cloakGpu),
+      // The GPU picked with "New fingerprint", else the one it had.
+      gpu: CloakGpu.find((v) => v === (nextGpu ?? p.cloakGpu)),
     });
     await writeAudit(
       {
@@ -542,6 +543,89 @@ export function resetProfileData(
       tx,
     );
     return { reset: true };
+  });
+}
+
+// ── fingerprint settings (phase 2) ──
+
+/**
+ * Saves the editable fingerprint settings of a live browser. They apply at the next start. `real` WebRTC is
+ * refused while the browser has a proxy: it would show the node's own address. Audit
+ * `profile.fingerprint_updated` with the names of the settings that changed.
+ */
+export function updateFingerprint(
+  workspaceId: string,
+  profileId: string,
+  actorMemberId: string,
+  input: FingerprintSettings,
+): Promise<{ changed: string[] }> {
+  const s = FingerprintSettings.parse(input);
+  return prisma.$transaction(async (tx) => {
+    const p = await tx.browserProfile.findFirst({
+      where: { workspaceId, id: profileId, deletedAt: null },
+      include: { proxy: { select: { protocol: true, host: true } } },
+    });
+    if (!p) throw new BrowserManageError('Browser not found.');
+    const behindProxy = Boolean(p.proxy && p.proxy.protocol !== 'none' && p.proxy.host);
+    if (s.webrtc === 'real' && behindProxy)
+      throw new BrowserManageError('Real WebRTC would show the node’s own address behind a proxy.');
+    const fp = (p.fingerprint ?? {}) as Fingerprint;
+    // What "absent" has always meant, so an untouched form changes nothing.
+    const before: FingerprintSettings = {
+      screen: fp.screen?.replace(/\s*[×X]\s*/, 'x') ?? '',
+      tzMode: fp.tzMode ?? 'custom',
+      tz: fp.tz ?? '',
+      localeMode: fp.localeMode ?? 'custom',
+      locale: fp.locale?.split(',')[0]?.trim() ?? '',
+      cpu: fp.cpu ?? null,
+      memoryGb: fp.memoryGb ?? null,
+      webrtc: fp.webrtc ?? 'disable_udp',
+      noise: fp.noise !== false,
+    };
+    const changed = (Object.keys(s) as (keyof FingerprintSettings)[]).filter((k) => s[k] !== before[k]);
+    if (changed.length === 0) return { changed };
+    const { cpu: _c, memoryGb: _m, ...rest } = fp;
+    const next: Fingerprint = {
+      ...rest,
+      screen: s.screen,
+      tzMode: s.tzMode,
+      tz: s.tz,
+      localeMode: s.localeMode,
+      locale: s.locale,
+      ...(s.cpu ? { cpu: s.cpu } : {}),
+      ...(s.memoryGb ? { memoryGb: s.memoryGb } : {}),
+      webrtc: s.webrtc,
+      noise: s.noise,
+    };
+    await tx.browserProfile.update({
+      where: { id: p.id },
+      data: { fingerprint: next as Prisma.InputJsonValue },
+    });
+    await writeAudit(
+      {
+        workspaceId,
+        actorMemberId,
+        action: 'profile.fingerprint_updated',
+        targetType: 'BrowserProfile',
+        targetId: p.id,
+        accountId: p.accountId,
+        meta: { item: `Fingerprint settings of ${p.name} changed`, changed },
+      },
+      tx,
+    );
+    return { changed };
+  });
+}
+
+/** Remembers the GPU vendor the next data reset should give the browser (see {@link resetProfileData}). */
+export async function setNextGpu(workspaceId: string, profileId: string, gpu: string): Promise<void> {
+  if (!(GPU_OPTIONS as readonly string[]).includes(gpu)) throw new BrowserManageError('Unknown GPU vendor.');
+  const p = await prisma.browserProfile.findFirst({ where: { workspaceId, id: profileId, deletedAt: null } });
+  if (!p) throw new BrowserManageError('Browser not found.');
+  const fp = (p.fingerprint ?? {}) as Fingerprint;
+  await prisma.browserProfile.update({
+    where: { id: p.id },
+    data: { fingerprint: { ...fp, nextGpu: gpu } as Prisma.InputJsonValue },
   });
 }
 

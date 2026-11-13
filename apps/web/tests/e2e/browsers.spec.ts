@@ -377,3 +377,65 @@ test('a viewer can search the list but has no checkboxes to tick and no bulk bar
   await expect(page.getByTestId('profile-table').locator('tbody input[name="ids"]:enabled')).toHaveCount(0);
   await ctx.close();
 });
+
+test('fingerprint: settings save and reach the start command; a new fingerprint needs a confirmation (plan 0004)', async ({
+  page,
+}) => {
+  const s = Date.now().toString(36);
+  const name = `e2e fp ${s}`;
+  const jane = await prisma.workspaceMember.findFirstOrThrow({ where: { user: { email: 'jane@acme.so' } } });
+  const { browsers } = await import('@threadline/db');
+  const { profileId } = await browsers.createBrowser({
+    workspaceId: jane.workspaceId,
+    actorMemberId: jane.id,
+    name,
+    fingerprint: { os: 'Windows 11', screen: '1920x1080', tz: 'America/New_York', locale: 'en-US' },
+  });
+  // No node: a new fingerprint has no data to delete and is assigned at once.
+  await prisma.browserProfile.update({ where: { id: profileId }, data: { nodeId: null } });
+  try {
+    await page.goto(`/browsers?id=${profileId}`);
+    const fp = page.getByTestId('fingerprint');
+    await expect(fp).toContainText('Windows · Intel graphics');
+    await fp.getByLabel('Screen').fill('1600x900');
+    await fp.getByLabel('CPU cores').selectOption('8');
+    await fp.getByLabel('Memory').selectOption('4');
+    await fp.getByLabel('Time zone', { exact: true }).selectOption('proxy');
+    await expect(fp).toContainText('No proxy test yet');
+    await fp.getByLabel('Canvas, WebGL and audio noise').uncheck();
+    await fp.getByRole('button', { name: 'Save fingerprint' }).click();
+    await expect(fp.getByRole('status')).toContainText('Saved');
+    const sent = await browsers.getProfileForDispatch(jane.workspaceId, profileId);
+    expect(sent).toMatchObject({
+      screen: '1600x900',
+      tz: 'America/New_York', // no proxy test yet: the stored zone
+      device: { cpu: 8, memoryGb: 4, noise: false, webrtc: { mode: 'disable_udp' } },
+    });
+    // A bad value is refused with a reason and nothing is stored.
+    await fp.getByLabel('Screen').fill('huge');
+    await fp.getByRole('button', { name: 'Save fingerprint' }).click();
+    await expect(fp.getByRole('status')).toContainText('Screen must look like');
+
+    const before = await prisma.browserProfile.findUniqueOrThrow({ where: { id: profileId } });
+    await fp.getByText('New fingerprint', { exact: true }).first().click();
+    await fp.getByLabel('Graphics').selectOption('nvidia');
+    await fp.getByRole('button', { name: 'New fingerprint' }).click();
+    await expect(fp.getByRole('status').last()).toContainText('Tick the box first');
+    expect((await prisma.browserProfile.findUniqueOrThrow({ where: { id: profileId } })).cloakSeed).toBe(
+      before.cloakSeed,
+    );
+    await fp.getByLabel('Delete this browser’s cookies and sign-in').check();
+    await fp.getByRole('button', { name: 'New fingerprint' }).click();
+    await expect(fp.getByRole('status').last()).toContainText('New fingerprint assigned');
+    const after = await prisma.browserProfile.findUniqueOrThrow({ where: { id: profileId } });
+    expect(after.cloakSeed).not.toBe(before.cloakSeed);
+    expect(after.cloakGpu).toBe('nvidia');
+    await expect(fp).toContainText('Windows · NVIDIA graphics');
+  } finally {
+    const scratch = await prisma.workspace.create({ data: { name: 'Test', slug: `t00-ws-e2e-fp-${s}` } });
+    await prisma.browserProfile.update({
+      where: { id: profileId },
+      data: { workspaceId: scratch.id, createdByMemberId: null, nodeId: null },
+    });
+  }
+});

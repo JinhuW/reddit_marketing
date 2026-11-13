@@ -333,3 +333,126 @@ describe('browsers.resetProfileData', () => {
     }
   });
 });
+
+describe('browsers.updateFingerprint / dispatch', () => {
+  const settings = {
+    screen: '1600x900',
+    tzMode: 'proxy' as const,
+    tz: 'America/New_York',
+    localeMode: 'proxy' as const,
+    locale: 'en-US',
+    cpu: 8,
+    memoryGb: 4,
+    webrtc: 'replace' as const,
+    noise: false,
+  };
+
+  it('stores the settings, and a start carries them with the proxy place resolved', async () => {
+    const ws = await testWorkspace();
+    try {
+      const me = await ws.member();
+      const { profileId } = await browsers.createBrowser({
+        workspaceId: ws.id,
+        actorMemberId: me.id,
+        fingerprint: { os: 'Windows 11', screen: '1920x1080', tz: 'America/New_York', locale: 'en-US' },
+      });
+      // Untouched profile: nothing optional is sent, exactly as before plan 0004.
+      const plain = await browsers.getProfileForDispatch(ws.id, profileId);
+      expect(plain).toMatchObject({
+        tz: 'America/New_York',
+        locale: 'en-US',
+        screen: '1920x1080',
+        device: {},
+      });
+
+      const px = await prisma.proxy.create({
+        data: {
+          workspaceId: ws.id,
+          provider: 'Own',
+          protocol: 'http',
+          host: 'h.test',
+          port: 1,
+          lastTest: { ok: true, ip: '203.0.113.9', timeZone: 'Europe/Lisbon', country: 'PT' },
+        },
+      });
+      await browsers.attachProxy(ws.id, profileId, px.id, me.id);
+      const r = await browsers.updateFingerprint(ws.id, profileId, me.id, settings);
+      expect(r.changed.sort()).toEqual(
+        ['cpu', 'localeMode', 'memoryGb', 'noise', 'screen', 'tzMode', 'webrtc'].sort(),
+      );
+      expect(await browsers.updateFingerprint(ws.id, profileId, me.id, settings)).toEqual({ changed: [] });
+
+      const d = await browsers.getProfileForDispatch(ws.id, profileId);
+      expect(d).toMatchObject({
+        tz: 'Europe/Lisbon',
+        locale: 'pt-PT',
+        screen: '1600x900',
+        device: { cpu: 8, memoryGb: 4, noise: false, webrtc: { mode: 'replace', ip: '203.0.113.9' } },
+      });
+      // The seed and what it was derived from are untouched.
+      const row = await prisma.browserProfile.findUniqueOrThrow({ where: { id: profileId } });
+      expect((row.fingerprint as browsers.Fingerprint).cloakSalt).toBeTruthy();
+      expect(await audits(ws.id, 'profile.fingerprint_updated')).toHaveLength(1);
+
+      // "From seed" again removes the override instead of storing null.
+      await browsers.updateFingerprint(ws.id, profileId, me.id, { ...settings, cpu: null, memoryGb: null });
+      expect((await browsers.getProfileForDispatch(ws.id, profileId))?.device).toEqual({
+        noise: false,
+        webrtc: { mode: 'replace', ip: '203.0.113.9' },
+      });
+    } finally {
+      await ws.cleanup();
+    }
+  });
+
+  it('never lets WebRTC be real behind a proxy', async () => {
+    const ws = await testWorkspace();
+    try {
+      const me = await ws.member();
+      const { profileId } = await browsers.createBrowser({ workspaceId: ws.id, actorMemberId: me.id });
+      const real = {
+        ...settings,
+        tzMode: 'custom' as const,
+        localeMode: 'custom' as const,
+        webrtc: 'real' as const,
+      };
+      // No proxy: allowed.
+      await browsers.updateFingerprint(ws.id, profileId, me.id, real);
+      expect((await browsers.getProfileForDispatch(ws.id, profileId))?.device.webrtc).toEqual({
+        mode: 'real',
+      });
+      // A proxy attached afterwards: dispatch falls back to the safe mode on its own.
+      const px = await prisma.proxy.create({
+        data: { workspaceId: ws.id, provider: 'Own', protocol: 'socks5', host: 'h.test', port: 1 },
+      });
+      await browsers.attachProxy(ws.id, profileId, px.id, me.id);
+      expect((await browsers.getProfileForDispatch(ws.id, profileId))?.device.webrtc).toEqual({
+        mode: 'disable_udp',
+      });
+      // And the form refuses to save it.
+      await expect(browsers.updateFingerprint(ws.id, profileId, me.id, { ...real, cpu: 2 })).rejects.toThrow(
+        /own address/,
+      );
+    } finally {
+      await ws.cleanup();
+    }
+  });
+
+  it('a GPU picked for the next fingerprint applies at the data reset', async () => {
+    const ws = await testWorkspace();
+    try {
+      const me = await ws.member();
+      const { profileId } = await browsers.createBrowser({ workspaceId: ws.id, actorMemberId: me.id });
+      await expect(browsers.setNextGpu(ws.id, profileId, 'voodoo')).rejects.toThrow(/GPU/);
+      await browsers.setNextGpu(ws.id, profileId, 'nvidia');
+      const before = await prisma.browserProfile.findUniqueOrThrow({ where: { id: profileId } });
+      expect(before.cloakGpu).toBe('intel'); // locked until the reset
+      await browsers.resetProfileData(ws.id, profileId, me.id);
+      const after = await prisma.browserProfile.findUniqueOrThrow({ where: { id: profileId } });
+      expect(after.cloakGpu).toBe('nvidia');
+      expect((after.fingerprint as browsers.Fingerprint).nextGpu).toBeUndefined();
+    } finally {
+      await ws.cleanup();
+    }
+  });
+});

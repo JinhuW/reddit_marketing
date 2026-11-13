@@ -759,6 +759,7 @@ function startCmd(p: DispatchProfile): Cmd {
     locale: p.locale,
     screen: p.screen,
     proxy: p.proxy,
+    ...p.device,
   };
 }
 

@@ -6,6 +6,7 @@ import { BULK_OPS, type BulkOp } from '@/components/browsers/list-params';
 import { enqueueProfileJob, enqueueRemoveJob } from '@/lib/browser-jobs';
 import { ForbiddenError, requireMember, requireRole } from '@/lib/session';
 import { browsers } from '@threadline/db';
+import { CPU_OPTIONS, FingerprintSettings, MEMORY_OPTIONS } from '@threadline/shared';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 
@@ -251,5 +252,71 @@ export async function deleteTagAction(_prev: ActionState | null, form: FormData)
     await browsers.deleteTag(me.workspaceId, me.id, str(form, 'id'));
     revalidatePath('/browsers');
     return { ok: true, message: 'Tag deleted.' };
+  });
+}
+
+// ── fingerprint (phase 2) ──
+
+const pick = (raw: string, options: readonly number[]) => {
+  const n = Number(raw);
+  return raw && options.includes(n) ? n : null;
+};
+
+/** Drawer "Fingerprint": screen, time zone, language, CPU, memory, WebRTC and noise. Applies at the next start. */
+export async function saveFingerprintAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  return guarded(async () => {
+    const { me, profile } = await controllable(str(form, 'profileId'));
+    const parsed = FingerprintSettings.safeParse({
+      screen: str(form, 'screen').replace(/\s*[×xX]\s*/, 'x'),
+      tzMode: str(form, 'tzMode'),
+      tz: str(form, 'tz'),
+      localeMode: str(form, 'localeMode'),
+      locale: str(form, 'locale'),
+      cpu: pick(str(form, 'cpu'), CPU_OPTIONS),
+      memoryGb: pick(str(form, 'memoryGb'), MEMORY_OPTIONS),
+      webrtc: str(form, 'webrtc'),
+      noise: form.get('noise') === 'on',
+    });
+    if (!parsed.success)
+      return { ok: false, message: parsed.error.issues[0]?.message ?? 'Check the fingerprint fields.' };
+    const r = await browsers.updateFingerprint(me.workspaceId, profile.id, me.id, parsed.data);
+    revalidatePath('/browsers');
+    if (r.changed.length === 0) return { ok: true, message: 'Nothing to change.' };
+    return {
+      ok: true,
+      message:
+        profile.status === 'running'
+          ? 'Saved. It applies the next time this browser starts: stop and start it.'
+          : 'Saved. It applies the next time this browser starts.',
+    };
+  });
+}
+
+/**
+ * Drawer "New fingerprint": the browser becomes a new device. Its data (cookies, cache, sign-in) is deleted on
+ * the node first, because the volume is locked to the old fingerprint; then it gets a new seed.
+ */
+export async function newFingerprintAction(_prev: ActionState | null, form: FormData): Promise<ActionState> {
+  return guarded(async () => {
+    const { me, profile } = await controllable(str(form, 'profileId'));
+    if (form.get('confirm') !== 'on')
+      return { ok: false, message: 'Tick the box first: this deletes the browser’s cookies and sign-in.' };
+    if (profile.sessions.some((s) => s.driver === 'human'))
+      return { ok: false, message: 'Someone is controlling this browser. Hand it back first.' };
+    const gpu = str(form, 'gpu');
+    if (gpu) await browsers.setNextGpu(me.workspaceId, profile.id, gpu);
+    const r = await enqueueRemoveJob(me.workspaceId, profile.id, 'reset');
+    revalidatePath('/browsers');
+    if (r.queued)
+      return {
+        ok: true,
+        message: 'Clearing the browser’s data. The new fingerprint is ready in a few seconds.',
+      };
+    if ('node' in r && r.node === false) {
+      // Never ran anywhere: there is no data to delete.
+      await browsers.resetProfileData(me.workspaceId, profile.id, me.id);
+      return { ok: true, message: 'New fingerprint assigned.' };
+    }
+    return { ok: false, message: r.reason };
   });
 }

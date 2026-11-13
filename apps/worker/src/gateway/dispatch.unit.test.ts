@@ -70,6 +70,7 @@ const profile = (account: Account | null): browsers.DispatchProfile => ({
   screen: '1920x1080',
   proxy: null,
   trashed: false,
+  device: {},
 });
 
 const cookie = {

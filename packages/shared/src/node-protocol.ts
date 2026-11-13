@@ -18,7 +18,7 @@
  */
 import { z } from 'zod';
 import { BrowserCookie } from './cookies';
-import { BrowserOutcome, CloakGpu, CloakPersona, NodeEventKind } from './enums';
+import { BrowserOutcome, CloakGpu, CloakPersona, NodeEventKind, WebRtcMode } from './enums';
 
 export const PROTOCOL_VERSION = 1;
 export const SUBPROTOCOL = 'tl-node.v1';
@@ -86,6 +86,15 @@ export const ProfileStartCmd = z.object({
   /** `<width>x<height>`, e.g. `1920x1080` */
   screen: z.string().regex(/^\d{3,5}x\d{3,5}$/),
   proxy: ProxySpec.nullable(),
+  // Plan 0004 phase 2. All optional: absent = what the seed gives / the behaviour before these existed.
+  /** `navigator.hardwareConcurrency` */
+  cpu: z.number().int().min(1).max(64).optional(),
+  /** `navigator.deviceMemory` in GB */
+  memoryGb: z.number().int().min(1).max(64).optional(),
+  /** false turns the canvas / WebGL / audio noise off; the seed still fixes the device */
+  noise: z.boolean().optional(),
+  /** WebRTC behind the proxy; `ip` = the proxy's exit IP for `replace` (absent: the engine looks it up) */
+  webrtc: z.object({ mode: z.enum(WebRtcMode), ip: z.string().ip().optional() }).optional(),
 });
 export const ProfileStopCmd = z.object({ kind: z.literal('profile.stop'), profileId: id });
 /**

@@ -23,6 +23,10 @@ tini ─ supervisor.mjs ─┬─ Xvfb :99
 | `TZ` | no, `UTC` | IANA zone from `profile.start.tz` |
 | `LOCALE` | no, from `LANG` | BCP 47 from `profile.start.locale`; sets `--lang`, `LANG`, `LANGUAGE` |
 | `SCREEN` | no, `1512x982` | `WxH`; Xvfb size and window size. No viewport emulation |
+| `FP_CPU`, `FP_MEMORY_GB` | no | `--fingerprint-hardware-concurrency` / `--fingerprint-device-memory`; unset = from the seed |
+| `FP_NOISE` | no, on | `off` adds `--fingerprint-noise=false` (canvas, WebGL, audio); the seed still fixes the device |
+| `FP_WEBRTC` | no, `disable_udp` | behind a proxy: `disable_udp` keeps `--force-webrtc-ip-handling-policy=disable_non_proxied_udp`; `replace` sends `--fingerprint-webrtc-ip=<FP_WEBRTC_IP or auto>` instead; `real` is never honoured behind a proxy |
+| `FP_WEBRTC_IP` | no | the proxy's exit IP for `replace` (from the last connection test) |
 | `PROXY_URL` | no | `http|https|socks5://host:port`. Credentials are stripped before `--proxy-server`; the agent answers the proxy challenge over CDP `Fetch.authRequired` |
 | `CLOAKBROWSER_LICENSE_KEY` | yes (cloak) | passed to the binary only; redacted from all forwarded output |
 | `CLOAK_LICENSE_EXIT_CODES` | no, `76,77,78,79` | launcher exit codes that mean a license failure |

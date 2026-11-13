@@ -126,6 +126,13 @@ export const CloakGpu = ['nvidia', 'intel', 'amd'] as const;
 export type CloakGpu = (typeof CloakGpu)[number];
 
 /** `Event.kind` in the gateway ↔ agent protocol. */
+/**
+ * WebRTC behind a proxy (plan 0004). `disable_udp`: no UDP outside the proxy, so no address leaks (the default).
+ * `replace`: the engine reports the proxy's exit IP in ICE candidates. `real`: untouched; only without a proxy.
+ */
+export const WebRtcMode = ['disable_udp', 'replace', 'real'] as const;
+export type WebRtcMode = (typeof WebRtcMode)[number];
+
 /** Tag colors on the Browsers screen (plan 0004); each maps to a chip style in the web app. */
 export const BrowserTagColor = ['gray', 'green', 'amber', 'red', 'accent'] as const;
 export type BrowserTagColor = (typeof BrowserTagColor)[number];
@@ -184,6 +191,7 @@ export const AuditAction = [
   'browser_group.deleted',
   'browser_tag.created',
   'browser_tag.deleted',
+  'profile.fingerprint_updated',
 ] as const;
 export type AuditAction = (typeof AuditAction)[number];
 

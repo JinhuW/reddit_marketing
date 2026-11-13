@@ -6,3 +6,4 @@ export * from './queues';
 export * from './node-protocol';
 export * from './attribution';
 export * from './cookies';
+export * from './fingerprint';

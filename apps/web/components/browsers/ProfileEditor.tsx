@@ -7,6 +7,7 @@ import { useActionState, useState } from 'react';
 import { AccountSection, type AssignableAccount } from './AccountSection';
 import { BrowserControls } from './BrowserControls';
 import { BrowserSettings } from './BrowserSettings';
+import { FingerprintSection } from './FingerprintSection';
 import { DeleteProfile, ProfileDetails } from './ProfileDetails';
 import type { ActionState } from './action-state';
 import type { ProfileView } from './view';
@@ -379,25 +380,7 @@ export function ProfileEditor({
           ) : null}
         </div>
 
-        <div className="flex flex-col gap-2">
-          <div className="text-[12.5px] font-semibold">Browser fingerprint</div>
-          <Kv
-            rows={[
-              ['Device', p.device],
-              ['Timezone', p.tz],
-              ['Language', p.locale],
-              [
-                'Cookies',
-                `Kept between sessions${p.capturedAt ? ` · logged in since ${new Date(p.capturedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}`,
-              ],
-            ]}
-          />
-          <div className="muted text-xs leading-normal">
-            Copied from {p.ownerFirst}’s own device when they{' '}
-            {p.accountInfo ? 'connected the account' : 'created the browser'}. Threadline keeps it stable; it
-            doesn’t invent a new identity.
-          </div>
-        </div>
+        <FingerprintSection p={p} canEdit={canEdit} />
 
         <div className="flex flex-col gap-2">
           <div className="text-[12.5px] font-semibold">What the agent may do here</div>

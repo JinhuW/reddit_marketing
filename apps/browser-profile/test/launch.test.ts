@@ -142,6 +142,42 @@ describe('browserArgs', () => {
     expect(() => parseEnv({ ...cloakEnv, BROWSER_SANDBOX: 'maybe' })).toThrow(ConfigError);
   });
 
+  it('sends optional fingerprint settings only when they are set (plan 0004)', () => {
+    const plain = browserArgs(parseEnv(cloakEnv));
+    for (const f of [CLOAK_FLAGS.cpu, CLOAK_FLAGS.memory, CLOAK_FLAGS.noise, CLOAK_FLAGS.webrtcIp])
+      expect(plain.some((a) => a.startsWith(f))).toBe(false);
+    const args = browserArgs(parseEnv({ ...cloakEnv, FP_CPU: '8', FP_MEMORY_GB: '4', FP_NOISE: 'off' }));
+    expect(args).toContain('--fingerprint-hardware-concurrency=8');
+    expect(args).toContain('--fingerprint-device-memory=4');
+    expect(args).toContain('--fingerprint-noise=false');
+    expect(() => parseEnv({ ...cloakEnv, FP_CPU: '0' })).toThrow(ConfigError);
+    expect(() => parseEnv({ ...cloakEnv, FP_MEMORY_GB: 'lots' })).toThrow(ConfigError);
+  });
+
+  it('WebRTC: replace reports the proxy exit IP; real never applies behind a proxy', () => {
+    const proxied = { ...cloakEnv, PROXY_URL: 'http://p.example:9000' };
+    const policy = '--force-webrtc-ip-handling-policy=disable_non_proxied_udp';
+    const replace = browserArgs(parseEnv({ ...proxied, FP_WEBRTC: 'replace', FP_WEBRTC_IP: '203.0.113.9' }));
+    expect(replace).toContain('--fingerprint-webrtc-ip=203.0.113.9');
+    expect(replace).not.toContain(policy);
+    expect(browserArgs(parseEnv({ ...proxied, FP_WEBRTC: 'replace' }))).toContain(
+      '--fingerprint-webrtc-ip=auto',
+    );
+    // `real` behind a proxy would leak the node's address: the policy stays.
+    const real = browserArgs(parseEnv({ ...proxied, FP_WEBRTC: 'real' }));
+    expect(real).toContain(policy);
+    expect(real.some((a) => a.startsWith(CLOAK_FLAGS.webrtcIp))).toBe(false);
+    // No proxy: nothing to protect and nothing to replace.
+    const direct = browserArgs(parseEnv({ ...cloakEnv, FP_WEBRTC: 'replace', FP_WEBRTC_IP: '203.0.113.9' }));
+    expect(direct.some((a) => /webrtc/.test(a))).toBe(false);
+    // Stock chromium cannot replace the address, so it keeps the policy.
+    expect(
+      browserArgs(parseEnv({ ENGINE: 'chromium', PROXY_URL: 'http://p.example:9000', FP_WEBRTC: 'replace' })),
+    ).toContain(policy);
+    expect(() => parseEnv({ ...proxied, FP_WEBRTC: 'open' })).toThrow(ConfigError);
+    expect(() => parseEnv({ ...proxied, FP_WEBRTC_IP: '1.2.3.4 --no-sandbox' })).toThrow(ConfigError);
+  });
+
   it('sends no fingerprint flags to stock chromium', () => {
     const args = browserArgs(parseEnv({ ENGINE: 'chromium' }));
     expect(args.some((a) => a.startsWith('--fingerprint'))).toBe(false);

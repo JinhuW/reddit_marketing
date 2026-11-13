@@ -164,6 +164,25 @@ export function profileView(p: Row, now = new Date(), node: NodeInfo | null = nu
           ),
         }
       : null,
+    /** editable fingerprint settings (plan 0004 phase 2); "absent" reads as what it has always meant */
+    fp: {
+      screen: (fp.screen ?? '1920x1080').replace(/\s*[×X]\s*/, 'x'),
+      tzMode: fp.tzMode ?? 'custom',
+      tz: fp.tz ?? 'UTC',
+      localeMode: fp.localeMode ?? 'custom',
+      locale: fp.locale?.split(',')[0]?.split(';')[0]?.trim() || 'en-US',
+      cpu: fp.cpu ?? null,
+      memoryGb: fp.memoryGb ?? null,
+      webrtc: fp.webrtc ?? 'disable_udp',
+      noise: fp.noise !== false,
+      gpu: fp.nextGpu ?? p.cloakGpu ?? 'intel',
+      persona: p.cloakPersona ?? 'windows',
+      /** a proxy other than "none" is set: real WebRTC is not offered */
+      behindProxy: Boolean(p.proxy && p.proxy.protocol !== 'none' && p.proxy.host),
+      /** where the proxy's last good test put its exit IP, for the "match proxy IP" hint */
+      proxyZone: test && test.ok !== false ? (test.timeZone ?? null) : null,
+      proxyCountry: test && test.ok !== false ? (test.country ?? null) : null,
+    },
     node: nodeView(node),
     paused,
     /** false for a browser-mode account nobody has signed in to yet */

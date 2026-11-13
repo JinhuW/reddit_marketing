@@ -27,7 +27,8 @@ AdsPower's core is six things. Threadline had the third and a thin slice of the 
 | Browser count | No plan limit on browsers (the plan limits accounts); one bulk action or clone run touches at most 100. | A browser without an account posts nothing. |
 | Seed / GPU after first launch | Changeable only together with "reset browser data". | The volume locks them (`checkFingerprintLock`): a device that changes hardware under the same cookies is a tell. |
 | OS persona | Not a choice: every new, cloned or reset browser is `windows` (DECISIONS 2026-11-09). | The image ships Windows-metric fonts and `CloakGpu` has no Apple value, so a macOS or Linux persona contradicts itself. |
-| WebRTC "real" | Never offered while a proxy is set. | It would show the node's home IP. |
+| WebRTC "real" | Never offered while a proxy is set; the save is refused, dispatch falls back to `disable_udp`, and the image ignores it behind a proxy. | It would show the node's home IP. |
+| Existing browsers | New flags are sent only for a setting a person changed. | A launch-flag change on a browser Reddit already knows is a device change. |
 | Proxy change-IP URL, pool checks | Called from the node agent, never from the web app. | The URL is user input: no server-side request from Railway. |
 
 Unchanged rules: a post only from an approved Draft with an `approverMemberId`; every Draft / Lead / RedditAccount /
@@ -54,10 +55,19 @@ BrowserSession transition writes an AuditEvent; secrets never in logs, job paylo
       notes edited in the row, per-row Start / Stop, group / tags / notes and Delete in the drawer.
 
 ### Phase 2 · Editable fingerprint
-- [ ] Spike: which fingerprint flags the pinned CloakBrowser build accepts.
-- [ ] Typed `Fingerprint` schema; form section (GPU vendor, screen, time zone, language, location, WebRTC);
-      "match proxy IP" from the last connection test; "New fingerprint" with the data-reset rule.
-- [ ] `profile.start` carries `webrtc` and `geo`; image and agent apply them.
+- [x] Spike: the CloakBrowser README's flag table (2026-11-12) lists `--fingerprint-hardware-concurrency`,
+      `--fingerprint-device-memory`, `--fingerprint-noise`, `--fingerprint-webrtc-ip`, timezone, locale and screen
+      flags; GPU vendors are Intel and NVIDIA. It advises keeping the seed as the source of identity, so canvas,
+      WebGL, audio, fonts and client rects stay seed-derived and are shown as fixed.
+- [x] `FingerprintSettings` (packages/shared/src/fingerprint.ts) and the drawer form: screen, time zone and
+      language (custom or "match proxy IP", resolved from the last connection test at every start), CPU cores,
+      memory, WebRTC (proxy only / replace with the proxy IP / real without a proxy), noise on or off.
+- [x] "New fingerprint": new seed and optionally another GPU vendor, after the node deleted the browser's data
+      (`profile.remove`, `after: reset`); needs a ticked confirmation.
+- [x] `profile.start` carries optional `cpu`, `memoryGb`, `noise`, `webrtc`; the agent passes them as `FP_*` env
+      and the image turns them into flags. An untouched browser starts exactly as before.
+- [ ] Not built: a geolocation setting. A per-page CDP override does not cover tabs a person opens over VNC,
+      and a browser-wide one needs a check on an x86 node. Chrome's default (ask) stays.
 
 ### Phase 3 · Proxy pool
 - [ ] `/browsers/proxies`: list, add, bulk add by paste, edit, delete, bulk check, notes, change-IP URL.

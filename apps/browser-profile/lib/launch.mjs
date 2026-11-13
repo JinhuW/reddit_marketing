@@ -23,7 +23,14 @@ export const CLOAK_FLAGS = Object.freeze({
   seed: '--fingerprint',
   platform: '--fingerprint-platform',
   gpuVendor: '--fingerprint-gpu-vendor',
+  // Plan 0004 phase 2, from the CloakBrowser README's flag table (checked 2026-11-12). Each is sent only when a
+  // person set it on the profile; unset, the seed decides.
+  cpu: '--fingerprint-hardware-concurrency',
+  memory: '--fingerprint-device-memory',
+  noise: '--fingerprint-noise',
+  webrtcIp: '--fingerprint-webrtc-ip',
 });
+export const WEBRTC_MODES = /** @type {const} */ (['disable_udp', 'replace', 'real']);
 
 /**
  * Exit codes of the CloakBrowser launcher that mean a license failure. The pilot's license module used 76–79;
@@ -46,6 +53,11 @@ const LICENSE_FAILURE =
  * @property {string} locale           BCP 47, e.g. en-US
  * @property {{ width: number, height: number }} screen
  * @property {string|null} proxyServer  scheme://host:port, credentials removed
+ * @property {number|null} cpu          navigator.hardwareConcurrency; null = from the seed
+ * @property {number|null} memoryGb     navigator.deviceMemory; null = from the seed
+ * @property {boolean} noise            canvas / WebGL / audio noise; false only when FP_NOISE=off
+ * @property {'disable_udp'|'replace'|'real'} webrtc  WebRTC behind the proxy
+ * @property {string|null} webrtcIp     exit IP for `replace`; null = the engine resolves it (`auto`)
  * @property {string} display
  * @property {number} cdpPort           public CDP port (the front proxy listens here)
  * @property {number} cdpInternalPort   browser's own CDP port, bound to 127.0.0.1
@@ -55,6 +67,22 @@ const LICENSE_FAILURE =
  * @property {string[]} secrets         values to redact from forwarded output
  * @property {boolean} sandbox          Chromium sandbox; off only when the runtime cannot give it user namespaces
  */
+
+/**
+ * An optional whole number from the environment; blank = not set.
+ * @param {string|undefined} v
+ * @param {number} min
+ * @param {number} max
+ * @param {string} name
+ * @returns {number|null}
+ */
+function optionalInt(v, min, max, name) {
+  if (v === undefined || v.trim() === '') return null;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < min || n > max)
+    throw new ConfigError(`${name} must be a whole number in ${min}..${max}`);
+  return n;
+}
 
 /** @param {string|undefined} v */
 const blank = (v) => v === undefined || v.trim() === '';
@@ -167,6 +195,16 @@ export function parseEnv(env) {
     : posixToBcp47(blank(env.LANG) ? 'en_US.UTF-8' : /** @type {string} */ (env.LANG));
   if (!/^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(locale)) throw new ConfigError('LOCALE must be BCP 47');
 
+  const cpu = optionalInt(env.FP_CPU, 1, 64, 'FP_CPU');
+  const memoryGb = optionalInt(env.FP_MEMORY_GB, 1, 64, 'FP_MEMORY_GB');
+  const webrtc = blank(env.FP_WEBRTC) ? 'disable_udp' : /** @type {string} */ (env.FP_WEBRTC);
+  if (!WEBRTC_MODES.includes(/** @type {any} */ (webrtc)))
+    throw new ConfigError('FP_WEBRTC must be disable_udp, replace or real');
+  const webrtcIp = blank(env.FP_WEBRTC_IP) ? null : /** @type {string} */ (env.FP_WEBRTC_IP).trim();
+  // Goes on the command line: only an address may pass.
+  if (webrtcIp !== null && !/^[0-9A-Fa-f.:]{3,45}$/.test(webrtcIp))
+    throw new ConfigError('FP_WEBRTC_IP must be an IP address');
+
   const licenseExitCodes = blank(env.CLOAK_LICENSE_EXIT_CODES)
     ? [...DEFAULT_LICENSE_EXIT_CODES]
     : /** @type {string} */ (env.CLOAK_LICENSE_EXIT_CODES)
@@ -200,6 +238,11 @@ export function parseEnv(env) {
     locale,
     screen,
     proxyServer: blank(env.PROXY_URL) ? null : proxyServerFlag(/** @type {string} */ (env.PROXY_URL)),
+    cpu,
+    memoryGb,
+    noise: !(typeof env.FP_NOISE === 'string' && env.FP_NOISE.trim().toLowerCase() === 'off'),
+    webrtc: /** @type {'disable_udp'|'replace'|'real'} */ (webrtc),
+    webrtcIp,
     display: blank(env.DISPLAY) ? ':99' : /** @type {string} */ (env.DISPLAY),
     cdpPort,
     cdpInternalPort,
@@ -239,13 +282,20 @@ export function browserArgs(c) {
       `${CLOAK_FLAGS.platform}=${c.persona}`,
       `${CLOAK_FLAGS.gpuVendor}=${c.gpu}`,
     );
+    if (c.cpu !== null) args.push(`${CLOAK_FLAGS.cpu}=${c.cpu}`);
+    if (c.memoryGb !== null) args.push(`${CLOAK_FLAGS.memory}=${c.memoryGb}`);
+    if (!c.noise) args.push(`${CLOAK_FLAGS.noise}=false`);
   }
   if (c.proxyServer) {
-    args.push(
-      `--proxy-server=${c.proxyServer}`,
-      // Keep WebRTC on the proxy path so the page cannot learn the node's home IP.
-      '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
-    );
+    args.push(`--proxy-server=${c.proxyServer}`);
+    if (c.webrtc === 'replace' && c.engine === 'cloak') {
+      // The engine reports the proxy's exit IP in ICE candidates instead of the node's own.
+      args.push(`${CLOAK_FLAGS.webrtcIp}=${c.webrtcIp ?? 'auto'}`);
+    } else {
+      // Keep WebRTC on the proxy path so the page cannot learn the node's home IP. `real` is never honoured
+      // behind a proxy, and plain Chromium cannot replace the address, so both fall back to this.
+      args.push('--force-webrtc-ip-handling-policy=disable_non_proxied_udp');
+    }
   }
   args.push('about:blank');
   return args;

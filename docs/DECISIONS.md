@@ -286,3 +286,8 @@ Color Emoji), because the image ships Windows-metric fonts and `CloakGpu` has no
   10 s refresh and a shared link show the same view. Hidden columns are a per-browser preference (localStorage).
 - A purge never deletes the `BrowserProfile` row: `AuditEvent` is append-only and references the profile's
   sessions. The row becomes a tombstone (`purgedAt`) no query returns.
+- Fingerprint editor (plan 0004 phase 2) replaces the artboard's read-only "Browser fingerprint" box. It edits
+  only what the engine documents a flag for and what does not break the seed's coherence. There is no OS choice
+  (see 2026-11-09) and no per-field canvas / WebGL / audio / fonts control: those stay with the seed.
+- The two fingerprint forms submit by hand (`onSubmit` + `startTransition`) instead of a form `action`: React
+  resets a form after an action, which put a chosen GPU vendor back to the old one after a refused submit.

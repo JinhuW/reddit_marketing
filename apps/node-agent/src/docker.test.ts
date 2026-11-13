@@ -52,6 +52,29 @@ function setup(over: Partial<DockerManagerOptions> & { ready?: boolean | (() => 
   };
 }
 
+describe('containerSpec fingerprint settings (plan 0004)', () => {
+  const opts = { image: 'img', network: 'n', nodeName: 'browser-1', licenseKey: undefined };
+  it('sets no FP_ variable unless the profile carries the setting', () => {
+    const env = containerSpec(startCmd(), opts).env;
+    expect(Object.keys(env).filter((k) => k.startsWith('FP_'))).toEqual([]);
+  });
+  it('passes cpu, memory, noise off and the WebRTC mode with the exit IP', () => {
+    const env = containerSpec(
+      startCmd('p1', { cpu: 8, memoryGb: 4, noise: false, webrtc: { mode: 'replace', ip: '203.0.113.9' } }),
+      opts,
+    ).env;
+    expect(env).toMatchObject({
+      FP_CPU: '8',
+      FP_MEMORY_GB: '4',
+      FP_NOISE: 'off',
+      FP_WEBRTC: 'replace',
+      FP_WEBRTC_IP: '203.0.113.9',
+    });
+    // noise on is the default: no variable
+    expect(containerSpec(startCmd('p1', { noise: true }), opts).env.FP_NOISE).toBeUndefined();
+  });
+});
+
 describe('containerSpec', () => {
   it('maps profile.start to env, labels, volume and limits, with no ports and no proxy credentials', () => {
     const spec = containerSpec(startCmd(), {
